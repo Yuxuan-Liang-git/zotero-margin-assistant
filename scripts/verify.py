@@ -15,7 +15,7 @@ parser.add_argument('--native-run',default='zotero-0106-native-final')
 parser.add_argument('--restart-run',default='zotero-0105-final')
 parser.add_argument('--conversation-run',default='zotero-0106-conversation-qa')
 parser.add_argument('--upgrade-run',default='zotero-0106-upgrade')
-parser.add_argument('--clipboard-run',default='zotero-0136-perf-final')
+parser.add_argument('--clipboard-run',default='zotero-0137-composer-v2')
 args=parser.parse_args()
 version=json.loads((PROJECT/'package.json').read_text(encoding='utf-8'))['version']
 package=PROJECT/f'dist/margin-comments-deepseek-{version}.xpi'
@@ -80,7 +80,7 @@ upgrade_smoke='passed: AddonManager upgraded active 0.10.5 to active 0.10.6 besi
 clipboard_dir=PROJECT/'evidence'/args.clipboard_run
 clipboard_reports=[json.loads((clipboard_dir/f'report-{n}.json').read_text(encoding='utf-8')) if (clipboard_dir/f'report-{n}.json').exists() else None for n in [1,2]]
 clipboard_installed=clipboard_dir/'profile/extensions/margin-comments@local.zotero.xpi'
-clipboard_ok=clipboard_installed.exists() and hashlib.sha256(clipboard_installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r.get('launch')==n and r.get('packageSha256')==package_hash and len(r.get('steps',[])) in [4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20] and all(s['ok'] for s in r['steps']) for n,r in enumerate(clipboard_reports,1)) and len({r['process'] for r in clipboard_reports if r})==2
+clipboard_ok=clipboard_installed.exists() and hashlib.sha256(clipboard_installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r.get('launch')==n and r.get('packageSha256')==package_hash and len(r.get('steps',[])) in [4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21] and all(s['ok'] for s in r['steps']) for n,r in enumerate(clipboard_reports,1)) and len({r['process'] for r in clipboard_reports if r})==2
 editing_keys_ok=clipboard_ok and all(any(s.get('name')=='sidebar-clipboard-and-latex' and s.get('result',{}).get('editingKeysNotCancelled') and s['result'].get('editingFocusRetained') and s['result'].get('editingEventCombinations')==24 for s in r['steps']) for r in clipboard_reports)
 probe_path=PROJECT/'evidence/chatgpt-plan-probe/report.json'
 probe=json.loads(probe_path.read_text(encoding='utf-8')) if probe_path.exists() else {}
@@ -121,5 +121,7 @@ report['native_conversation_transfer']='passed: isolated Zotero first launch and
 performance_steps=[next((s for s in (r or {}).get('steps',[]) if s.get('name')=='native-performance-idle-stream-edit-scroll'),None) for r in clipboard_reports]
 performance_ok=clipboard_ok and all(s and s['ok'] and s['result']['stream']['toolbarChecks']==0 and s['result']['draft']['refreshCalls']==0 for s in performance_steps)
 report['native_performance']='passed: first launch and cold restart; 60 streamed DOM batches cause zero toolbar recovery scans; four unchanged-reference draft saves cause zero reference refreshes. PDF scroll, native editing, streaming, clipboard and chat transfer also exercised. Isolated fixture does not reproduce every user-specific freeze' if performance_ok else 'not passed or not run'
+composer_ok=clipboard_ok and all(any(s.get('name')=='composer-input-height' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['growsUpward','shrinksDownward','withinAvailableSpace','draftAndCaretPreserved','reopenPreservesHeight','controlsVisible','keyboardResize','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports)
+report['native_composer_resize']='passed: native Gecko reader on first launch and cold restart; top edge pointer events grow/shrink the question input within available viewport space, preserve draft/caret and height on reopen, keep messages/send controls visible, and support keyboard Home/End. Pointer events are synthetic; real mouse dragging above the former 180px limit is covered in browser regression' if composer_ok else 'not passed or not run'
 (PROJECT/'dist/verification-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(report))

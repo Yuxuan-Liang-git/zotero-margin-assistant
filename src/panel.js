@@ -88,6 +88,10 @@
     disposeMath;
     /** @type {(()=>void)|undefined} */
     disposeClipboard;
+    /** @type {(()=>void)|undefined} */
+    disposeComposerResize;
+    /** @type {number|undefined} */
+    composerHeight;
     constructor(host,reader,doc){this.host=host;this.reader=reader;this.doc=doc;this.materials=[];this.pendingMaterials=new Set();this.destroyed=false;this.busy=false;this.relinkID=null;this.webSignatures=new WeakMap();}
     async init(){
       this.state=await this.host.load(this.reader);this.conversationId=this.state.activeConversationId;const d=this.doc;
@@ -109,6 +113,7 @@
       this.contextDetails=el(d,'details',undefined,'zma-context');this.contextSummary=el(d,'summary','当前 PDF · 自动读取');this.contextDetails.append(this.contextSummary,this.contextInfo);
       this.status=el(d,'p','Enter 发送 · Shift+Enter 换行','zma-status');this.status.setAttribute('role','status');
       const composer=el(d,'div',undefined,'zma-composer');composer.append(this.question,actions);this.chat.className='zma-chat';this.chat.append(this.activeLabel,this.contextDetails,this.messages,this.materialList,composer);
+      this.installComposerResize(composer);
       this.previewArea=el(d,'section',undefined,'zma-previews');
       this.node.append(header,this.previewArea,this.chat,this.conversationList,this.directory,this.status);d.body.append(this.node);
       this.node.addEventListener('click',event=>{const href=event.target.closest?.('a')?.getAttribute('href');if(/^https?:\/\//i.test(href||'')&&this.host.openExternal){event.preventDefault();event.stopPropagation();this.host.openExternal(href);}});
@@ -123,7 +128,23 @@
       const state=this.host.providerState?.()||{provider:'deepseek',model:this.host.model||''},model=state.models?.find(m=>m.slug===state.model)?.displayName||state.model||'';
       this.modelBadge.textContent=state.provider==='chatgpt'?(state.signedIn?'ChatGPT'+(model?' · '+model:''):'ChatGPT · 请到设置登录'):'DeepSeek'+(model?' · '+model:'');this.modelBadge.title=this.modelBadge.textContent+'；模型、账户与生成选项在设置中调整';this.sendButton.hidden=this.busy;this.stopButton.hidden=!this.busy;this.newButton.disabled=this.busy;this.quotes?.render();
     }
-    applyAppearance(){this.node.style.setProperty('--zma-font-size',`${this.host.appearanceState?.().fontSize||14}px`);this.quotes?.layout();}
+    applyAppearance(){this.node.style.setProperty('--zma-font-size',`${this.host.appearanceState?.().fontSize||14}px`);this.fitComposer?.();this.quotes?.layout();}
+    installComposerResize(composer){
+      const win=this.doc.defaultView,handle=this.composerHandle=el(this.doc,'div',undefined,'zma-composer-resizer');
+      handle.setAttribute('role','separator');handle.setAttribute('aria-label','调整输入框高度');handle.setAttribute('aria-orientation','horizontal');handle.tabIndex=0;handle.classList.add('focusable');handle.title='上下拖动调整输入框高度；方向键微调';composer.prepend(handle);
+      const outerHeight=node=>{const style=win.getComputedStyle(node);return node.getBoundingClientRect().height+(parseFloat(style.marginTop)||0)+(parseFloat(style.marginBottom)||0);};
+      const limits=()=>{const min=Math.ceil(parseFloat(win.getComputedStyle(this.question).minHeight)||72),occupied=[this.activeLabel,this.contextDetails,this.materialList].reduce((sum,node)=>sum+outerHeight(node),0),chrome=outerHeight(composer)-this.question.getBoundingClientRect().height;return {min,max:Math.max(min,Math.floor(Math.min(this.chat.clientHeight*.6,this.chat.clientHeight-occupied-chrome-80)))};};
+      const setHeight=height=>{if(this.destroyed||this.node.hidden||this.chat.hidden)return;const {min,max}=limits(),value=Math.round(Math.max(min,Math.min(max,height)));this.composerHeight=value;this.question.style.height=`${value}px`;handle.setAttribute('aria-valuemin',String(min));handle.setAttribute('aria-valuemax',String(max));handle.setAttribute('aria-valuenow',String(value));};
+      this.fitComposer=()=>setHeight(this.composerHeight??this.question.getBoundingClientRect().height);
+      let drag=null;
+      const move=event=>{if(drag&&event.pointerId===drag.id)setHeight(drag.height+drag.y-event.clientY);};
+      const end=event=>{if(!drag||event.pointerId!==drag.id)return;if(event.type==='pointerup')move(event);const id=drag.id;drag=null;handle.classList.remove('zma-dragging');try{if(handle.hasPointerCapture?.(id))handle.releasePointerCapture(id);}catch{/* Native cancellation can release capture first. */}};
+      handle.addEventListener('pointerdown',event=>{if(event.button!==0||drag)return;event.preventDefault();event.stopPropagation();drag={id:event.pointerId,y:event.clientY,height:this.question.getBoundingClientRect().height};handle.classList.add('zma-dragging');try{handle.setPointerCapture?.(event.pointerId);}catch{/* Synthetic native QA events have no active pointer. */}});
+      handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);handle.addEventListener('lostpointercapture',end);
+      handle.addEventListener('keydown',event=>{if(!['ArrowUp','ArrowDown','Home','End'].includes(event.key)||event.altKey||event.ctrlKey||event.metaKey)return;event.preventDefault();event.stopPropagation();const {min,max}=limits(),height=this.question.getBoundingClientRect().height;setHeight(event.key==='Home'?min:event.key==='End'?max:height+(event.key==='ArrowUp'?1:-1)*(event.shiftKey?40:16));});
+      win.addEventListener('resize',this.fitComposer);const observer=win.ResizeObserver?new win.ResizeObserver(this.fitComposer):null;observer?.observe(this.chat);
+      this.disposeComposerResize=()=>{drag=null;observer?.disconnect();win.removeEventListener('resize',this.fitComposer);};
+    }
     installResizeHandle(){
       const handle=el(this.doc,'div',undefined,'zma-resizer');handle.setAttribute('role','separator');handle.setAttribute('aria-label','调整文档助手宽度');handle.setAttribute('aria-orientation','vertical');this.node.prepend(handle);
       let dragging=false;const resize=e=>{if(!dragging)return;const viewport=this.doc.defaultView.innerWidth,width=Math.max(280,Math.min(viewport*.55,viewport-e.clientX));this.doc.documentElement.style.setProperty('--zma-assistant-user-width',`${width}px`);};
@@ -132,7 +153,7 @@
     open(){this.node.hidden=false;this.doc.body.classList.add('zma-assistant-open');this.quotes?.layout();}
     close(){this.quotes?.collapse();this.node.hidden=true;if(this.quotes?.pdfPortal)this.quotes.pdfPortal.hidden=true;this.doc.body.classList.remove('zma-assistant-open');}
     conversation(){return C.activeConversation(this.state,this.conversationId);}
-    showChat(){this.open();this.chat.hidden=false;this.directory.hidden=true;this.conversationList.hidden=true;this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');}
+    showChat(){this.open();this.chat.hidden=false;this.directory.hidden=true;this.conversationList.hidden=true;this.fitComposer?.();this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');}
     showConversations(){this.quotes.collapse();this.open();this.chat.hidden=true;this.directory.hidden=true;this.conversationList.hidden=false;this.historyButton.setAttribute('aria-pressed','true');this.referenceButton.setAttribute('aria-pressed','false');this.renderConversationList();this.quotes.layout();}
     renderConversationList(){
       this.conversationList.replaceChildren(button(this.doc,'新会话',()=>this.newConversation()));
@@ -379,7 +400,7 @@
       query.addEventListener('input',refresh);type.addEventListener('change',refresh);this.directory.append(query,type,list);refresh();query.focus();
     }
     async preview(source){await this.host.previewReference(this.reader,source,this.insertTarget);}
-    async destroy(){this.destroyed=true;await this.importTask?.catch(()=>{});this.transfer?.destroy();clearTimeout(this.webRenderTimer);this.quotes.destroy();this.liveRenderer?.finish();this.close();clearTimeout(this.draftTimer);this.controller?.abort();this.disposeMath?.();this.disposeClipboard?.();await this.host.save(this.reader,this.state).catch(()=>{});this.node.remove();}
+    async destroy(){this.destroyed=true;this.disposeComposerResize?.();await this.importTask?.catch(()=>{});this.transfer?.destroy();clearTimeout(this.webRenderTimer);this.quotes.destroy();this.liveRenderer?.finish();this.close();clearTimeout(this.draftTimer);this.controller?.abort();this.disposeMath?.();this.disposeClipboard?.();await this.host.save(this.reader,this.state).catch(()=>{});this.node.remove();}
   }
   root.ZMAPanel={Panel,el,button};if(typeof module!=='undefined')module.exports=root.ZMAPanel;
 })(typeof _globalThis!=='undefined'?_globalThis:globalThis);

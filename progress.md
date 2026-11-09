@@ -199,3 +199,9 @@ User requested all common freeze scenarios tested. GPT-6 Luna implementer and st
 Initial full suite 211/212 exposed late toolbar mounting with an unresolved PDF session. Added a temporary filtered discovery observer, disconnected on transition to local observers; close/prune/stop clean all observers. Final full suite 213/213, 137.1 seconds, full checkJs passed. Independent review found no remaining actionable issues. Native first-launch and cold-run evidence and exact package hash are under evidence/zotero-0136-perf-final and dist/verification-report.json.
 
 Measured before: 60 stream DOM batches ->60 toolbar recovery scans; 4 draft saves ->4 reference refreshes. Final first native run: both0; source validation and full20 feature steps passed. Stress test covers200 imported messages,40 display equations, incremental stream, typing and LaTeX copy. No hard freeze reproduced, so claims are restricted to unnecessary-work reduction, not complete resolution of every user-specific stall. Details: docs/2026-10-26-performance-report.md.
+
+## 2026-10-27 — 0.13.7 composer height
+
+User clarified that the bottom message input cannot be resized. Added an upward-growing top-edge handle with pointer capture, keyboard bounds and lifecycle cleanup. Replaced fixed180px/native corner-grip behavior with viewport/occupied-space limits; draft/caret and same-panel close/reopen height retained. No additional persistence or polling.
+
+Two new browser regressions failed before the fix and passed after; full npm test215/215,147.3s and complete checkJs passed. Screenshot inspected. Isolated Gecko probe includes all20 existing cases plus composer resize; the initial probe incorrectly required >180px in a constrained viewport, corrected to assert available bounds while browser test separately proves >180px. Final native evidence under evidence/zotero-0137-composer-v2. Release verification in dist/verification-report.json. Details: docs/2026-10-27-composer-resize.md.
