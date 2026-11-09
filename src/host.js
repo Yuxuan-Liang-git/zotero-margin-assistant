@@ -9,6 +9,7 @@
   const GPT=root.ZMAChatGPT||(typeof require!=='undefined'?require('./chatgpt.js'):null);
   const Images=root.ZMAImages||(typeof require!=='undefined'?require('./images.js'):null);
   const Attachments=root.ZMAAttachments||(typeof require!=='undefined'?require('./attachments.js'):null);
+  const Reading=root.ZMAReadingSummary||(typeof require!=='undefined'?require('./reading-summary.js'):null);
   const ID='margin-comments-assistant@local.zotero';
   const referenceStateSignature=state=>JSON.stringify({sources:state?.sources||[],references:state?.references||[],images:state?.images||[]});
   class Host{
@@ -39,7 +40,29 @@
         this.auth=new Auth.AuthManager({adapter:this.credentials.adapter,platform,fetch:(...args)=>this.runtimeWindow().fetch(...args),listen:chatgptListen||(()=>{throw new Error('ChatGPT 登录监听器不可用，请重新安装插件并重启 Zotero。');}),openBrowser:url=>this.Z.launchURL(url),onChange:()=>this.providersChanged()});
         this.chatgpt=new GPT.ChatGPTClient({auth:this.auth,fetch:(...args)=>this.runtimeWindow().fetch(...args),TextDecoder:win?.TextDecoder,getWebOptions:()=>this.webState()});
       }
+      this.readingAuto=Z.Prefs?.get('margincomments.readingSummaryAuto')!==false;
+      this.readingSummary=Reading?new Reading.Manager({key:r=>C.scopeKey(this.scope(r)),load:r=>this.load(r),save:(r,s)=>this.save(r,s),publish:(r,text,record,force)=>this.publishReadingSummary(r,text,record,force),client:()=>this.selectedClient(),controller:()=>this.newAbortController(),foreground:()=>this.activeRequests.size>0||this.transferTasks.size>0,enabled:()=>this.running&&this.readingAuto&&(this.provider==='chatgpt'?!!this.auth?.active()?.accessToken:!!this.key),notify:(r)=>{const key=C.scopeKey(this.scope(r));for(const p of this.panels.values())if(C.scopeKey(this.scope(p.reader))===key)p.refreshReadingSummary?.();}}):null;
     }
+    readingSummaryAPI(){return {state:()=>({enabled:this.readingAuto}),set:async value=>{this.readingAuto=!!value;this.Z.Prefs?.set('margincomments.readingSummaryAuto',this.readingAuto);if(!this.readingAuto)this.readingSummary?.cancelAutomatic();else for(const p of this.panels.values())this.readingSummary?.schedule(p.reader);}};}
+    async publishReadingSummary(reader,text,record,forceNew=false){
+      const attachment=this.Z.Items.get(Number(reader.itemID)),scope=this.scope(reader);if(attachment?.isEditable?.()===false)throw new Error('文献库为只读，摘要候选已保留');
+      const marker=`zma-summary://${scope.libraryID}/${scope.attachmentKey}`,title='阅读摘要 · '+(attachment.getDisplayTitle?.()||attachment.getField?.('title')||scope.attachmentKey);
+      const probe=new this.Z.Item('note');probe.setNote(Reading.noteHTML(text,title,marker));const expected=probe.getNote();
+      const valid=note=>note?.isNote?.()&&!note.deleted&&note.libraryID===scope.libraryID&&(note.parentID||null)===(attachment.parentID||null);
+      let note=!forceNew&&record.noteKey?this.Z.Items.getByLibraryAndKey(scope.libraryID,record.noteKey):null;
+      if(note&&valid(note)&&note.getNote()===expected)return {noteKey:note.key,noteHTML:note.getNote()};
+      let candidates=[];
+      if(!record.noteKey||forceNew){let ids=[];if(attachment.parentID)ids=this.Z.Items.get(attachment.parentID)?.getNotes?.()||[];else if(this.Z.Search){const search=new this.Z.Search();search.libraryID=scope.libraryID;search.addCondition('itemType','is','note');search.addCondition('note','contains',marker);ids=await search.search();}
+        candidates=ids.map(id=>this.Z.Items.get(id)).filter(n=>valid(n)&&n.getNote().includes(marker));const recovered=candidates.find(n=>n.getNote()===expected);if(recovered)return {noteKey:recovered.key,noteHTML:recovered.getNote()};
+      }
+      if(!forceNew&&record.noteKey&&(!valid(note)))return {conflict:'deleted'};
+      if(!forceNew&&!record.noteKey&&candidates.length)return {conflict:'manual-edit'};
+      if(note&&(!note.getNote().includes(marker)||note.getNote()!==record.noteHTML))return {conflict:'manual-edit'};
+      if(!note){note=probe;note.libraryID=scope.libraryID;if(attachment.parentID)note.parentID=attachment.parentID;}
+      const old=note.getNote?.();try{note.setNote(expected);await note.saveTx();}catch(e){if(old!==undefined)note.setNote(old);throw e;}
+      return {noteKey:note.key,noteHTML:note.getNote()};
+    }
+    openReadingSummary(reader){return this.load(reader).then(state=>{const key=state.readingSummary?.noteKey,note=key&&this.Z.Items.getByLibraryAndKey(this.scope(reader).libraryID,key);if(!note?.isNote?.()||note.deleted)throw new Error('尚无可打开的阅读摘要笔记');return this.runtimeWindow().ZoteroPane.openNote(note.id,{openInWindow:true});});}
     providerLabel(){return this.provider==='chatgpt'?'ChatGPT':'DeepSeek';}
     webState(){return {...this.webPreferences};}
     webAPI(){return {state:()=>this.webState(),setMode:value=>this.setWebMode(value),setImages:value=>this.setWebImages(value),watch:listener=>{this.providerListeners.add(listener);return ()=>this.providerListeners.delete(listener);}};}
@@ -192,12 +215,12 @@
         await this.store.save(scope,next);
         // Publish only the addition. Other windows may have edited existing
         // drafts during the write; replacing their objects would lose edits.
-        state.conversations.push(conversation);state.activeConversationId=conversation.id;return conversation;
+        state.conversations.push(conversation);state.activeConversationId=conversation.id;this.readingSummary?.schedule(reader);return conversation;
       });
-      this.transferTasks.set(key,task);const clear=()=>{if(this.transferTasks.get(key)===task)this.transferTasks.delete(key);};task.then(clear,clear);return task;
+      this.transferTasks.set(key,task);const clear=()=>{if(this.transferTasks.get(key)===task)this.transferTasks.delete(key);if(!this.transferTasks.size&&!this.activeRequests.size)this.readingSummary?.resume();};task.then(clear,clear);return task;
     }
-    claimRequest(reader){const key=C.scopeKey(this.scope(reader));if(this.activeRequests.has(key)||this.transferTasks?.has(key))throw new Error('此 PDF 已在另一窗口正在生成，请先停止或等待完成');this.activeRequests.add(key);}
-    releaseRequest(reader){this.activeRequests.delete(C.scopeKey(this.scope(reader)));}
+    claimRequest(reader){const key=C.scopeKey(this.scope(reader));if(this.activeRequests.has(key)||this.transferTasks?.has(key))throw new Error('此 PDF 已在另一窗口正在生成，请先停止或等待完成');this.readingSummary?.pause();this.activeRequests.add(key);}
+    releaseRequest(reader){this.activeRequests.delete(C.scopeKey(this.scope(reader)));if(!this.activeRequests.size)this.readingSummary?.resume();}
     isGenerating(reader){const key=C.scopeKey(this.scope(reader));return this.activeRequests.has(key)||!!this.transferTasks?.has(key);}
     runtimeWindow(){const win=this.Z.getMainWindow?.()||this.win;if(!win||win.closed)throw new Error('Zotero 主窗口尚未就绪，请稍后重试');return win;}
     newAbortController(){return new (this.runtimeWindow().AbortController)();}
@@ -313,7 +336,7 @@
       if(!this.credentials)throw new Error('当前 Zotero 不支持安全保存密钥');
       await this.credentials.save(key,model);
       if(key.trim())this.key=key.trim();this.model=model.trim();this.credentialError='';this.providersChanged();
-    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),appearance:this.appearanceAPI(),web:this.webAPI(),chatgpt:this.chatGPTAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
+    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),appearance:this.appearanceAPI(),web:this.webAPI(),readingSummary:this.readingSummaryAPI(),chatgpt:this.chatGPTAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
     async restoreCredentials(){
       if(!this.credentials){this.credentialError='当前 Zotero 不支持安全保存密钥';return;}
       try{const saved=await this.credentials.load();this.key=saved.key;this.model=saved.model;this.credentialError='';}
@@ -414,10 +437,10 @@
       this.observer=this.Z.Notifier.registerObserver({notify:(event,type,ids)=>{this.prune();if(type==='item')this.onItemChange(event,ids);if(type==='tab')this.restoreReaders();}},['tab','item'],ID);
       this.restoreReaders();
     }
-    async closeReader(reader){this.closedReaders.add(reader);for(const [doc,entry]of this.toolbarObservers)if(entry.reader===reader){entry.observer?.disconnect();entry.parentObserver?.disconnect();entry.discoveryObserver?.disconnect();this.toolbarObservers.delete(doc);}const panel=this.panels.get(reader);this.panels.delete(reader);for(const [doc,entry]of this.cleanups)if(entry.reader===reader){entry.dispose();this.cleanups.delete(doc);}if(panel)await panel.destroy();}
+    async closeReader(reader){this.readingSummary?.forget(reader);this.closedReaders.add(reader);for(const [doc,entry]of this.toolbarObservers)if(entry.reader===reader){entry.observer?.disconnect();entry.parentObserver?.disconnect();entry.discoveryObserver?.disconnect();this.toolbarObservers.delete(doc);}const panel=this.panels.get(reader);this.panels.delete(reader);for(const [doc,entry]of this.cleanups)if(entry.reader===reader){entry.dispose();this.cleanups.delete(doc);}if(panel)await panel.destroy();}
     prune(){const live=new Set(this.Z.Reader._readers||[]);const readers=new Set([...this.panels.keys(),...[...this.cleanups.values()].map(x=>x.reader),...[...this.toolbarObservers.values()].map(x=>x.reader)]);for(const reader of readers)if(!live.has(reader))void this.closeReader(reader);}
     async stop(){
-      this.running=false;this.key='';for(const panel of this.panels.values())panel.controller?.abort();await this.auth?.stop();this.providerListeners.clear();this.appearanceListeners.clear();this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
+      this.running=false;await this.readingSummary?.stop();this.key='';for(const panel of this.panels.values())panel.controller?.abort();await this.auth?.stop();this.providerListeners.clear();this.appearanceListeners.clear();this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
       for(const win of [...this.historyPanes.keys()])this.unbindHistoryPane(win);
       for(const {observer,parentObserver,discoveryObserver}of this.toolbarObservers.values()){observer?.disconnect();parentObserver?.disconnect();discoveryObserver?.disconnect();}this.toolbarObservers.clear();
       await Promise.allSettled(this.pending.values());await Promise.allSettled([...this.panels.values()].map(p=>p.destroy()));this.panels.clear();

@@ -11,6 +11,7 @@
     if(api.chatgpt&&container.querySelector('#zma-provider'))bindChatGPT(container,api.chatgpt);
     if(container.querySelector('#zma-font-size'))bindAppearance(container,api.appearance);
     if(container.querySelector('#zma-web-mode'))bindWeb(container,api.web);
+    const auto=container.querySelector('#zma-reading-auto'),summaryStatus=container.querySelector('#zma-reading-status');if(auto){auto.checked=api.readingSummary?.state().enabled??false;auto.disabled=!api.readingSummary;auto.addEventListener('change',async()=>{auto.disabled=true;try{await api.readingSummary.set(auto.checked);summaryStatus.textContent=auto.checked?'自动摘要已开启，空闲后检查新增问答。':'自动摘要已关闭，可在阅读摘要中手动更新。';}catch(e){summaryStatus.textContent=e.message;}finally{auto.checked=api.readingSummary.state().enabled;auto.disabled=false;}});}
   }
   function bindWeb(container,api){
     const mode=container.querySelector('#zma-web-mode'),images=container.querySelector('#zma-web-images'),status=container.querySelector('#zma-web-status');let working=false;

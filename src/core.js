@@ -124,7 +124,8 @@
       conversations=value.conversations.map(cleanConversation);activeConversationId=value.activeConversationId;
       if(new Set(conversations.map(c=>c.id)).size!==conversations.length||!conversations.some(c=>c.id===activeConversationId))throw new Error('对话索引损坏');
     }
-    return {version:2,sources:idx.records,references:value.references.map(r=>({annotationKey:String(r.annotationKey),sourceID:String(r.sourceID),link:String(r.link)})).filter(r=>keyPattern.test(r.annotationKey)&&parseSourceLink(r.link)),conversations,activeConversationId,images:(value.images||[]).map(pickImage),imageNoteKey:value.imageNoteKey||null};
+    const summaries=root.ZMAReadingSummary||(typeof require!=='undefined'?require('./reading-summary.js'):null);
+    return {version:2,sources:idx.records,references:value.references.map(r=>({annotationKey:String(r.annotationKey),sourceID:String(r.sourceID),link:String(r.link)})).filter(r=>keyPattern.test(r.annotationKey)&&parseSourceLink(r.link)),conversations,activeConversationId,images:(value.images||[]).map(pickImage),imageNoteKey:value.imageNoteKey||null,...(value.readingSummary&&summaries?{readingSummary:summaries.clean(value.readingSummary)}:{})};
   }
   class LocalStore {
     constructor(adapter){this.adapter=adapter;this.queues=new Map();this.blocked=new Set();}

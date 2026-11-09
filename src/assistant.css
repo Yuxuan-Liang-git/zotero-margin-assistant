@@ -52,3 +52,8 @@ body.zma-assistant-open #split-view,body.zma-assistant-open .split-view{right:va
 .zma-error-details{margin:8px 0;font-size:.9em;max-width:100%}
 .zma-error-details summary{cursor:pointer}
 .zma-error-details pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:12em;overflow:auto;padding:8px;background:var(--zma-soft,Canvas);border-radius:6px;font-size:.9em}
+.zma-reading-view{flex:1;min-height:0;overflow:auto;padding:0 3px 12px;line-height:1.75}
+.zma-reading-view h3{font-size:1.05em;margin:12px 0 8px}
+.zma-reading-view .zma-actions{gap:5px}.zma-reading-view button{font-size:.85em}
+.zma-summary-status{font-size:.85em;color:var(--zma-muted,GrayText);white-space:pre-wrap}
+.zma-reading-note{overflow-wrap:anywhere}.zma-reading-note strong{font-weight:inherit}.zma-reading-note em{font-style:normal}

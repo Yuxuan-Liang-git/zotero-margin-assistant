@@ -24,6 +24,7 @@ package = project / f'dist/margin-comments-deepseek-{version}.xpi'
 shutil.copy2(package, profile / 'extensions/margin-comments@local.zotero.xpi')
 package_hash = hashlib.sha256(package.read_bytes()).hexdigest()
 prefs = {
+    'extensions.zotero.margincomments.readingSummaryAuto': False,
     'extensions.zotero.useDataDir': True, 'extensions.zotero.dataDir': str(data),
     'extensions.zotero.firstRun': False, 'extensions.zotero.firstRun2': False,
     'extensions.zotero.integration.autoInstall': False, 'extensions.zotero.sync.autoSync': False,

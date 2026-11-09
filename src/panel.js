@@ -98,7 +98,8 @@
       this.node=el(d,'aside',undefined,'zma-panel');this.node.setAttribute('aria-label','区域阅读助手');this.node.hidden=true;
       const header=el(d,'header',undefined,'zma-header'),tools=el(d,'nav',undefined,'zma-header-actions');header.append(el(d,'strong','文档助手','zma-heading'),tools);
       this.historyButton=iconButton(d,'对话记录','history',()=>this.conversationList.hidden?this.showConversations():this.showChat());this.referenceButton=iconButton(d,'引用目录','reference',()=>this.directory.hidden?this.showDirectory():this.showChat());
-      this.newButton=iconButton(d,'新会话','new',()=>this.newConversation());tools.append(this.newButton,this.historyButton,this.referenceButton,iconButton(d,'设置','settings',()=>this.host.settings()),iconButton(d,'关闭','close',()=>this.close()));
+      this.summaryButton=iconButton(d,'阅读摘要','note',()=>this.readingView.hidden?this.showReadingSummary():this.showChat());
+      this.newButton=iconButton(d,'新会话','new',()=>this.newConversation());tools.append(this.newButton,this.historyButton,this.summaryButton,this.referenceButton,iconButton(d,'设置','settings',()=>this.host.settings()),iconButton(d,'关闭','close',()=>this.close()));
       this.chat=el(d,'section');this.directory=el(d,'section');this.directory.hidden=true;this.conversationList=el(d,'section',undefined,'zma-conversations');this.conversationList.hidden=true;
       this.activeLabel=el(d,'strong',undefined,'zma-active-conversation');
       this.materialList=el(d,'div',undefined,'zma-materials');
@@ -115,14 +116,24 @@
       const composer=el(d,'div',undefined,'zma-composer');composer.append(this.question,actions);this.chat.className='zma-chat';this.chat.append(this.activeLabel,this.contextDetails,this.messages,this.materialList,composer);
       this.installComposerResize(composer);
       this.previewArea=el(d,'section',undefined,'zma-previews');
-      this.node.append(header,this.previewArea,this.chat,this.conversationList,this.directory,this.status);d.body.append(this.node);
+      this.readingView=el(d,'section',undefined,'zma-reading-view');this.readingView.hidden=true;
+      this.node.append(header,this.previewArea,this.chat,this.conversationList,this.directory,this.readingView,this.status);d.body.append(this.node);
       this.node.addEventListener('click',event=>{const href=event.target.closest?.('a')?.getAttribute('href');if(/^https?:\/\//i.test(href||'')&&this.host.openExternal){event.preventDefault();event.stopPropagation();this.host.openExternal(href);}});
       this.quotes=new QuoteBubbles(this,composer);
       this.directory.className='zma-directory';this.installResizeHandle();
       this.disposeClipboard=root.ZMAClipboard?.install(this.node,{copy:text=>this.host.copy(text),read:()=>this.host.readClipboard?.(),readFiles:()=>this.host.readAttachmentClipboard?.()||[],onFiles:files=>this.addFiles(files),onQuote:(text,anchor)=>this.quoteSelection(text,anchor),onError:error=>this.error(error)});
       this.question.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files')){event.preventDefault();event.stopPropagation();}});this.question.addEventListener('drop',event=>{if(event.dataTransfer?.files.length){event.preventDefault();event.stopPropagation();void this.addFiles(Array.from(event.dataTransfer.files)).catch(e=>this.error(e));}});
       this.transfer=root.ZMATransferUI?new root.ZMATransferUI.TransferUI(this):null;
-      this.applyAppearance();this.refreshProvider();this.renderMaterials();this.renderMessages();this.renderConversationList();return this;
+      this.applyAppearance();this.refreshProvider();this.renderMaterials();this.renderMessages();this.renderConversationList();this.host.readingSummary?.schedule(this.reader);return this;
+    }
+    showReadingSummary(){
+      this.open();this.quotes.collapse();this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=true;this.readingView.hidden=false;this.summaryButton.setAttribute('aria-pressed','true');this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');this.refreshReadingSummary();this.quotes.layout();
+    }
+    refreshReadingSummary(){
+      if(!this.readingView||this.readingView.hidden||this.destroyed)return;const record=this.state.readingSummary,manager=this.host.readingSummary,phase=manager?.status(this.reader)||'idle',doc=this.doc;
+      this.readingView.replaceChildren(el(doc,'h3','阅读摘要'));const status=record?.error?'更新未完成：'+record.error:record?.pendingReason==='manual-edit'?'检测到手动改写，原笔记已保留。下方为待合并摘要，可另存新版本。':record?.pendingReason==='deleted'?'原摘要笔记已删除，下方内容已保留，可保存新版本。':phase==='generating'?'正在整理阅读难点，可继续阅读已有内容。':record?.remaining?'仍有新增问答尚待整理，'+(this.host.readingAuto?'空闲后继续更新。':'可以点击继续整理。'):phase==='waiting'?'等待空闲后检查新增问答。':record?.updatedAt?'上次更新：'+new Date(record.updatedAt).toLocaleString('zh-CN'):'完整问答保存后会自动考虑更新，也可以手动生成。';this.readingView.append(el(doc,'p',status,'zma-summary-status'));
+      const actions=el(doc,'div',undefined,'zma-actions'),update=button(doc,record?.remaining?'继续整理':'更新摘要',async()=>{await manager?.update(this.reader);this.refreshReadingSummary();});update.disabled=this.busy||phase==='generating'||!manager;actions.append(button(doc,'返回对话',()=>this.showChat()),update);if(record?.noteKey)actions.append(button(doc,'打开Zotero笔记',()=>this.host.openReadingSummary(this.reader)));if(record?.pendingText)actions.append(button(doc,'保存摘要新版本',async()=>{await manager.apply(this.reader);this.refreshReadingSummary();}));this.readingView.append(actions);
+      const content=el(doc,'div',undefined,'zma-reading-note');if(record?.pendingText||record?.text)this.renderAnswer(content,record.pendingText||record.text);else content.append(el(doc,'p','这里会整理你追问过的难点、推导条件、公式之间的联系和待解决的问题。'));this.readingView.append(content);
     }
     refreshProvider(){
       const state=this.host.providerState?.()||{provider:'deepseek',model:this.host.model||''},model=state.models?.find(m=>m.slug===state.model)?.displayName||state.model||'';
@@ -152,11 +163,11 @@
       let dragging=false;const resize=e=>{if(!dragging)return;const viewport=this.doc.defaultView.innerWidth,width=Math.max(280,Math.min(viewport*.55,viewport-e.clientX));this.doc.documentElement.style.setProperty('--zma-assistant-user-width',`${width}px`);};
       handle.addEventListener('pointerdown',e=>{dragging=true;handle.setPointerCapture?.(e.pointerId);e.preventDefault();});handle.addEventListener('pointermove',resize);handle.addEventListener('pointerup',e=>{resize(e);dragging=false;handle.releasePointerCapture?.(e.pointerId);});handle.addEventListener('pointercancel',()=>{dragging=false;});
     }
-    open(){this.node.hidden=false;this.doc.body.classList.add('zma-assistant-open');this.quotes?.layout();}
+    open(){const wasHidden=this.node.hidden;this.node.hidden=false;this.doc.body.classList.add('zma-assistant-open');if(wasHidden&&(this.state.readingSummary?.text||this.state.readingSummary?.pendingText))this.showReadingSummary();this.quotes?.layout();}
     close(){this.quotes?.collapse();this.node.hidden=true;if(this.quotes?.pdfPortal)this.quotes.pdfPortal.hidden=true;this.doc.body.classList.remove('zma-assistant-open');}
     conversation(){return C.activeConversation(this.state,this.conversationId);}
-    showChat(){this.open();this.chat.hidden=false;this.directory.hidden=true;this.conversationList.hidden=true;this.fitComposer?.();this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');}
-    showConversations(){this.quotes.collapse();this.open();this.chat.hidden=true;this.directory.hidden=true;this.conversationList.hidden=false;this.historyButton.setAttribute('aria-pressed','true');this.referenceButton.setAttribute('aria-pressed','false');this.renderConversationList();this.quotes.layout();}
+    showChat(){this.open();this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=false;this.directory.hidden=true;this.conversationList.hidden=true;this.fitComposer?.();this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');}
+    showConversations(){this.quotes.collapse();this.open();this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=true;this.directory.hidden=true;this.conversationList.hidden=false;this.historyButton.setAttribute('aria-pressed','true');this.referenceButton.setAttribute('aria-pressed','false');this.renderConversationList();this.quotes.layout();}
     renderConversationList(){
       this.conversationList.replaceChildren(button(this.doc,'新会话',()=>this.newConversation()));
       if(this.transfer)this.conversationList.append(button(this.doc,'导入对话',()=>this.transfer.open()));
@@ -348,7 +359,7 @@
         clearTimeout(this.webRenderTimer);this.webRenderTimer=null;
         for(const event of readingEvents)this.messages.removeEventListener(event,reading);
         this.liveRenderer?.finish();this.liveRenderer=null;clearTimeout(deadline);this.controller=null;this.busy=false;this.host.releaseRequest?.(this.reader);this.refreshProvider();
-        if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();if(answerCard){const readingPosition=this.messages.scrollTop,selection=this.doc.defaultView.getSelection(),keepPosition=readerMoved||answer.incomplete||!!(selection&&!selection.isCollapsed&&(answerCard.contains(selection.anchorNode)||answerCard.contains(selection.focusNode)));const text=answerCard.querySelector('.zma-answer');if(text)this.renderAnswer(text,this.citedAnswer(answer));this.renderWeb(answerCard,answer);const label=answerCard.querySelector('strong');if(label)label.textContent=answer.incomplete?'回答（未完成）':'回答';if(answer.content)this.addAnswerActions(answerCard,answer,conversation.history.length-1);this.messages.scrollTop=keepPosition?readingPosition:Math.max(0,this.messages.scrollTop+answerCard.getBoundingClientRect().top-this.messages.getBoundingClientRect().top-this.messages.clientTop);}else if(answer)this.renderMessages();this.renderConversationList();await this.persist().catch(e=>this.error(e));}
+        if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();if(answerCard){const readingPosition=this.messages.scrollTop,selection=this.doc.defaultView.getSelection(),keepPosition=readerMoved||answer.incomplete||!!(selection&&!selection.isCollapsed&&(answerCard.contains(selection.anchorNode)||answerCard.contains(selection.focusNode)));const text=answerCard.querySelector('.zma-answer');if(text)this.renderAnswer(text,this.citedAnswer(answer));this.renderWeb(answerCard,answer);const label=answerCard.querySelector('strong');if(label)label.textContent=answer.incomplete?'回答（未完成）':'回答';if(answer.content)this.addAnswerActions(answerCard,answer,conversation.history.length-1);this.messages.scrollTop=keepPosition?readingPosition:Math.max(0,this.messages.scrollTop+answerCard.getBoundingClientRect().top-this.messages.getBoundingClientRect().top-this.messages.clientTop);}else if(answer)this.renderMessages();this.renderConversationList();await this.persist().catch(e=>this.error(e));if(answer&&!answer.incomplete)this.host.readingSummary?.schedule(this.reader);}
       }
     }
     async saveAnswer(index,kind){
@@ -394,7 +405,7 @@
     }
     async showDirectory(target){
       this.quotes.collapse();this.quotes.layout();
-      this.open();this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=false;this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','true');this.directory.replaceChildren();this.insertTarget=target;
+      this.open();this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=false;this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','true');this.directory.replaceChildren();this.insertTarget=target;
       const query=el(this.doc,'input');query.placeholder='输入编号，例如 6.30';query.setAttribute('aria-label','查找引用编号');
       const type=el(this.doc,'select');type.append(el(this.doc,'option','全部'));C.TYPES.forEach(t=>type.append(el(this.doc,'option',t)));
       const list=el(this.doc,'div');

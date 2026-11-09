@@ -7,6 +7,10 @@
       <html:p id="zma-font-preview" style="margin:0;padding:12px;border:1px solid #aaa;border-radius:8px;line-height:1.65">阅读示例：参数估计、公式推导与文献对话。</html:p>
       <html:p id="zma-appearance-status" role="status" style="margin:0"></html:p>
       <html:p>12–24 px，默认 14 px。即时应用于所有文档助手的文字、公式与输入框，重启后保留；不修改 PDF 页面和 Zotero 主界面字号。</html:p>
+      <html:h3>阅读摘要笔记</html:h3>
+      <html:label><html:input id="zma-reading-auto" type="checkbox" />自动检查并更新阅读摘要</html:label>
+      <html:p>完整回答后空闲20秒整理新增问答，额外使用当前AI服务的额度。关闭自动更新后仍可在“阅读摘要”中手动更新。笔记与进度保存在本地，已有手动改写会保留。</html:p>
+      <html:p id="zma-reading-status" role="status" style="margin:0"></html:p>
       <html:h3>ChatGPT 订阅</html:h3>
       <html:label for="zma-web-mode">联网搜索</html:label>
       <html:select id="zma-web-mode"><html:option value="auto">自动：需要补充资料时检索</html:option><html:option value="off">关闭：仅使用文档与对话</html:option></html:select>
@@ -42,7 +46,7 @@
       <html:input id="zma-api-key" type="password" autocomplete="off" />
       <html:label for="zma-api-model">模型（需要支持图片输入）</html:label>
       <html:input id="zma-api-model" type="text" value="deepseek-flash" />
-      <html:p>填写后点击“应用设置”。密钥使用系统密钥存储加密，重启后自动读取；只有点击提问面板的“发送”才上传材料。</html:p>
+      <html:p>填写后点击“应用设置”。密钥使用系统密钥存储加密，重启后自动读取。文档材料在发送提问时提交，阅读摘要更新仅提交已有摘要和相关问答文字。</html:p>
       <html:div>
         <html:button id="zma-api-apply" type="button">应用设置</html:button>
         <html:button id="zma-api-test" type="button">测试连接</html:button>

@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 async function setup(){
   const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true}),page=await browser.newPage({viewport:{width:1440,height:960}});
   await page.setContent('<style>body{margin:0;overflow:hidden}#split-view{position:fixed;left:0;right:0;top:40px;bottom:0;background:#eee}.zmc-card{position:absolute;right:10px;top:100px;width:264px;background:white;padding:8px;box-sizing:border-box}</style><div id="split-view"><article class="zmc-card" data-annotation-key="CURRENT2"><div class="zmc-card-preview"></div><footer></footer></article></div>');
-  for(const name of ['web','core','capture','references','deepseek','settings','attachments','clipboard','panel','margin-references','reference-preview','host']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(fs.existsSync(file))await page.addScriptTag({path:file});}
+  for(const name of ['web','reading-summary','core','capture','references','deepseek','settings','attachments','clipboard','panel','margin-references','reference-preview','host']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(fs.existsSync(file))await page.addScriptTag({path:file});}
   await page.evaluate(css=>{
     const source={libraryID:1,attachmentKey:'ABCD1234',annotationKey:'FORM0630',id:'source1',type:'公式',number:'6.30',pageIndex:60,pageLabel:'60',rects:[[10,20,90,50]],fingerprint:'v1'};
     const state=ZMACore.emptyState();state.sources=[source];const link=ZMACore.sourceLink(source);state.references=[{annotationKey:'CURRENT2',sourceID:source.id,link}];
@@ -20,6 +20,19 @@ async function setup(){
   return {browser,page};
 }
 
+async function enableSummaryRendering(page){
+ await page.evaluate(()=>{globalThis._globalThis=globalThis;globalThis.Zotero={};});
+ for(const file of ['src/math.js','src/markdown.js','content/vendor/marked/marked.umd.js','build/content/scripts/margincomments.js'])await page.addScriptTag({path:path.resolve(__dirname,'../'+file)});
+ await page.evaluate(()=>{fixture.host.addon.bridge.renderMathPreview=Zotero.MarginComments.bridge.renderMathPreview;});
+}
+test('reading summary opens a saved local note without inference and preserves the conversation draft',async()=>{
+ const {browser,page}=await setup();try{await enableSummaryRendering(page);await page.evaluate(async()=>{fixture.state.readingSummary=ZMAReadingSummary.clean({text:'### 正则性的作用\n\n这里解释公式 \\(x=1\\) 的条件。',updatedAt:1700000000000,noteKey:'NOTE0001'});globalThis.summaryPanel=await fixture.host.panel(fixture.reader);summaryPanel.open();summaryPanel.question.value='保留我的问题';globalThis.summaryCalls=0;fixture.host.selectedClient=()=>({generate:async()=>{summaryCalls++;throw Error('不应调用');}});});assert.ok(await page.locator('.zma-reading-view').isVisible());assert.match(await page.locator('.zma-reading-view').innerText(),/正则性的作用/);assert.equal(await page.evaluate(()=>summaryCalls),0);assert.equal(await page.locator('.zma-reading-note h3').count(),1);assert.equal(await page.locator('.zma-reading-view math').count(),1);await page.getByRole('button',{name:'返回对话',exact:true}).click();assert.equal(await page.locator('.zma-reading-view').isVisible(),false);assert.equal(await page.getByRole('textbox',{name:'问题',exact:true}).inputValue(),'保留我的问题');await page.evaluate(()=>{summaryPanel.close();summaryPanel.showChat();});assert.equal(await page.locator('.zma-reading-view').isVisible(),false);await page.evaluate(()=>{summaryPanel.close();summaryPanel.open();});assert.ok(await page.locator('.zma-reading-view').isVisible());assert.equal(await page.evaluate(()=>summaryCalls),0);}finally{await browser.close();}
+});
+test('reading summary can manually update and expose a protected pending version without losing the old note',async()=>{
+ const {browser,page}=await setup();try{await enableSummaryRendering(page);await page.evaluate(async()=>{const {host,reader}=fixture;globalThis.summaryPanel=await host.panel(reader);summaryPanel.showChat();summaryPanel.conversation().history=[{role:'user',content:'解释难点',materials:[]},{role:'assistant',content:'回答已经澄清了需要验证的条件。',materials:[],incomplete:false}];globalThis.summaryPublishes=0;host.publishReadingSummary=async()=>({conflict:'manual-edit'});host.selectedClient=()=>({generate:async()=>'{"changed":true,"text":"### 推导条件\\n\\n新的解释需要原文条件。"}'});});await page.getByRole('button',{name:'阅读摘要',exact:true}).click();await page.getByRole('button',{name:'更新摘要',exact:true}).click();await page.waitForFunction(()=>summaryPanel.state.readingSummary?.pendingReason==='manual-edit');assert.match(await page.locator('.zma-reading-view').innerText(),/新的解释/);assert.ok(await page.getByRole('button',{name:'保存摘要新版本',exact:true}).isVisible());assert.equal(await page.evaluate(()=>summaryPanel.state.readingSummary.text),'');
+ const evidence=path.resolve(__dirname,'../evidence/ui-0140');fs.mkdirSync(evidence,{recursive:true});for(const scheme of ['light','dark']){await page.emulateMedia({colorScheme:scheme});await page.evaluate(s=>document.documentElement.style.colorScheme=s,scheme);await page.locator('.zma-panel').screenshot({path:path.join(evidence,'reading-summary-'+scheme+'.png')});}
+ }finally{await browser.close();}
+});
 test('hovering a stored source link opens a bounded image preview without jumping and allows moving into it',async()=>{
  const {browser,page}=await setup();try{
   await page.evaluate(()=>{globalThis.jumps=0;fixture.host.jump=()=>jumps++;fixture.host.attachCard(fixture.session,fixture.runtime);});

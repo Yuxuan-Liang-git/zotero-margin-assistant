@@ -19,3 +19,6 @@ test('native settings service/model changes retain selected values and show sign
     await page.getByRole('button',{name:'退出当前账户',exact:true}).click();await page.waitForFunction(()=>!state.accounts[0].signedIn);assert.ok(await page.locator('#zma-chatgpt-model').isDisabled());
   }finally{await browser.close();}
 });
+test('reading summary automation is configurable without changing model or credentials',async()=>{
+ const source=fs.readFileSync(path.resolve(__dirname,'../content/deepseek-settings.inc.xhtml'),'utf8');assert.match(source,/id="zma-reading-auto"/);const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});try{const page=await browser.newPage();await page.setContent(source.replace(/html:/g,''));await page.addScriptTag({path:path.resolve(__dirname,'../src/settings.js')});await page.evaluate(()=>{globalThis.enabled=true;ZMASettings.bind(document.getElementById('zma-api-settings'),{model:'deepseek-flash',hasKey:false,apply:async()=>{throw Error('credentials must not change');},readingSummary:{state:()=>({enabled}),set:async v=>{enabled=v;}}});});await page.locator('#zma-reading-auto').uncheck();await page.waitForFunction(()=>!enabled);assert.match(await page.locator('#zma-reading-status').innerText(),/关闭/);}finally{await browser.close();}
+});
