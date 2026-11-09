@@ -3,6 +3,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const C = fs.existsSync(__dirname + '/../src/core.js') ? require('../src/core.js') : {};
 const source = { libraryID: 1, attachmentKey: 'ABCD1234', annotationKey: 'FORM0630', pageIndex: 65, pageLabel: '60', rects: [[10,20,90,50]], fingerprint: 'v1' };
+
+test('quote comments and exact LaTeX survive JSON round trips per conversation without changing old histories',()=>{
+ const state=C.emptyState(),first=C.activeConversation(state);first.history=[{role:'assistant',content:'原回答',materials:[]}];first.draftQuotes=[{id:'quote-1',text:'公式 \\(x=1\\)',comment:'为何成立？',messageIndex:0,start:2,end:7}];const second=C.createConversation(state);second.draft='另一会话';const restored=C.cleanState(JSON.parse(JSON.stringify(state)));assert.deepEqual(restored.conversations[0].draftQuotes,first.draftQuotes);assert.equal(restored.conversations[1].draftQuotes,undefined);assert.equal(restored.conversations[0].history[0].content,'原回答');const legacy=C.emptyState();assert.equal(C.cleanState(legacy).conversations[0].draftQuotes,undefined);
+ const corrupt=JSON.parse(JSON.stringify(state));corrupt.conversations[0].draftQuotes[0].messageIndex=900;assert.throws(()=>C.cleanState(corrupt),/批注草稿/);
+});
 test('number aliases find the same source but respect type and attachment', () => {
   assert.equal(typeof C.normalizeNumber, 'function');
   for (const value of ['6.30', '(6.30)', '公式（6.30）', ' 公式 ( 6.30 ) ']) assert.equal(C.normalizeNumber(value), '6.30');

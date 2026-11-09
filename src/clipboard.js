@@ -69,10 +69,12 @@
     listen(container,'contextmenu',event=>{
       if(event.target.closest?.('.zma-clipboard-menu'))return;event.preventDefault();event.stopPropagation();closeMenu();
       const field=control(event.target),math=formula(event.target),selected=selectionText(container,event.target);
+      const message=event.target.closest?.('.zma-message'),answer=message?.querySelector('.zma-answer'),selection=doc.defaultView.getSelection();let quoteAnchor={messageIndex:Number(message?.dataset.messageIndex)};
+      if(answer&&selection?.rangeCount){const range=selection.getRangeAt(0);if(answer.contains(range.startContainer)&&answer.contains(range.endContainer)){const before=doc.createRange();before.selectNodeContents(answer);before.setEnd(range.startContainer,range.startOffset);quoteAnchor={...quoteAnchor,start:before.toString().length,end:before.toString().length+range.toString().length};}}
       menu=doc.createElementNS('http://www.w3.org/1999/xhtml','div');menu.className='zma-clipboard-menu';menu.setAttribute('role','group');menu.setAttribute('aria-label','文档助手编辑菜单');
       Object.assign(menu.style,{position:'fixed',zIndex:'10010',background:'Canvas',color:'CanvasText',border:'1px solid #999',padding:'5px',borderRadius:'5px',left:`${Math.max(0,Math.min(event.clientX,doc.defaultView.innerWidth-180))}px`,top:`${Math.max(0,Math.min(event.clientY,doc.defaultView.innerHeight-170))}px`});
       const add=(label,action,disabled=false)=>{const b=doc.createElementNS('http://www.w3.org/1999/xhtml','button');b.type='button';b.textContent=label;b.disabled=disabled;b.style.display='block';b.style.width='100%';b.addEventListener('mousedown',e=>e.preventDefault());b.addEventListener('click',()=>{closeMenu();action();});menu.append(b);};
-      if(onQuote&&!field&&selected&&event.target.closest?.('.zma-message'))add('引用并批注提问',()=>{try{onQuote(selected);}catch(error){onError(error);}});
+      if(onQuote&&!field&&selected&&message)add('引用并批注提问',()=>{try{onQuote(selected,quoteAnchor);}catch(error){onError(error);}});
       if(math)add('复制公式 LaTeX',()=>write(formulaText(math)),!formulaText(math));
       add('复制',()=>write(selected),!selected);
       if(field){add('剪切',()=>{if(!field.readOnly&&!field.disabled&&write(selected)){field.setRangeText('',field.selectionStart,field.selectionEnd,'end');field.dispatchEvent(new doc.defaultView.Event('input',{bubbles:true}));}},field.readOnly||field.disabled||!selected);add('粘贴',()=>paste(field),field.readOnly||field.disabled);}

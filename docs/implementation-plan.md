@@ -75,3 +75,11 @@ No Git commit steps: this workspace is not a repository; preserve evidence in a 
 - 完成简化页头、问答排版、底部输入和可展开文档范围；保留输入及附件、引用、流式渲染功能。
 - 按用户明确选择排除 PDF 添加文本的重复页边卡片，保留原文字批注。
 - 浏览器全套回归、checkJs、18 组排版检查；原生隔离首次启动及冷重启验证由 appearance-smoke.py 串联现有验收，记录见 acceptance.md。
+
+
+## 0.12.6 执行结果
+
+- 以既有右键引用流程为基础，增加选区附近气泡及多个编号锚点，外部点击收起、空内容移除、非空保留、重新打开编辑和删除。
+- 批注草稿按会话与 PDF 保存，保持旧 v1/v2 历史兼容；发送时合并所有批注及问题，失败保留、成功清空待发送记录。
+- 引用公式沿用 LaTeX 提取，预览用 MathML；原生 textarea 继续支持光标、复制/粘贴及 IME，点击嵌套 PDF frame 也能收起。
+- 完成先失败后通过的批注交互与跨 frame 点击测试，161 项完整回归、checkJs、浅深/窄宽气泡截图检查，原生隔离验收见 acceptance.md。

@@ -89,7 +89,14 @@
     if(!c||!conversationID.test(c.id)||typeof c.title!=='string'||c.title.length>120||!Number.isSafeInteger(c.createdAt)||c.createdAt<0||!Number.isSafeInteger(c.updatedAt)||c.updatedAt<0||!Array.isArray(c.history)||typeof c.draft!=='string')throw new Error('对话数据损坏');
     const summary=c.summary??'',compactedThrough=c.compactedThrough??0;
     if(typeof summary!=='string'||summary.length>20000||!Number.isSafeInteger(compactedThrough)||compactedThrough<0||compactedThrough>c.history.length||compactedThrough%2||compactedThrough>0&&!summary.trim())throw new Error('对话摘要索引损坏');
-    return {id:c.id,title:c.title,createdAt:c.createdAt,updatedAt:c.updatedAt,history:c.history.map(cleanMessage),draft:c.draft,...(c.draftAttachments?.length?{draftAttachments:c.draftAttachments.map(pickAttachment)}:{}),summary,compactedThrough};
+    if(c.draftQuotes!==undefined&&(!Array.isArray(c.draftQuotes)||c.draftQuotes.length>20))throw new Error('批注草稿数据损坏');
+    const draftQuotes=(c.draftQuotes||[]).map(q=>{
+      if(!q||!conversationID.test(q.id)||typeof q.text!=='string'||!q.text.trim()||q.text.length>12000||typeof q.comment!=='string'||q.comment.length>4000||!Number.isSafeInteger(q.messageIndex)||q.messageIndex<0||q.messageIndex>=c.history.length)throw new Error('批注草稿数据损坏');
+      const offsets=Number.isSafeInteger(q.start)&&q.start>=0&&Number.isSafeInteger(q.end)&&q.end>=q.start?{start:q.start,end:q.end}:{};
+      return {id:q.id,text:q.text,comment:q.comment,messageIndex:q.messageIndex,...offsets};
+    });
+    if(new Set(draftQuotes.map(q=>q.id)).size!==draftQuotes.length)throw new Error('批注草稿标识重复');
+    return {id:c.id,title:c.title,createdAt:c.createdAt,updatedAt:c.updatedAt,history:c.history.map(cleanMessage),draft:c.draft,...(draftQuotes.length?{draftQuotes}:{}),...(c.draftAttachments?.length?{draftAttachments:c.draftAttachments.map(pickAttachment)}:{}),summary,compactedThrough};
   }
   function compactionTarget(conversation){
     const history=conversation.history,from=conversation.compactedThrough||0,pending=history.slice(from);

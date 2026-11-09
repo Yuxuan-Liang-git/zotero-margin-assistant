@@ -15,7 +15,7 @@ parser.add_argument('--native-run',default='zotero-0106-native-final')
 parser.add_argument('--restart-run',default='zotero-0105-final')
 parser.add_argument('--conversation-run',default='zotero-0106-conversation-qa')
 parser.add_argument('--upgrade-run',default='zotero-0106-upgrade')
-parser.add_argument('--clipboard-run',default='zotero-0125-appearance-v3')
+parser.add_argument('--clipboard-run',default='zotero-0126-bubbles-v2')
 args=parser.parse_args()
 version=json.loads((PROJECT/'package.json').read_text(encoding='utf-8'))['version']
 package=PROJECT/f'dist/margin-comments-deepseek-{version}.xpi'
@@ -80,7 +80,7 @@ upgrade_smoke='passed: AddonManager upgraded active 0.10.5 to active 0.10.6 besi
 clipboard_dir=PROJECT/'evidence'/args.clipboard_run
 clipboard_reports=[json.loads((clipboard_dir/f'report-{n}.json').read_text(encoding='utf-8')) if (clipboard_dir/f'report-{n}.json').exists() else None for n in [1,2]]
 clipboard_installed=clipboard_dir/'profile/extensions/margin-comments@local.zotero.xpi'
-clipboard_ok=clipboard_installed.exists() and hashlib.sha256(clipboard_installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r.get('launch')==n and r.get('packageSha256')==package_hash and len(r.get('steps',[])) in [4,5,6,7,8,9,10,11,12] and all(s['ok'] for s in r['steps']) for n,r in enumerate(clipboard_reports,1)) and len({r['process'] for r in clipboard_reports if r})==2
+clipboard_ok=clipboard_installed.exists() and hashlib.sha256(clipboard_installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r.get('launch')==n and r.get('packageSha256')==package_hash and len(r.get('steps',[])) in [4,5,6,7,8,9,10,11,12,13] and all(s['ok'] for s in r['steps']) for n,r in enumerate(clipboard_reports,1)) and len({r['process'] for r in clipboard_reports if r})==2
 editing_keys_ok=clipboard_ok and all(any(s.get('name')=='sidebar-clipboard-and-latex' and s.get('result',{}).get('editingKeysNotCancelled') and s['result'].get('editingFocusRetained') and s['result'].get('editingEventCombinations')==24 for s in r['steps']) for r in clipboard_reports)
 probe_path=PROJECT/'evidence/chatgpt-plan-probe/report.json'
 probe=json.loads(probe_path.read_text(encoding='utf-8')) if probe_path.exists() else {}
@@ -104,5 +104,7 @@ whole_sample=next((s['result'] for s in (clipboard_reports[0] or {}).get('steps'
 report['native_automatic_whole_pdf']=f"passed: {whole_sample.get('pages')}-page {whole_sample.get('fileBytes')}-byte paper copied into isolated fixture; every byte verified against input_file file_data before and after closing/reopening and clearing caches; chat history and safe coverage metadata retained, no file body in sidecar; first launch and cold restart, inference mocked" if whole_ok else 'not passed or not run'
 appearance_ok=clipboard_ok and all(any(s.get('name')=='appearance-and-native-text' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['fontApplied','configurationInSettings','draftAndCaretRetained','nativeTextRetained','noDuplicateMarginText']) for s in r['steps']) for r in clipboard_reports) and any(s.get('name')=='appearance-and-native-text' and s.get('result',{}).get('fontPersisted') for s in (clipboard_reports[1] or {}).get('steps',[]))
 report['native_appearance_and_text']='passed: native settings font event, instant 18/20px resize, font cold-restart persistence, composer draft/caret retained, configuration removed from chat; native PDF free-text annotation retained without margin duplication even when explicitly revealed' if appearance_ok else 'not passed or not run'
+bubbles_ok=clipboard_ok and all(any(s.get('name')=='inline-quote-bubbles' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['emptyDismissed','outsidePdfClick','multipleDrafts','reopenAndEdit','latexPreserved','failedSendRetained','combinedOnce','clearedAfterSuccess','independentDraftPersisted','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports) and any(s.get('name')=='inline-quote-bubbles' and s.get('result',{}).get('restoredAfterRestart') for s in (clipboard_reports[1] or {}).get('steps',[]))
+report['native_inline_quote_bubbles']='passed: native selected MathML becomes exact LaTeX quote; PDF outside click discards empty bubble or collapses edited one, reopening and multiple comments, failed send retains drafts, one combined send clears after success; drafts stored beside PDF in an independent conversation and restored after cold restart; inference mocked' if bubbles_ok else 'not passed or not run'
 (PROJECT/'dist/verification-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(report))
