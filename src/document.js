@@ -16,10 +16,23 @@
     }
     return {totalPages,pages};
   }
+  function termsFor(question){
+    const words=String(question).normalize('NFKC').toLowerCase().match(/[a-z0-9_.]{2,}|[\u4e00-\u9fff]{2,}/g)||[],terms=new Set(words.filter(w=>!['this','that','the','and','what','explain','paper','formula','pdf','page'].includes(w)));
+    for(const w of words)if(/[\u4e00-\u9fff]/.test(w))for(let i=0;i<w.length-1;i++)terms.add(w.slice(i,i+2));return terms;
+  }
+  function imagePages(index,question,currentPage){
+    const selected=[],add=page=>{if(Number.isSafeInteger(page)&&page>=1&&page<=index.totalPages&&!selected.includes(page)&&selected.length<3)selected.push(page);};add(currentPage+1);
+    for(const match of String(question).matchAll(/(?:第\s*(\d+)\s*页|\bpages?\s*(\d+)\b)/gi))add(Number(match[1]||match[2]));
+    const terms=termsFor(question),ranked=index.pages.map(p=>{const text=p.text.toLowerCase();let score=0;for(const term of terms)if(text.includes(term))score+=/\d/.test(term)?10:1;return {page:p.pageIndex+1,score};}).filter(p=>p.score>0).sort((a,b)=>b.score-a.score||a.page-b.page);for(const p of ranked)add(p.page);
+    if(index.totalPages<=3)for(let page=1;page<=index.totalPages;page++)add(page);
+    else if(!index.pages.find(p=>p.pageIndex===currentPage)?.text){add(currentPage+2);add(currentPage);}
+    return selected;
+  }
   function choose(index,question,currentPage,budget=48000){
     const failedPages=index.pages.filter(p=>p.error).map(p=>p.pageIndex+1),scannedPages=index.pages.filter(p=>!p.text&&!p.error).map(p=>p.pageIndex+1);
-    const available=index.pages.filter(p=>p.text),current=index.pages.find(p=>p.pageIndex===currentPage);
-    const base={totalPages:index.totalPages,failedPages,scannedPages,needsImage:!current?.text};
+    const available=index.pages.filter(p=>p.text);
+    // Even a successful text layer can omit raster equations or corrupt math glyphs.
+    const base={totalPages:index.totalPages,failedPages,scannedPages,needsImage:true,imagePages:imagePages(index,question,currentPage)};
     if(!available.length)return {...base,mode:'current-page-image',text:'',pages:[currentPage+1]};
     if(budget<800)throw new Error('对话历史过长，无法加入当前 PDF，请开始新会话');
     const header=p=>`\n[PDF 第 ${p.pageIndex+1} 页]\n`,full=available.map(p=>header(p)+p.text).join('\n');

@@ -10,6 +10,12 @@ test('joint question includes two images and grounded instruction separate from 
   assert.throws(()=>D.buildMessages([],'问题',Array(9).fill(image('1'))),/8/);
   assert.throws(()=>D.buildMessages([],'问题',[{...image('1'),dataURL:'https://example.org/a.png'}]),/图片/);
 });
+test('automatic formula screenshots share the attachment cap and disclose only actually submitted image pages',()=>{
+ const page=n=>({...image(''),source:{fullPage:true,pageIndex:n-1,pageLabel:String(n)}}),auto=[page(1),page(7),page(9)],context={title:'Mixed PDF',mode:'full-text',totalPages:12,pages:[1,7],text:'Some extracted prose',materials:auto};
+ const files=Array.from({length:6},(_,i)=>({name:i+'.png',mime:'image/png',dataURL:'data:image/png;base64,YQ=='}));
+ const selected=D.contextMaterials([page(1)],context,files);assert.deepEqual(selected.map(m=>m.source.pageIndex),[0,6]);
+ const parts=D.buildMessages([],'Explain',[page(1)],context,'',files).at(-1).content;assert.equal(parts.filter(p=>p.type==='image_url').length,8);const description=parts.at(-1).text;assert.match(description,/页面图片.*1、7/);assert.doesNotMatch(description,/图片.*9/);assert.match(description,/公式.*文字层/);
+});
 test('stream handles UTF8 splits and multiline network chunks',async()=>{
   assert.equal(typeof D.DeepSeekClient,'function');
   const raw='data: {"choices":[{"delta":{"content":"中文"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":"解释"}}]}\n\ndata: [DONE]\n\n';

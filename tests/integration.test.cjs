@@ -10,6 +10,17 @@ function fixture(overrides={}){
   return {host,Z,annotation,attachment,events,files};
 }
 
+test('automatic context captures text-bearing formula pages, respects capacity and reports skipped images',async()=>{
+ const {host}=fixture(),captured=[];host.addon.controller.ensureSession=async()=>({adapter:{currentPageIndex:()=>0,pdfWindow:{PDFViewerApplication:{pdfDocument:{numPages:2,getPage:async()=>({view:[0,0,600,800],getTextContent:async()=>({items:[{str:'Formula prose'}]})})}}},pdfViewer:{}}});
+ host.capture=async(_r,source)=>{captured.push(source.pageIndex);return {source,dataURL:'data:image/png;base64,YQ==',width:600,height:800};};
+ const context=await host.documentContext({itemID:1},'Explain formula',{imageLimit:2,imageBudget:1000});assert.deepEqual(captured,[0,1]);assert.deepEqual(context.materials.map(m=>m.source.pageIndex),[0,1]);assert.match(context.text,/Formula prose/);
+ captured.length=0;const limited=await host.documentContext({itemID:1},'Explain formula',{imageLimit:1,imageBudget:1000});assert.deepEqual(captured,[0]);assert.equal(limited.materials.length,1);assert.match(limited.imageWarning,/上限/);
+ const noRoom=await host.documentContext({itemID:1},'Explain formula',{imageLimit:2,imageBudget:1});assert.equal(noRoom.materials.length,0);assert.match(noRoom.imageWarning,/大小/);
+});
+test('stopping page vision prevents further captures and unreadable images cannot masquerade as a read scan',async()=>{
+ const {host}=fixture(),controller=new AbortController();host.addon.controller.ensureSession=async()=>({adapter:{currentPageIndex:()=>0,pdfWindow:{PDFViewerApplication:{pdfDocument:{numPages:10,getPage:async()=>({view:[0,0,600,800],getTextContent:async()=>({items:[]})})}}},pdfViewer:{}}});let calls=0;host.capture=async()=>{calls++;controller.abort();return {source:{pageIndex:0},dataURL:'data:image/png;base64,YQ=='};};await assert.rejects(host.documentContext({itemID:1},'解释',{signal:controller.signal}),/停止/);assert.equal(calls,1);
+ host.capture=async()=>{throw new Error('render failed');};await assert.rejects(host.documentContext({itemID:1},'解释'),/图片.*失败/);
+});
 test('provider selection persists and a request snapshots the ChatGPT account; switches cannot race generation',async()=>{
   const prefs=new Map(),{host}=fixture({Prefs:{get:k=>prefs.get(k),set:(k,v)=>prefs.set(k,v)}});
   host.auth={state:{activeID:'registered-account'},active:()=>({accessToken:'private'})};host.chatgpt={forAccount:id=>({provider:'chatgpt',id})};

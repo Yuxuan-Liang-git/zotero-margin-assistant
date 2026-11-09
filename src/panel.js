@@ -178,18 +178,18 @@
         const hydrated=[];
         for(const m of history.slice(conversation.compactedThrough||0)){
           if(m.role==='assistant'){hydrated.push(m);continue;}
-          const materials=[];for(const s of m.materials||[])materials.push(await this.host.capture(this.reader,s));
+          const materials=[];for(const s of m.materials||[])materials.push(s.automaticPage?{source:s}:await this.host.capture(this.reader,s));
           const attachments=[];for(const file of m.attachments||[])attachments.push(await this.host.loadAttachment(this.reader,file));hydrated.push({...m,materials,attachments});
         }
         const refreshed=[];for(const material of this.materials)refreshed.push(await this.host.capture(this.reader,material.source));
         const attachments=[];for(const file of conversation.draftAttachments||[])attachments.push(await this.host.loadAttachment(this.reader,file));
         if(this.host.provider==='deepseek'&&[...attachments,...hydrated.flatMap(m=>m.attachments||[])].some(a=>a.mime==='application/pdf'))throw new Error('PDF 附件当前请使用 ChatGPT；DeepSeek 可接收图片附件。');
         const baseMessages=D.buildMessages(hydrated,question,refreshed,undefined,conversation.summary||'',attachments);
-        const context=await this.host.documentContext?.(this.reader,question,{budget:Math.min(24000,58000-D.textSize(baseMessages)),signal:this.controller.signal,onProgress:(n,total)=>{if(!this.destroyed)this.status.textContent=`正在读取当前 PDF：${n}/${total} 页…`;}});
-        if(context&&!this.destroyed)this.contextInfo.textContent=(context.mode==='full-text'?`本轮使用：${context.title} · 全文 ${context.totalPages} 页`:`本轮使用：${context.title} · ${context.mode==='current-page-image'?'当前页截图':'相关文字节选'}（PDF 第 ${context.pages.join('、')} 页）`)+(context.material&&context.mode!=='current-page-image'?`；当前页截图（PDF 第 ${context.material.source.pageIndex+1} 页）`:'');
+        const context=await this.host.documentContext?.(this.reader,question,{budget:Math.min(24000,58000-D.textSize(baseMessages)),imageLimit:Math.max(0,8-refreshed.length-attachments.length),imageBudget:Math.max(0,Math.min(4*1024*1024,12*1024*1024-JSON.stringify(baseMessages).length-100000)),signal:this.controller.signal,onProgress:(n,total)=>{if(!this.destroyed)this.status.textContent=`正在读取当前 PDF：${n}/${total} 页…`;}});
+        const submitted=D.contextMaterials(refreshed,context,attachments);
+        if(context&&!this.destroyed){const imagePages=submitted.filter(m=>m.source.fullPage).map(m=>m.source.pageIndex+1);this.contextInfo.textContent=(context.mode==='full-text'?`本轮使用：${context.title} · 完整文字层 ${context.totalPages} 页`:`本轮使用：${context.title} · ${context.mode==='current-page-image'?'无全文文字层':'相关文字节选'}（PDF 第 ${context.pages.join('、')} 页）`)+`；页面图片：${imagePages.length?'PDF 第 '+imagePages.join('、')+' 页':'未加入'}`+(context.scannedPages?.length?'；扫描页尚无全文识别索引':'')+(context.imageWarning?'；'+context.imageWarning:'');}
         const messages=D.buildMessages(hydrated,question,refreshed,context,conversation.summary||'',attachments);
         if(this.controller.signal.aborted)throw new Error('生成已停止');
-        const submitted=[...refreshed];if(context?.material&&submitted.length<8&&!submitted.some(m=>m.source.fullPage&&m.source.pageIndex===context.material.source.pageIndex))submitted.push(context.material);
         user={role:'user',content:question,...(attachments.length?{attachments:attachments.map(C.pickAttachment)}:{}),materials:submitted.map(m=>({...C.pickSource(m.source),type:m.source.type,number:m.source.number,description:m.source.description})),incomplete:false};
         answer={role:'assistant',content:'',materials:[],incomplete:true,...(provider?{provider,model}:{} )};
         conversation.history=[...history,user,answer];conversation.draft=this.question.value;C.touchConversation(conversation);await this.persist();

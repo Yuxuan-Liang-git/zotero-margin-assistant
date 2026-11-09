@@ -18,3 +18,13 @@ test('Gecko wrappers are released before extracting text and failed pages remain
 test('a scan with no text layer requests an automatic current-page image',async()=>{
   assert.equal(typeof M.extract,'function');const index=await M.extract({numPages:2,getPage:async()=>({getTextContent:async()=>({items:[]})})});const context=M.choose(index,'summary',1,3000);assert.equal(context.mode,'current-page-image');assert.deepEqual(context.pages,[2]);assert.equal(context.text,'');
 });
+test('a real mixed PDF retains a raster formula through automatic page vision even though text extraction succeeds',async()=>{
+  const {createCanvas}=require('@napi-rs/canvas'),canvas=createCanvas(500,100),ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,500,100);ctx.fillStyle='black';ctx.font='24px serif';ctx.fillText('e(t) = y(t) - H u(t)',20,60);
+  const fixture=await PDFDocument.create(),font=await fixture.embedFont(StandardFonts.Helvetica),image=await fixture.embedPng(canvas.toBuffer('image/png')),page=fixture.addPage([600,800]);page.drawText('Prediction error is defined below.',{x:30,y:700,size:12,font});page.drawImage(image,{x:30,y:500,width:500,height:100});
+  const pdfjs=await import(pathToFileURL(require.resolve('pdfjs-dist/legacy/build/pdf.mjs')).href),task=pdfjs.getDocument({data:new Uint8Array(await fixture.save()),useSystemFonts:true});
+  try{const index=await M.extract(await task.promise);assert.match(index.pages[0].text,/Prediction error/);assert.doesNotMatch(index.pages[0].text,/H u/);const context=M.choose(index,'Explain this formula',0,4000);assert.equal(context.needsImage,true);assert.deepEqual(context.imagePages,[1]);assert.equal(context.mode,'full-text');}finally{await task.destroy();}
+});
+test('page vision is bounded and supports explicit pages in scans and formula matches outside the current page',()=>{
+  const scan={totalPages:200,pages:Array.from({length:200},(_,i)=>({pageIndex:i,text:''}))};assert.deepEqual(M.choose(scan,'解释 PDF 第 120 页的公式',5,4000).imagePages,[6,120,7]);
+  const mixed={totalPages:30,pages:Array.from({length:30},(_,i)=>({pageIndex:i,text:i===12?'Formula (6.30) defines inductance.':'Ordinary prose.'}))};const context=M.choose(mixed,'解释公式 (6.30)',0,4000);assert.ok(context.imagePages.includes(13));assert.equal(context.imagePages[0],1);assert.ok(context.imagePages.length<=3);
+});

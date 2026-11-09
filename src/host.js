@@ -99,9 +99,10 @@
       if(typeof query==='object'&&(query.fingerprint&&query.fingerprint!==source.fingerprint||query.pageIndex!==source.pageIndex||JSON.stringify(query.rects)!==JSON.stringify(source.rects)||query.kind==='text'&&(query.text!==source.text||JSON.stringify(query.nextPageRects)!==JSON.stringify(source.nextPageRects))))throw new Error('来源需要重新定位：PDF 文件、文字或区域已经改变');
       return {...(typeof query==='object'?query:{}),...source};
     }
-    async currentPage(reader){
+    /** @param {any} reader @param {number|null} [requestedPage] */
+    async currentPage(reader,requestedPage=null){
       const session=await this.addon.controller.ensureSession(reader);if(!session)throw new Error('PDF 阅读器尚未就绪');
-      const adapter=session.adapter;const pdf=this.unwrap(adapter.pdfWindow.PDFViewerApplication.pdfDocument);const pageIndex=adapter.currentPageIndex();const page=this.unwrap(await pdf.getPage(pageIndex+1));
+      const adapter=session.adapter;const pdf=this.unwrap(adapter.pdfWindow.PDFViewerApplication.pdfDocument);const pageIndex=requestedPage??adapter.currentPageIndex();if(!Number.isSafeInteger(pageIndex)||pageIndex<0||pageIndex>=pdf.numPages)throw new Error('PDF 页码无效');const page=this.unwrap(await pdf.getPage(pageIndex+1));
       return {...this.scope(reader),annotationKey:'PAGE'+String(pageIndex).padStart(4,'0'),pageIndex,pageLabel:String(adapter.pdfViewer._pageLabels?.[pageIndex]||pageIndex+1),rects:[page.view.slice()],fingerprint:await this.fingerprint(reader),fullPage:true};
     }
     async capture(reader,query){
@@ -115,8 +116,8 @@
       else{const pdf=adapter.pdfWindow?.PDFViewerApplication?.pdfDocument;if(!pdf)throw new Error('PDF 页面尚未加载');result=await R.captureRegion(pdf,source,adapter.document(),{unwrap:this.unwrap});}
       if(this.cache.size>=16)this.cache.delete(this.cache.keys().next().value);this.cache.set(key,result);return result;
     }
-    /** @param {any} reader @param {string} question @param {{budget?:number,signal?:AbortSignal,onProgress?:(n:number,total:number)=>void}} options */
-    async documentContext(reader,question,{budget=48000,signal,onProgress}={}){
+    /** @param {any} reader @param {string} question @param {{budget?:number,imageLimit?:number,imageBudget?:number,signal?:AbortSignal,onProgress?:(n:number,total:number)=>void}} options */
+    async documentContext(reader,question,{budget=48000,imageLimit=3,imageBudget=4*1024*1024,signal,onProgress}={}){
       const fingerprint=await this.fingerprint(reader),scope=this.scope(reader),key=C.scopeKey(scope)+':'+fingerprint;
       const session=await this.addon.controller.ensureSession(reader);if(!session)throw new Error('当前 PDF 阅读器尚未就绪');
       const adapter=session.adapter,pdf=adapter.pdfWindow?.PDFViewerApplication?.pdfDocument;
@@ -125,7 +126,20 @@
       const index=await this.documents.get(key);if(signal?.aborted)throw new Error('文档读取已停止');
       const context=Doc.choose(index,question,adapter.currentPageIndex(),budget),attachment=this.Z.Items.get(Number(reader.itemID));
       context.title=String(attachment.getField?.('title')||'当前 PDF');
-      if(context.needsImage)context.material=await this.capture(reader,await this.currentPage(reader));
+      context.materials=[];context.imageWarning='';let bytes=0;const warnings=new Set(),limit=Math.max(0,Math.min(3,Math.floor(imageLimit)));
+      for(const page of context.imagePages){
+        if(signal?.aborted)throw new Error('文档读取已停止');
+        if(context.materials.length>=limit){warnings.add('材料数量已达上限，部分页面图片未加入');break;}
+        try{
+          const source=await this.currentPage(reader,page-1),material={...await this.capture(reader,{...source,automaticPage:true}),text:''};
+          if(signal?.aborted)throw new Error('文档读取已停止');
+          const size=JSON.stringify(material).length;
+          if(bytes+size>imageBudget){warnings.add('请求大小受限，部分页面图片未加入');continue;}
+          context.materials.push(material);bytes+=size;
+        }catch(e){if(signal?.aborted)throw new Error('文档读取已停止');warnings.add(`PDF 第 ${page} 页图片读取失败`);}
+      }
+      if(!context.text&&!context.materials.length&&limit>0)throw new Error('PDF 页面图片读取失败或超过材料上限，请减少附件或重新打开目标页');
+      context.imageWarning=[...warnings].join('；');
       return context;
     }
     load(reader){const scope=this.scope(reader),key=C.scopeKey(scope);if(!this.states.has(key))this.states.set(key,(async()=>{const state=await this.store.load(scope);try{await this.ensureHistoryNote(reader);}catch(e){this.Z.logError?.(e);}return state;})());return this.states.get(key);}
