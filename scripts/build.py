@@ -78,7 +78,7 @@ def build():
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
   Services.scriptloader.loadSubScript(rootURI + "content/vendor/marked/marked.umd.js", context);
-  for (const name of ["web", "core", "capture", "document", "references", "attachments", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "streaming", "clipboard", "panel", "margin-references", "images", "host"]) {
+  for (const name of ["web", "core", "capture", "document", "references", "attachments", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "streaming", "clipboard", "panel", "margin-references", "reference-preview", "images", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();

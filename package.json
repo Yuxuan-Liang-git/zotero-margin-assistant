@@ -1,12 +1,12 @@
 {
   "name": "zotero-margin-assistant-custom",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "private": true,
   "description": "Additive DeepSeek and numbered-region references for custom Margin Comments",
   "scripts": {
     "test": "python scripts/build.py && node --test --test-concurrency=1 tests/*.test.cjs",
     "build": "python scripts/build.py",
-    "typecheck": "tsc --allowJs --checkJs --noEmit --target ES2022 --module commonjs --lib ES2022,DOM --skipLibCheck src/environment.d.ts src/web.js src/core.js src/attachments.js src/capture.js src/document.js src/references.js src/deepseek.js src/credentials.js src/chatgpt-auth.js src/chatgpt.js src/chatgpt-native.js src/settings.js src/math.js src/markdown.js src/streaming.js src/clipboard.js src/panel.js src/margin-references.js src/images.js src/host.js src/assistant-settings.js"
+    "typecheck": "tsc --allowJs --checkJs --noEmit --target ES2022 --module commonjs --lib ES2022,DOM --skipLibCheck src/environment.d.ts src/web.js src/core.js src/attachments.js src/capture.js src/document.js src/references.js src/deepseek.js src/credentials.js src/chatgpt-auth.js src/chatgpt.js src/chatgpt-native.js src/settings.js src/math.js src/markdown.js src/streaming.js src/clipboard.js src/panel.js src/margin-references.js src/reference-preview.js src/images.js src/host.js src/assistant-settings.js"
   },
   "devDependencies": {
     "playwright": "1.62.1",

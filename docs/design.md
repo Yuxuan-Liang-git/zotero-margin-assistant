@@ -192,3 +192,13 @@ web.js 统一收集搜索事件、URL 注释、最终 sources/results，去重�
 从截图对应的本地历史只读核对原文，公式分隔符完整，实际 KaTeX 错误为 unicodeTextInMathMode：数学模式的中文顿号“、”在 strict:error 下导致整个表达式回退。仅将这一类 Unicode 字形兼容性诊断设为 ignore，其余 strict 诊断继续为 error；trust:false、展开/尺寸上限、非法命令回退不变。集成仍由 build.py 在生成包中补丁，不改 baseline。data-zma-latex 保留完整原始分隔符与内容，复制/保存不改公式源码。
 
 Marked 的 CommonMark 标点边界规则不能识别部分“中文句号后闭合双星号、紧接正文”的写法。为助手单独缓存一个 Marked 实例，增加简单 CJK strong 的 inline tokenizer，返回原有 strong token 并递归解析内部公式占位符；不修改全局 Marked，不向内容插入空格/不可见字符。保持实例 defaults（尤其扩展）传入 lexer，继续使用安全 DOM 构造。代码块、行内代码、显式转义交给原解析器；复杂嵌套强调仍沿原规则。流式和历史共用 renderAnswer，回答与 JSON 数据不变。
+
+## 0.13.2 前文引用悬停预览
+
+用户要求类似 PDF 内置链接的悬停公式/截图预览。检查本机 Zotero10.0.6 reader.js 的 Content/Editor：原生批注存储 HTML 风格纯文本，只解析有限富文本，a标签不会被原生编辑器识别。现有插件只在自己的页边卡片还原安全链接，因此原生 AnnotationPopup 会显示标签源码。
+
+新增 ReferencePreview，每个阅读器文档独立管理事件、浮层和原生批注阅读层。Host 同时绑定 PDF 子窗口和外层 reader 文档（原生 React AnnotationPopup 所在位置）；链接限定当前 PDF 和合法 Zotero sourceLink，按目标批注关系/索引找到来源，经 host.capture 重新校验指纹、批注和区域后显示。220ms延迟打开，180ms离开延迟方便移入浮层，支持键盘焦点、Esc、滚动/窗口尺寸变化收起，以及跳原文/加入提问。异步 revision 阻止离开或关闭后的晚到截图重开浮层，来源变动通知关闭旧预览。
+
+原生 .comment .editor 保持原对象与文本，不直接向其 contenteditable 插入锚点。读取其克隆并调用既有安全富文本/数学渲染，再仅还原经过 parseSourceLink 校验的链接；阅读层是独立兄弟节点，编辑时隐藏阅读层、恢复原编辑器，离开后重新展示。MutationObserver仅对原生批注树的相关增删/文字更新安排扫描，避免 PDF 页面所有变化触发重建；原值未变时不重建。给 PDF 内容窗口的 observer options 用已有 cloneInto 转到目标窗口，避免 Gecko 安全包装器把选项读作 false。
+
+保留原注释、链接序列化及 JSON 索引格式，不做用户数据迁移；原页边内嵌引用和点击展开保留。来源文字用 MathML，图片用现有区域截图；不执行引用中的任意 HTML，不读取无关 PDF。文档关闭和插件停用时取消定时器、断开观察器/事件、移除浮层和阅读层并恢复原编辑器。新模块随 XPI 加载，无新服务或依赖。

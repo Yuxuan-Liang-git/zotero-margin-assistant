@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 async function setup(){
   const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true}),page=await browser.newPage({viewport:{width:1440,height:960}});
   await page.setContent('<style>body{margin:0;overflow:hidden}#split-view{position:fixed;left:0;right:0;top:40px;bottom:0;background:#eee}.zmc-card{position:absolute;right:10px;top:100px;width:264px;background:white;padding:8px;box-sizing:border-box}</style><div id="split-view"><article class="zmc-card" data-annotation-key="CURRENT2"><div class="zmc-card-preview"></div><footer></footer></article></div>');
-  for(const name of ['web','core','capture','references','deepseek','settings','attachments','clipboard','panel','margin-references','host'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});
+  for(const name of ['web','core','capture','references','deepseek','settings','attachments','clipboard','panel','margin-references','reference-preview','host']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(fs.existsSync(file))await page.addScriptTag({path:file});}
   await page.evaluate(css=>{
     const source={libraryID:1,attachmentKey:'ABCD1234',annotationKey:'FORM0630',id:'source1',type:'公式',number:'6.30',pageIndex:60,pageLabel:'60',rects:[[10,20,90,50]],fingerprint:'v1'};
     const state=ZMACore.emptyState();state.sources=[source];const link=ZMACore.sourceLink(source);state.references=[{annotationKey:'CURRENT2',sourceID:source.id,link}];
@@ -19,6 +19,47 @@ async function setup(){
   },fs.readFileSync(path.resolve(__dirname,'../src/assistant.css'),'utf8'));
   return {browser,page};
 }
+
+test('hovering a stored source link opens a bounded image preview without jumping and allows moving into it',async()=>{
+ const {browser,page}=await setup();try{
+  await page.evaluate(()=>{globalThis.jumps=0;fixture.host.jump=()=>jumps++;fixture.host.attachCard(fixture.session,fixture.runtime);});
+  const link=page.locator('.zmc-card-preview a');await link.hover();await page.locator('.zma-reference-popover img').waitFor({timeout:1500});await page.waitForFunction(()=>document.querySelector('.zma-reference-popover img')?.naturalWidth===600);
+  assert.equal(await page.evaluate(()=>jumps),0);assert.equal(await page.locator('.zma-panel').count(),0);
+  const r=await page.locator('.zma-reference-popover').boundingBox();assert.ok(r.x>=0&&r.y>=0&&r.x+r.width<=1440&&r.y+r.height<=960);await page.locator('.zma-reference-popover img').hover();await page.waitForTimeout(250);assert.ok(await page.locator('.zma-reference-popover').isVisible());
+  const evidence=path.resolve(__dirname,'../evidence/ui-0132');fs.mkdirSync(evidence,{recursive:true});for(const scheme of ['light','dark']){await page.emulateMedia({colorScheme:scheme});await page.evaluate(v=>document.documentElement.style.colorScheme=v,scheme);await page.screenshot({path:path.join(evidence,'reference-hover-'+scheme+'.png')});}
+  await page.mouse.move(20,50);await page.waitForFunction(()=>!document.querySelector('.zma-reference-popover')||document.querySelector('.zma-reference-popover').hidden);await link.focus();await page.locator('.zma-reference-popover img').waitFor();await page.keyboard.press('Escape');assert.equal(await page.locator('.zma-reference-popover:visible').count(),0);
+ }finally{await browser.close();}
+});
+
+test('native annotation popup displays a safe reference link while leaving its original editable comment untouched',async()=>{
+ const {browser,page}=await setup();try{
+  await page.evaluate(()=>{fixture.host.bindReferences(fixture.reader,document);globalThis.commentRaw='已有批注\n'+ZMACore.storedLink(fixture.source);const popup=document.createElement('div');popup.className='annotation-popup';popup.style.cssText='position:absolute;left:200px;top:220px;width:300px;background:Canvas';popup.innerHTML='<div class="preview"><div class="comment"><div class="editor"><div class="content" id="CURRENT2" contenteditable="true" tabindex="0"></div></div></div></div>';popup.querySelector('.content').textContent=commentRaw;document.body.append(popup);});
+  const read=page.locator('.zma-native-reference');await read.locator('a').waitFor({timeout:1500});assert.equal(await page.locator('.annotation-popup .content').textContent(),await page.evaluate(()=>commentRaw));assert.equal(await page.locator('.annotation-popup .editor').isVisible(),false);assert.equal(await read.locator('script,img,[onerror]').count(),0);
+  await read.locator('a').hover();await page.locator('.zma-reference-popover img').waitFor();await page.mouse.move(20,50);await read.getByRole('button',{name:'编辑批注',exact:true}).click();assert.ok(await page.locator('.annotation-popup .editor').isVisible());await page.locator('.annotation-popup .content').press('Control+End');await page.keyboard.type('追加内容');await page.mouse.click(20,50);await read.locator('a').waitFor({timeout:1500});assert.match(await page.locator('.annotation-popup .content').textContent(),/追加内容/);
+  await page.evaluate(async()=>{document.querySelector('.annotation-popup').remove();await Promise.resolve();await fixture.host.closeReader(fixture.reader);});assert.equal(await page.locator('.zma-reference-popover,.zma-native-reference').count(),0);
+ }finally{await browser.close();}
+});
+
+test('a stale hovered source reports the validation error and late capture cannot reopen a dismissed preview',async()=>{
+ const {browser,page}=await setup();try{
+  await page.evaluate(()=>{fixture.host.bindReferences(fixture.reader,document);fixture.host.capture=async()=>{throw new Error('来源已经改变，请重新关联');};});await page.locator('.zmc-card-preview a').hover();await page.getByText('来源已经改变，请重新关联',{exact:false}).waitFor({timeout:1500});assert.equal(await page.locator('.zma-reference-popover img').count(),0);
+  await page.mouse.move(20,50);await page.waitForTimeout(250);await page.evaluate(()=>{fixture.host.capture=()=>new Promise(resolve=>globalThis.finishHoverCapture=resolve);});await page.locator('.zmc-card-preview a').hover();await page.waitForFunction(()=>!!globalThis.finishHoverCapture);await page.mouse.move(20,50);await page.waitForTimeout(250);await page.evaluate(()=>finishHoverCapture({dataURL:'data:image/png;base64,YQ=='}));await page.waitForTimeout(60);assert.equal(await page.locator('.zma-reference-popover:visible').count(),0);
+ }finally{await browser.close();}
+});
+
+test('hovered text references render their LaTeX and never fetch an unrelated PDF link',async()=>{
+ const {browser,page}=await setup();try{
+  await page.evaluate(()=>{globalThis._globalThis=globalThis;globalThis.Zotero={};});for(const file of ['src/math.js','build/content/scripts/margincomments.js'])await page.addScriptTag({path:path.resolve(__dirname,'../'+file)});
+  await page.evaluate(()=>{fixture.host.addon.bridge.renderMathPreview=Zotero.MarginComments.bridge.renderMathPreview;fixture.source.kind='text';fixture.source.text='前文定义 \\(e=y-Hu\\)';globalThis.hoverCaptures=0;fixture.host.capture=async()=>{hoverCaptures++;return {text:fixture.source.text};};fixture.host.bindReferences(fixture.reader,document);});await page.locator('.zmc-card-preview a').hover();await page.locator('.zma-reference-popover math').waitFor({timeout:1500});assert.equal(await page.locator('.zma-reference-popover img').count(),0);
+  await page.mouse.move(20,50);await page.waitForTimeout(250);await page.evaluate(()=>{document.querySelector('.zmc-card-preview a').setAttribute('href','zotero://open-pdf/library/items/OTHERPDF?page=1&annotation=FORM0630');});await page.locator('.zmc-card-preview a').hover();await page.getByText('该链接不属于当前 PDF',{exact:false}).waitFor({timeout:1500});assert.equal(await page.evaluate(()=>hoverCaptures),1);
+ }finally{await browser.close();}
+});
+
+test('binding the nested PDF document also decorates native annotation popups in the outer reader document',async()=>{
+ const {browser,page}=await setup();try{
+  await page.evaluate(async()=>{const frame=document.createElement('iframe');frame.srcdoc='<main>PDF page</main>';await new Promise(resolve=>{frame.onload=resolve;document.body.append(frame);});fixture.host.bindReferences(fixture.reader,frame.contentDocument);const popup=document.createElement('div');popup.className='annotation-popup';popup.style.cssText='position:fixed;left:180px;top:160px;z-index:200;background:Canvas';popup.innerHTML='<div class="comment"><div class="editor"><div class="content" id="CURRENT2" contenteditable="true"></div></div></div>';popup.querySelector('.content').textContent=ZMACore.storedLink(fixture.source);document.body.append(popup);});await page.locator('.annotation-popup .zma-native-reference a').waitFor({timeout:1500});await page.locator('.annotation-popup .zma-native-reference a').hover();await page.locator('.zma-reference-popover img').waitFor({timeout:1500});
+ }finally{await browser.close();}
+});
 
 test('conversation layout fits narrow and wide docks with readable math at every supported font size',async()=>{
  const {browser,page}=await setup();try{

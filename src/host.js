@@ -196,9 +196,11 @@
     bindReferences(reader,doc){
       if(this.cleanups.has(doc)||this.closedReaders.has(reader))return;
       this.installStyles(doc);
+      const preview=root.ZMAReferencePreview?new root.ZMAReferencePreview.ReferencePreview(this,reader,doc):null;
       const listener=event=>{
         const link=event.target?.closest?.('a[href]');if(!link||!C.parseSourceLink(link.getAttribute('href')))return;
         event.preventDefault();event.stopPropagation();
+        if(preview&&!link.closest('.zmc-card')){void preview.open(link);return;}
         this.guard(async()=>{
           const state=await this.load(reader);const href=link.getAttribute('href');const location=C.parseSourceLink(href);const scope=this.scope(reader);
           if(location.attachmentKey!==scope.attachmentKey||location.groupID!==this.groupID(scope))throw new Error('该链接不属于当前 PDF');
@@ -209,7 +211,8 @@
           await this.previewReference(reader,source,{annotationKey:targetKey});
         });
       };const unload=()=>{void this.closeReader(reader);},owner=reader._iframeWindow||doc.defaultView;doc.addEventListener('click',listener,true);owner?.addEventListener('unload',unload,{once:true});
-      this.cleanups.set(doc,{reader,dispose:()=>{doc.removeEventListener('click',listener,true);owner?.removeEventListener('unload',unload);doc.querySelectorAll?.('#zma-styles,#zma-math-styles').forEach(n=>n.remove());}});
+      this.cleanups.set(doc,{reader,preview,dispose:()=>{preview?.destroy();doc.removeEventListener('click',listener,true);owner?.removeEventListener('unload',unload);doc.querySelectorAll?.('#zma-styles,#zma-math-styles').forEach(n=>n.remove());}});
+      const outer=reader._iframeWindow?.document;if(outer&&outer!==doc)this.bindReferences(reader,outer);
     }
     attachCard(session,runtime){
       if(runtime.referenceRoot)return;
@@ -230,7 +233,7 @@
     }
     syncReferences(session,runtime){void root.ZMAMarginReferences.sync(this,session,runtime).catch(e=>{if(runtime.referenceRoot)runtime.referenceRoot.textContent=e.message;});}
     decorateSession(session){for(const runtime of session.cardRuntimes())if(!runtime.referenceRoot)this.attachCard(session,runtime);}
-    refreshReferenceCards(reader,force=false){for(const session of this.addon.controller.sessions?.values()||[]){if(reader&&Number(session.reader.itemID)!==Number(reader.itemID))continue;for(const runtime of session.cardRuntimes())if(runtime.referenceRoot)void root.ZMAMarginReferences.sync(this,session,runtime,force).catch(()=>{});}}
+    refreshReferenceCards(reader,force=false){for(const entry of this.cleanups.values())if(!reader||Number(entry.reader.itemID)===Number(reader.itemID))entry.preview?.hide();for(const session of this.addon.controller.sessions?.values()||[]){if(reader&&Number(session.reader.itemID)!==Number(reader.itemID))continue;for(const runtime of session.cardRuntimes())if(runtime.referenceRoot)void root.ZMAMarginReferences.sync(this,session,runtime,force).catch(()=>{});}}
     async previewReference(reader,source,target){
       const session=await this.addon.controller.ensureSession(reader);if(!session)throw new Error('阅读器尚未就绪');
       const runtime=session.cardRuntimes().find(r=>r.annotation.key===(target?.annotationKey||session.activeKey));

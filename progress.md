@@ -135,3 +135,17 @@ XPI SHA-256：9467217c64ec00195b8636563e5f2065f6d250cd3dc24acc0bb65ab3f39b8381�
 
 最终XPI SHA-256：1e8125a2f980280c566f5e5ff076c10ed564682de78664be7eba6f5d6968e86e，1123503字节。原始0.9.5 XPI与baseline保留。
 
+2026-10-23 0.13.2
+
+## 前文引用悬停预览与原生批注链接
+
+用户图1显示原生批注内a标签源码，希望像图2在链接上悬停显示前文公式/截图。读取本机app/omni.ja的reader.js Content/Editor，确认原生编辑器只解析有限富文本，不支持a，而此前插件只修复自己的页边卡片。新增ReferencePreview独立阅读层和悬停管理，不修改原编辑对象/数据；支持进入编辑后恢复阅读、动态原生弹窗重建、公式/文字/区域截图、移入浮层继续读、离开收起、Esc、跳原文和加入提问。保留页边内嵌引用与点击展开。
+
+Host同时绑定PDF子窗口和原生React弹窗所在的外层reader窗口，限定当前PDF合法链接并通过现有来源关系和capture校验原区域；失效来源明确报错，不替换内容，异步revision避免晚到截图重开。关闭阅读器/插件清理所有监听、观察器、定时器、阅读层及浮层，恢复原编辑器。相关MutationObserver只处理批注树变化，原值未变不重建。索引和HTML风格原批注格式不变，无用户数据迁移。
+
+5项新增浏览器回归覆盖上述交互、编辑/销毁、过期来源、异步取消、公式和无关PDF拒绝、嵌套窗口；新增缺失行为先失败后通过。最终npm test 183/183通过，114.1秒，evidence/ui-0132/tests-final.txt，完整checkJs通过。浅/深色悬停截图已目视检查。初始编辑QA错误把字符插进URI，改为Control+End；外层窗口QA补正弹窗位置，未对应生产缺陷。
+
+v1隔离原生启动发现内容窗口不能读取特权脚本的observer options，三个选项被视为false。使用现有host.cloneInto转换选项字典后，最终v2包在隔离Zotero10.0.6首启/冷重启各17/17通过，evidence/zotero-0132-reference-v2/report-1.json、report-2.json。真实AnnotationPopup、持久链接、原编辑正文不变、实际PDF区域截图、合成pointer悬停不跳页、边界、移入保留、Esc、重开、索引冷恢复均验证。原16项继续通过，真实用户文库/配置/PDF保留，未调用外部API。
+
+最终XPI SHA-256：0767baa50d571de3c6a721977ac030c49735da529aa81dc1da3dab1dbf0c5b85，1127049字节。原始0.9.5 XPI与baseline保留。
+
