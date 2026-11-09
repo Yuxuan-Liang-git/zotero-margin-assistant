@@ -15,7 +15,7 @@ parser.add_argument('--native-run',default='zotero-0106-native-final')
 parser.add_argument('--restart-run',default='zotero-0105-final')
 parser.add_argument('--conversation-run',default='zotero-0106-conversation-qa')
 parser.add_argument('--upgrade-run',default='zotero-0106-upgrade')
-parser.add_argument('--clipboard-run',default='zotero-0135-transfer-v4')
+parser.add_argument('--clipboard-run',default='zotero-0136-perf-final')
 args=parser.parse_args()
 version=json.loads((PROJECT/'package.json').read_text(encoding='utf-8'))['version']
 package=PROJECT/f'dist/margin-comments-deepseek-{version}.xpi'
@@ -80,7 +80,7 @@ upgrade_smoke='passed: AddonManager upgraded active 0.10.5 to active 0.10.6 besi
 clipboard_dir=PROJECT/'evidence'/args.clipboard_run
 clipboard_reports=[json.loads((clipboard_dir/f'report-{n}.json').read_text(encoding='utf-8')) if (clipboard_dir/f'report-{n}.json').exists() else None for n in [1,2]]
 clipboard_installed=clipboard_dir/'profile/extensions/margin-comments@local.zotero.xpi'
-clipboard_ok=clipboard_installed.exists() and hashlib.sha256(clipboard_installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r.get('launch')==n and r.get('packageSha256')==package_hash and len(r.get('steps',[])) in [4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19] and all(s['ok'] for s in r['steps']) for n,r in enumerate(clipboard_reports,1)) and len({r['process'] for r in clipboard_reports if r})==2
+clipboard_ok=clipboard_installed.exists() and hashlib.sha256(clipboard_installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r.get('launch')==n and r.get('packageSha256')==package_hash and len(r.get('steps',[])) in [4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20] and all(s['ok'] for s in r['steps']) for n,r in enumerate(clipboard_reports,1)) and len({r['process'] for r in clipboard_reports if r})==2
 editing_keys_ok=clipboard_ok and all(any(s.get('name')=='sidebar-clipboard-and-latex' and s.get('result',{}).get('editingKeysNotCancelled') and s['result'].get('editingFocusRetained') and s['result'].get('editingEventCombinations')==24 for s in r['steps']) for r in clipboard_reports)
 probe_path=PROJECT/'evidence/chatgpt-plan-probe/report.json'
 probe=json.loads(probe_path.read_text(encoding='utf-8')) if probe_path.exists() else {}
@@ -118,5 +118,8 @@ text_math_ok=clipboard_ok and all(any(s.get('name')=='native-added-text-latex' a
 report['native_added_text_latex']='passed: actual native textAnnotation textarea retained; independent on-page MathML layer, real reader input handler saves LaTeX source, focus restores editable source, blur renders formulas, font/rotation/position follow native geometry, no duplicate margin card and cold restoration; input event synthetic, no external API calls. Native PDF export unchanged' if text_math_ok else 'not passed or not run'
 transfer_ok=clipboard_ok and all(any(s.get('name')=='conversation-import-export' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['filePreview','importedMath','pastePreview','cancelPreserves','exportsJSONAndMarkdown','liveSidecarProtected','continuationIncludesHistory','currentPDFIncluded','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports) and any(s.get('name')=='conversation-import-export' and s.get('result',{}).get('coldRestored') for s in (clipboard_reports[1] or {}).get('steps',[]))
 report['native_conversation_transfer']='passed: isolated Zotero first launch and cold restart; actual local JSON read and preview, pasted roles preview/cancel, Markdown and portable JSON writes, exact LaTeX, live-sidecar overwrite guard, imported chat restoration and next Responses request includes prior messages plus current PDF. File paths injected instead of operating OS picker; inference mocked, no external API calls' if transfer_ok else 'not passed or not run'
+performance_steps=[next((s for s in (r or {}).get('steps',[]) if s.get('name')=='native-performance-idle-stream-edit-scroll'),None) for r in clipboard_reports]
+performance_ok=clipboard_ok and all(s and s['ok'] and s['result']['stream']['toolbarChecks']==0 and s['result']['draft']['refreshCalls']==0 for s in performance_steps)
+report['native_performance']='passed: first launch and cold restart; 60 streamed DOM batches cause zero toolbar recovery scans; four unchanged-reference draft saves cause zero reference refreshes. PDF scroll, native editing, streaming, clipboard and chat transfer also exercised. Isolated fixture does not reproduce every user-specific freeze' if performance_ok else 'not passed or not run'
 (PROJECT/'dist/verification-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(report))

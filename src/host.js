@@ -10,11 +10,12 @@
   const Images=root.ZMAImages||(typeof require!=='undefined'?require('./images.js'):null);
   const Attachments=root.ZMAAttachments||(typeof require!=='undefined'?require('./attachments.js'):null);
   const ID='margin-comments-assistant@local.zotero';
+  const referenceStateSignature=state=>JSON.stringify({sources:state?.sources||[],references:state?.references||[],images:state?.images||[]});
   class Host{
     /** @type {string|undefined} */
     styleText;
     constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null,chatgptListen=null,chooseChatFiles=null,readClipboardAssets=null,chooseConversationFile=null}){
-      this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
+      this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.referenceSignatures=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
       this.credentialError='';
       this.credentials=Z.Prefs&&Z.OSKeyStore&&Credentials?new Credentials.CredentialStore({
         get:name=>Z.Prefs.get(name),set:(name,value)=>Z.Prefs.set(name,value),clear:name=>Z.Prefs.clear(name),
@@ -180,8 +181,9 @@
       context.imageWarning=[...warnings].join('；');
       return context;
     }
-    load(reader){const scope=this.scope(reader),key=C.scopeKey(scope);if(!this.states.has(key))this.states.set(key,(async()=>{const state=await this.store.load(scope);try{await this.ensureHistoryNote(reader);}catch(e){this.Z.logError?.(e);}return state;})());return this.states.get(key);}
-    async save(reader,state){const key=C.scopeKey(this.scope(reader));while(this.transferTasks?.has(key))await this.transferTasks.get(key).catch(()=>{});await this.store.save(this.scope(reader),state);this.refreshReferenceCards(reader);}
+    referenceStateSignature(state){return referenceStateSignature(state);}
+    load(reader){this.referenceSignatures??=new Map();const scope=this.scope(reader),key=C.scopeKey(scope);if(!this.states.has(key))this.states.set(key,(async()=>{const state=await this.store.load(scope);this.referenceSignatures.set(key,referenceStateSignature(state));try{await this.ensureHistoryNote(reader);}catch(e){this.Z.logError?.(e);}return state;})());return this.states.get(key);}
+    async save(reader,state){this.referenceSignatures??=new Map();const scope=this.scope(reader),key=C.scopeKey(scope);while(this.transferTasks?.has(key))await this.transferTasks.get(key).catch(()=>{});const previous=this.referenceSignatures.get(key),signature=referenceStateSignature(state);await this.store.save(scope,state);this.referenceSignatures.set(key,signature);if(previous===undefined||previous!==signature)this.refreshReferenceCards(reader);}
     importConversation(reader,prepared){
       const scope=this.scope(reader),key=C.scopeKey(scope);this.transferTasks??=new Map();
       const task=(this.transferTasks.get(key)||Promise.resolve()).catch(()=>{}).then(async()=>{
@@ -354,8 +356,37 @@
       const container=doc.querySelector('.toolbar .end .custom-sections');if(container)this.onToolbar({reader,doc,append:b=>container.append(b)});
     }
     watchToolbar(reader,doc){
-      if(this.toolbarObservers.has(doc)||!doc.body||!doc.defaultView?.MutationObserver)return;
-      const observer=new doc.defaultView.MutationObserver(()=>this.ensureToolbar(reader,doc));observer.observe(doc.body,{childList:true,subtree:true});this.toolbarObservers.set(doc,{reader,observer});
+      if(!doc.body||!doc.defaultView?.MutationObserver)return;
+      const existing=this.toolbarObservers.get(doc),toolbar=doc.querySelector('.toolbar');
+      if(toolbar&&existing?.toolbar===toolbar)return;
+      if(!toolbar&&existing?.discoveryObserver)return;
+      if(existing){existing.observer?.disconnect();existing.parentObserver?.disconnect();existing.discoveryObserver?.disconnect();this.toolbarObservers.delete(doc);}
+      let queued=false;
+      const relevant=(node,selector)=>!!node&&(node.matches?.(selector)||node.querySelector?.(selector));
+      const recover=()=>{if(queued||this.closedReaders.has(reader))return;queued=true;Promise.resolve().then(()=>{queued=false;if(this.running&&!this.closedReaders.has(reader)){this.ensureToolbar(reader,doc);this.watchToolbar(reader,doc);}});};
+      const observerOptions=options=>this.cloneInto?this.cloneInto(options,doc.defaultView):options;
+      if(!toolbar){
+        const discoveryObserver=new doc.defaultView.MutationObserver(records=>{
+          if(records.some(record=>record.target?.matches?.('.toolbar')||record.target?.closest?.('.toolbar')||[...record.addedNodes,...record.removedNodes].some(node=>relevant(node,'.toolbar'))))recover();
+        });discoveryObserver.observe(doc.body,observerOptions({childList:true,subtree:true,attributes:true,attributeFilter:['class']}));
+        this.toolbarObservers.set(doc,{reader,toolbar:null,discoveryObserver});return;
+      }
+      const observer=new doc.defaultView.MutationObserver(records=>{
+        if(records.some(record=>record.target?.closest?.('.custom-sections')||record.target?.matches?.('.custom-sections')||[...record.addedNodes,...record.removedNodes].some(node=>relevant(node,'.zma-toolbar,.custom-sections'))))recover();
+      });observer.observe(toolbar,observerOptions({childList:true,subtree:true}));
+      const parent=toolbar.parentElement;let parentObserver=null;
+      if(parent){parentObserver=new doc.defaultView.MutationObserver(records=>{if(doc.querySelector('.toolbar')!==toolbar&&records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>relevant(node,'.toolbar'))))recover();});parentObserver.observe(parent,observerOptions({childList:true}));}
+      this.toolbarObservers.set(doc,{reader,toolbar,observer,parentObserver});
+    }
+    onItemChange(event,ids){
+      const readers=this.Z.Reader._readers||[];if(event==='delete'){this.refreshReferenceCards(undefined,true);return;}
+      const affected=new Set(),values=Array.isArray(ids)?ids:[ids];
+      for(const value of values){const id=Number(value);if(!Number.isSafeInteger(id))continue;
+        const direct=readers.find(reader=>Number(reader.itemID)===id);if(direct){affected.add(direct);continue;}
+        const item=this.Z.Items.get(id),parent=Number(item?.parentID||0);if(!parent)continue;
+        const reader=readers.find(candidate=>Number(candidate.itemID)===parent);if(reader)affected.add(reader);
+      }
+      for(const reader of affected)this.refreshReferenceCards(reader,true);
     }
     restoreReaders(){
       if(!this.running)return;for(const reader of this.Z.Reader._readers||[])if(this.isPDF(reader)&&!this.closedReaders.has(reader))this.guard(async()=>{
@@ -380,18 +411,18 @@
       this.Z.Reader.registerEventListener('renderToolbar',this.onToolbar,ID);this.Z.Reader.registerEventListener('createAnnotationContextMenu',this.onMenu,ID);
       this.Z.Reader.registerEventListener('createViewContextMenu',this.onViewMenu,ID);
       for(const doc of this.addon.controller.preferenceDocuments||[])this.bindPreferencePaneWindow(doc.defaultView);
-      this.observer=this.Z.Notifier.registerObserver({notify:(_event,type)=>{this.prune();if(type==='item')this.refreshReferenceCards(undefined,true);if(type==='tab')this.restoreReaders();}},['tab','item'],ID);
+      this.observer=this.Z.Notifier.registerObserver({notify:(event,type,ids)=>{this.prune();if(type==='item')this.onItemChange(event,ids);if(type==='tab')this.restoreReaders();}},['tab','item'],ID);
       this.restoreReaders();
     }
-    async closeReader(reader){this.closedReaders.add(reader);for(const [doc,entry]of this.toolbarObservers)if(entry.reader===reader){entry.observer.disconnect();this.toolbarObservers.delete(doc);}const panel=this.panels.get(reader);this.panels.delete(reader);for(const [doc,entry]of this.cleanups)if(entry.reader===reader){entry.dispose();this.cleanups.delete(doc);}if(panel)await panel.destroy();}
-    prune(){const live=new Set(this.Z.Reader._readers||[]);const readers=new Set([...this.panels.keys(),...[...this.cleanups.values()].map(x=>x.reader)]);for(const reader of readers)if(!live.has(reader))void this.closeReader(reader);}
+    async closeReader(reader){this.closedReaders.add(reader);for(const [doc,entry]of this.toolbarObservers)if(entry.reader===reader){entry.observer?.disconnect();entry.parentObserver?.disconnect();entry.discoveryObserver?.disconnect();this.toolbarObservers.delete(doc);}const panel=this.panels.get(reader);this.panels.delete(reader);for(const [doc,entry]of this.cleanups)if(entry.reader===reader){entry.dispose();this.cleanups.delete(doc);}if(panel)await panel.destroy();}
+    prune(){const live=new Set(this.Z.Reader._readers||[]);const readers=new Set([...this.panels.keys(),...[...this.cleanups.values()].map(x=>x.reader),...[...this.toolbarObservers.values()].map(x=>x.reader)]);for(const reader of readers)if(!live.has(reader))void this.closeReader(reader);}
     async stop(){
       this.running=false;this.key='';for(const panel of this.panels.values())panel.controller?.abort();await this.auth?.stop();this.providerListeners.clear();this.appearanceListeners.clear();this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
       for(const win of [...this.historyPanes.keys()])this.unbindHistoryPane(win);
-      for(const {observer}of this.toolbarObservers.values())observer.disconnect();this.toolbarObservers.clear();
+      for(const {observer,parentObserver,discoveryObserver}of this.toolbarObservers.values()){observer?.disconnect();parentObserver?.disconnect();discoveryObserver?.disconnect();}this.toolbarObservers.clear();
       await Promise.allSettled(this.pending.values());await Promise.allSettled([...this.panels.values()].map(p=>p.destroy()));this.panels.clear();
       for(const entry of this.cleanups.values())entry.dispose();this.cleanups.clear();this.cache.clear();this.documents.clear();this.pdfFiles.clear();
-      this.states.clear();this.activeRequests.clear();
+      this.states.clear();this.referenceSignatures.clear();this.activeRequests.clear();
       for(const win of this.settingsWindows)win.close();this.settingsWindows.clear();
       for(const reader of this.Z.Reader._readers||[])reader._iframeWindow?.document.querySelectorAll('.zma-toolbar,#zma-styles,#zma-math-styles').forEach(n=>n.remove());
       await this.store.flush();

@@ -191,3 +191,11 @@ v1隔离原生启动发现内容窗口不能读取特权脚本的observer option
 
 产物dist/margin-comments-deepseek-0.13.5.xpi，SHA256 20de24f8059fe77d78998a4230a0fc448a58ab6ac8d7296d0adab8e784915278，1138456字节。配套源码ZIP和verification-report由scripts/verify.py生成。
 
+
+## 2026-10-26 — 0.13.6 performance investigation
+
+User requested all common freeze scenarios tested. GPT-6 Luna implementer and stress agent handled scoped code/tests; parent ran original-versus-final isolated Zotero probes and reviewed lifecycle boundaries. Source changes are limited to Host toolbar observers, reference metadata signatures and item invalidation scope. Baseline preserved; live Zotero library untouched.
+
+Initial full suite 211/212 exposed late toolbar mounting with an unresolved PDF session. Added a temporary filtered discovery observer, disconnected on transition to local observers; close/prune/stop clean all observers. Final full suite 213/213, 137.1 seconds, full checkJs passed. Independent review found no remaining actionable issues. Native first-launch and cold-run evidence and exact package hash are under evidence/zotero-0136-perf-final and dist/verification-report.json.
+
+Measured before: 60 stream DOM batches ->60 toolbar recovery scans; 4 draft saves ->4 reference refreshes. Final first native run: both0; source validation and full20 feature steps passed. Stress test covers200 imported messages,40 display equations, incremental stream, typing and LaTeX copy. No hard freeze reproduced, so claims are restricted to unnecessary-work reduction, not complete resolution of every user-specific stall. Details: docs/2026-10-26-performance-report.md.
