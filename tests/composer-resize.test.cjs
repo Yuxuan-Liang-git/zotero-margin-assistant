@@ -28,9 +28,32 @@ test('composer resize supports keyboard bounds, small windows, cancellation and 
     await handle.focus();const before=(await field.boundingBox()).height;await handle.press('ArrowUp');assert.ok((await field.boundingBox()).height>before);
     await handle.press('End');const enlarged=(await field.boundingBox()).height;assert.ok(enlarged>180);await page.setViewportSize({width:1024,height:480});
     await page.waitForTimeout(60);const g=await page.evaluate(()=>({field:panel.question.getBoundingClientRect().height,send:panel.sendButton.getBoundingClientRect().bottom,messages:panel.messages.getBoundingClientRect().height,max:Number(panel.composerHandle.getAttribute('aria-valuemax')),value:Number(panel.composerHandle.getAttribute('aria-valuenow'))}));assert.ok(g.field<enlarged);assert.ok(g.send<=480,JSON.stringify(g));assert.ok(g.messages>=65,JSON.stringify(g));assert.ok(g.value<=g.max);
-    await handle.press('Home');assert.ok((await field.boundingBox()).height<110);
+    await handle.press('Home');assert.equal(await field.isVisible(),false);
     await page.evaluate(()=>{panel.question.focus();panel.composerHandle.dispatchEvent(new PointerEvent('pointerdown',{pointerId:4,button:0,clientY:220,bubbles:true,cancelable:true}));panel.composerHandle.dispatchEvent(new PointerEvent('pointercancel',{pointerId:4,bubbles:true}));});
-    const cancelled=(await field.boundingBox()).height;await page.mouse.move(100,100);assert.equal((await field.boundingBox()).height,cancelled);
+    const cancelled=await field.evaluate(n=>n.getBoundingClientRect().height);await page.mouse.move(100,100);assert.equal(await field.evaluate(n=>n.getBoundingClientRect().height),cancelled);
     await page.evaluate(async()=>{await panel.destroy();window.dispatchEvent(new Event('resize'));});assert.equal(await page.locator('.zma-panel').count(),0);
+  }finally{await browser.close();}
+});
+
+test('composer can collapse completely without losing its draft and double-click restores its default height',async()=>{
+  const {browser,page}=await setup();try{
+    const field=page.locator('textarea[data-zma="question"]'),handle=page.getByRole('separator',{name:'调整输入框高度'}),initial=(await field.boundingBox()).height;
+    await drag(page,140);
+    const collapsed=await page.evaluate(()=>({height:panel.question.getBoundingClientRect().height,composer:panel.question.parentElement.getBoundingClientRect().height,draft:panel.conversation().draft,value:panel.question.value,caret:panel.question.selectionStart,min:panel.composerHandle.getAttribute('aria-valuemin')}));
+    assert.equal(collapsed.height,0,'dragging down must hide the input completely');assert.ok(collapsed.composer<=18,JSON.stringify(collapsed));assert.equal(collapsed.min,'0');assert.equal(collapsed.value,collapsed.draft);assert.equal(collapsed.caret,3);assert.ok(await handle.isVisible());assert.equal(await page.getByRole('button',{name:'发送',exact:true}).isVisible(),false);
+    await page.evaluate(()=>{panel.close();panel.showChat();});await page.setViewportSize({width:1024,height:600});await page.waitForTimeout(40);assert.equal(await field.isVisible(),false,'reopen and window resize must preserve collapse');
+    const evidence=path.join(project,'evidence/ui-0138');fs.mkdirSync(evidence,{recursive:true});await page.screenshot({path:path.join(evidence,'composer-collapsed.png')});
+    await handle.dblclick();assert.ok(await field.isVisible());assert.ok(Math.abs((await field.boundingBox()).height-initial)<2);assert.equal(await field.inputValue(),collapsed.value);assert.equal(await field.evaluate(n=>n.selectionStart),3);assert.ok(await page.getByRole('button',{name:'发送',exact:true}).isVisible());
+    await page.screenshot({path:path.join(evidence,'composer-restored.png')});
+  }finally{await browser.close();}
+});
+
+test('composer allows sub-default heights and default restore follows font size without sending a message',async()=>{
+  const {browser,page}=await setup();try{
+    const field=page.locator('textarea[data-zma="question"]'),handle=page.getByRole('separator',{name:'调整输入框高度'});
+    await drag(page,48);const short=(await field.boundingBox()).height;assert.ok(short>0&&short<40,'input must no longer enforce a 72px minimum');
+    await handle.focus();await handle.press('Home');assert.equal(await field.isVisible(),false);await handle.press('Enter');assert.ok((await field.boundingBox()).height>=70);
+    await handle.focus();await handle.press('Home');await page.evaluate(()=>{host.appearanceState=()=>({fontSize:24});panel.applyAppearance();});assert.equal(await field.isVisible(),false);
+    await handle.dblclick();assert.ok((await field.boundingBox()).height>=86);assert.equal(await page.evaluate(()=>panel.conversation().history.length),0);assert.match(await field.inputValue(),/原始草稿/);
   }finally{await browser.close();}
 });

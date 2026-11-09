@@ -205,3 +205,9 @@ Measured before: 60 stream DOM batches ->60 toolbar recovery scans; 4 draft save
 User clarified that the bottom message input cannot be resized. Added an upward-growing top-edge handle with pointer capture, keyboard bounds and lifecycle cleanup. Replaced fixed180px/native corner-grip behavior with viewport/occupied-space limits; draft/caret and same-panel close/reopen height retained. No additional persistence or polling.
 
 Two new browser regressions failed before the fix and passed after; full npm test215/215,147.3s and complete checkJs passed. Screenshot inspected. Isolated Gecko probe includes all20 existing cases plus composer resize; the initial probe incorrectly required >180px in a constrained viewport, corrected to assert available bounds while browser test separately proves >180px. Final native evidence under evidence/zotero-0137-composer-v2. Release verification in dist/verification-report.json. Details: docs/2026-10-27-composer-resize.md.
+
+## 2026-10-27 — 0.13.8 zero-height composer
+
+User explicitly requested removing minimum input height, full hiding and double-click default restoration. Implemented min0 and collapsed CSS state leaving only the horizontal handle; double-click/Enter restore font-aware default. Reopen/window resize preserve0, source draft/caret retained, hidden controls reappear on expansion. No polling or storage format changes.
+
+Two new browser tests failed before the change; all4 composer tests pass after. Full suite217/217 (147.1s), complete checkJs passes, screenshot inspected. Native composer test verifies full collapse and double-click with synthetic native events. First native run exposed an existing text-math focus race (textarea stilldisabled); QA now waits for enabled state. Fresh isolated first run21/21 passes; cold/report/packaging records in evidence/zotero-0138-composer-v2 and dist/verification-report.json. Details docs/2026-10-27-composer-collapse.md.
