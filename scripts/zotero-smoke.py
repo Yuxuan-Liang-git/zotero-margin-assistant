@@ -21,7 +21,8 @@ data.mkdir(parents=True,exist_ok=True)
 version=json.loads((project/'package.json').read_text())['version']
 shutil.copy2(project/f'dist/margin-comments-deepseek-{version}.xpi',profile/'extensions/margin-comments@local.zotero.xpi')
 package_hash=hashlib.sha256((profile/'extensions/margin-comments@local.zotero.xpi').read_bytes()).hexdigest()
-prefs={'extensions.zotero.useDataDir':True,'extensions.zotero.dataDir':str(data),'extensions.zotero.firstRun':False,'extensions.zotero.sync.autoSync':False,'extensions.zotero.automaticScraperUpdates':False,'extensions.autoDisableScopes':0,'extensions.enabledScopes':15,'extensions.update.enabled':False,'app.update.auto':False,'browser.aboutwelcome.enabled':False,'datareporting.policy.dataSubmissionEnabled':False}
+prefs={'extensions.zotero.useDataDir':True,'extensions.zotero.dataDir':str(data),'extensions.zotero.firstRun':False,'extensions.zotero.firstRun2':False,'extensions.zotero.integration.autoInstall':False,'extensions.zotero.sync.autoSync':False,'extensions.zotero.automaticScraperUpdates':False,'extensions.autoDisableScopes':0,'extensions.enabledScopes':15,'extensions.update.enabled':False,'app.update.auto':False,'browser.aboutwelcome.enabled':False,'datareporting.policy.dataSubmissionEnabled':False}
+prefs.update({'extensions.zoteroWinWordIntegration.skipInstallation':True,'extensions.zoteroOpenOfficeIntegration.skipInstallation':True})
 (profile/'user.js').write_text('\n'.join('user_pref('+json.dumps(k)+', '+json.dumps(v)+');' for k,v in prefs.items()),encoding='utf-8')
 bootstrap=r'''
 function install() {}
@@ -36,6 +37,7 @@ async function startup() {
   setTimeout(async()=>{
     try{
       await Zotero.initializationPromise;await Zotero.uiReadyPromise;
+      await Zotero.Libraries.get(Zotero.Libraries.userLibraryID).waitForDataLoad('item');
       if(Zotero.DataDirectory.dir!==__DATA__)throw new Error('Isolation guard: wrong Zotero data directory');
       let addon;for(let n=0;n<200;n++){addon=Zotero.MarginComments;if(addon?.assistant?.running)break;await new Promise(r=>setTimeout(r,100));}
       if(!addon?.assistant)throw new Error('Assistant bootstrap did not initialize');

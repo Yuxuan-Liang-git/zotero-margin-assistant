@@ -65,3 +65,14 @@ test('explicit whole-page material retains its identity and native page-only lin
 test('highlight passage survives index and dialogue storage instead of becoming an image-only source',()=>{
   const state=C.emptyState(),textSource={...source,kind:'text',text:'定义 x 为系统状态',type:'段落',number:'定义1'};new C.ReferenceIndex(state.sources).add(textSource);state.history=[{role:'user',content:'解释定义',materials:[textSource]}];const loaded=C.cleanState(state);assert.equal(loaded.sources[0].kind,'text');assert.equal(loaded.sources[0].text,'定义 x 为系统状态');assert.equal(loaded.history[0].materials[0].text,'定义 x 为系统状态');
 });
+
+test('PDF image records survive save/reload and older states remain compatible',()=>{
+  const old={version:1,sources:[],references:[],history:[],draft:'旧草稿'};
+  assert.deepEqual(C.cleanState(old).images,[]);
+  const state=C.emptyState();state.imageNoteKey='NOTEPDF1';
+  state.images=[{id:'a'.repeat(32),annotationKey:'FORM0630',fileName:'margin-comment-'+ 'a'.repeat(32)+'.png',mime:'image/png',noteKey:'NOTEPDF1',noteImageKey:'IMAGE234',absolutePath:'C:/private',apiKey:'SECRET'}];
+  const restored=C.cleanState(JSON.parse(JSON.stringify(state)));
+  assert.equal(restored.imageNoteKey,'NOTEPDF1');assert.equal(restored.images.length,1);
+  assert.equal(restored.images[0].noteImageKey,'IMAGE234');assert.equal(restored.images[0].absolutePath,undefined);assert.equal(restored.images[0].apiKey,undefined);
+  assert.throws(()=>C.cleanState({...state,images:[{...state.images[0],fileName:'../secret.png'}]}),/图片/);
+});

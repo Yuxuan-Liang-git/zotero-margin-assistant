@@ -3,17 +3,20 @@
   const C=root.ZMACore||(typeof require!=='undefined'?require('./core.js'):null);
   const D=root.ZMADeepSeek||(typeof require!=='undefined'?require('./deepseek.js'):null);
   const R=root.ZMACapture||(typeof require!=='undefined'?require('./capture.js'):null);
+  const Doc=root.ZMADocument||(typeof require!=='undefined'?require('./document.js'):null);
+  const Images=root.ZMAImages||(typeof require!=='undefined'?require('./images.js'):null);
   const ID='margin-comments-assistant@local.zotero';
   class Host{
     /** @type {string|undefined} */
     styleText;
-    constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value}){
+    constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null}){
       this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
       this.directory=P.join(Z.DataDirectory.dir,'margin-comments-assistant');
-      this.unwrap=unwrap;
+      this.documents=new Map();this.toolbarObservers=new Map();this.unwrap=unwrap;
       this.cloneInto=cloneInto;
+      this.chooseImage=chooseImage;this.imageManager=Images?new Images.ImageManager(this):null;
       this.store=new C.LocalStore({exists:p=>IO.exists(P.join(this.directory,p)),read:p=>IO.readUTF8(P.join(this.directory,p)),writeAtomic:async(p,text)=>{await IO.makeDirectory(this.directory,{ignoreExisting:true});await IO.writeUTF8(P.join(this.directory,p),text,{tmpPath:P.join(this.directory,p+'.tmp')});}});
-      this.client=new D.DeepSeekClient({fetch:(...args)=>this.win.fetch(...args),getKey:()=>this.key,getModel:()=>this.model,TextDecoder:win.TextDecoder});
+      this.client=new D.DeepSeekClient({fetch:(...args)=>this.runtimeWindow().fetch(...args),getKey:()=>this.key,getModel:()=>this.model,TextDecoder:win?.TextDecoder});
     }
     scope(reader){const a=this.Z.Items.get(Number(reader.itemID));if(!a)throw new Error('PDF 附件不存在');return {libraryID:a.libraryID,attachmentKey:a.key};}
     groupID(source){const lib=this.Z.Libraries.get(source.libraryID);return lib?.libraryType==='group'?Number(lib.groupID||this.Z.Groups?.getGroupIDFromLibraryID?.(source.libraryID)):undefined;}
@@ -50,12 +53,28 @@
       else{const pdf=adapter.pdfWindow?.PDFViewerApplication?.pdfDocument;if(!pdf)throw new Error('PDF 页面尚未加载');result=await R.captureRegion(pdf,source,adapter.document(),{unwrap:this.unwrap});}
       if(this.cache.size>=16)this.cache.delete(this.cache.keys().next().value);this.cache.set(key,result);return result;
     }
+    /** @param {any} reader @param {string} question @param {{budget?:number,signal?:AbortSignal,onProgress?:(n:number,total:number)=>void}} options */
+    async documentContext(reader,question,{budget=48000,signal,onProgress}={}){
+      const fingerprint=await this.fingerprint(reader),scope=this.scope(reader),key=C.scopeKey(scope)+':'+fingerprint;
+      const session=await this.addon.controller.ensureSession(reader);if(!session)throw new Error('当前 PDF 阅读器尚未就绪');
+      const adapter=session.adapter,pdf=adapter.pdfWindow?.PDFViewerApplication?.pdfDocument;
+      if(!pdf)throw new Error('当前 PDF 还未加载完成，请稍后发送');
+      if(!this.documents.has(key)){if(this.documents.size>=3)this.documents.delete(this.documents.keys().next().value);const pending=Doc.extract(pdf,{unwrap:this.unwrap,signal,onProgress});this.documents.set(key,pending);pending.catch(()=>{if(this.documents.get(key)===pending)this.documents.delete(key);});}
+      const index=await this.documents.get(key);if(signal?.aborted)throw new Error('文档读取已停止');
+      const context=Doc.choose(index,question,adapter.currentPageIndex(),budget),attachment=this.Z.Items.get(Number(reader.itemID));
+      context.title=String(attachment.getField?.('title')||'当前 PDF');
+      if(context.needsImage)context.material=await this.capture(reader,await this.currentPage(reader));
+      return context;
+    }
     load(reader){const scope=this.scope(reader),key=C.scopeKey(scope);if(!this.states.has(key))this.states.set(key,this.store.load(scope));return this.states.get(key);}
     async save(reader,state){await this.store.save(this.scope(reader),state);this.refreshReferenceCards(reader);}
     claimRequest(reader){const key=C.scopeKey(this.scope(reader));if(this.activeRequests.has(key))throw new Error('此 PDF 已在另一窗口正在生成，请先停止或等待完成');this.activeRequests.add(key);}
     releaseRequest(reader){this.activeRequests.delete(C.scopeKey(this.scope(reader)));}
     isGenerating(reader){return this.activeRequests.has(C.scopeKey(this.scope(reader)));}
-    newAbortController(){return new this.win.AbortController();}
+    runtimeWindow(){const win=this.Z.getMainWindow?.()||this.win;if(!win||win.closed)throw new Error('Zotero 主窗口尚未就绪，请稍后重试');return win;}
+    newAbortController(){return new (this.runtimeWindow().AbortController)();}
+    mainWindowLoaded(win){this.win=win;this.restoreReaders();}
+    mainWindowUnloaded(win){if(this.win===win)this.win=null;}
     async panel(reader){
       if(!this.running||this.closedReaders.has(reader))throw new Error('阅读助手或窗口已关闭');
       const cached=this.panels.get(reader),docNow=reader._iframeWindow?.document;
@@ -103,6 +122,13 @@
         await session.persist(runtime);const panel=await this.panel(session.reader);await panel.showDirectory({annotationKey:runtime.annotation.key,session,runtime});
       });b.className='zma-insert-reference';b.disabled=runtime.annotation.readOnly;
       b.addEventListener('pointerdown',e=>e.stopPropagation());b.addEventListener('mousedown',e=>e.preventDefault());runtime.card.querySelector('footer')?.append(b);
+      const imageButton=root.ZMAPanel.button(doc,'插入图片',()=>this.guard(async()=>{
+        if(!this.chooseImage||!this.imageManager)throw new Error('图片导入尚未就绪');
+        imageButton.disabled=true;
+        try{await session.persist(runtime);const path=await this.chooseImage(this.runtimeWindow());if(!path)return;const state=await this.load(session.reader);await this.imageManager.importImage(session.reader,runtime.annotation.key,path,state,()=>this.save(session.reader,state));await root.ZMAMarginReferences.sync(this,session,runtime,true);}
+        finally{imageButton.disabled=!!runtime.annotation.readOnly;}
+      }));imageButton.className='zma-insert-image';imageButton.disabled=runtime.annotation.readOnly;
+      imageButton.addEventListener('pointerdown',e=>e.stopPropagation());imageButton.addEventListener('mousedown',e=>e.preventDefault());runtime.card.querySelector('footer')?.append(imageButton);
       runtime.referenceRoot=root.ZMAPanel.el(doc,'div',undefined,'zma-reference-stack');runtime.card.insertBefore(runtime.referenceRoot,runtime.card.querySelector('footer'));
       this.syncReferences(session,runtime);
     }
@@ -115,6 +141,7 @@
       if(!runtime)throw new Error('请先选择当前页批注，再查看前文引用');
       await root.ZMAMarginReferences.show(this,session,runtime,source);
     }
+    openImageNote(reader,record){const note=this.Z.Items.getByLibraryAndKey(this.scope(reader).libraryID,record.noteKey);if(!note?.isNote?.()||note.deleted)throw new Error('图片笔记已删除');return this.runtimeWindow().ZoteroPane.openNote(note.id,{openInWindow:true});}
     async insertReference(reader,target,source,state){
       await this.resolveSource(reader,source);
       const annotation=this.nativeAnnotation(reader,target.annotationKey);if(!annotation||annotation.isEditable?.()===false)throw new Error('此批注为只读或已删除');
@@ -141,7 +168,7 @@
     }
     jump(reader,source){const location={pageIndex:source.pageIndex,annotationID:source.fullPage?undefined:source.annotationKey};reader._internalReader?.navigate?.(location);}
     copy(text){this.Z.Utilities.Internal.copyTextToClipboard(text);}
-    notify(message){this.win.alert?.(message);}
+    notify(message){const win=this.Z.getMainWindow?.()||this.win;if(win&&!win.closed)win.alert?.(message);else this.Z.logError?.(new Error(message));}
     guard(action){Promise.resolve().then(action).catch(e=>this.notify(e.message));}
     settingsAPI(){return {model:this.model,hasKey:!!this.key,apply:(key,model)=>{if(key)this.key=key.trim();this.model=model.trim()||'deepseek-flash';},clear:()=>{this.key='';},test:()=>this.client.testConnection(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
     bindPreferencePaneWindow(win){const container=win.document.querySelector('#zma-api-settings');root.ZMASettings?.bind(container,this.settingsAPI());}
@@ -170,8 +197,25 @@
     onToolbar=event=>{
       if(!this.isPDF(event.reader))return;
       const reader=event.reader;const b=root.ZMAPanel.button(event.doc,'DeepSeek',async()=>{const panel=await this.panel(reader);panel.showChat();});b.className='zma-toolbar';b.title='打开 DeepSeek 文档提问侧边栏';event.append(b);
-      this.guard(async()=>{const session=await this.addon.controller.ensureSession(event.reader);if(session){this.bindReferences(event.reader,session.adapter.document());this.decorateSession(session);}});
+      this.watchToolbar(reader,event.doc);
+      this.guard(async()=>{const session=await this.addon.controller.ensureSession(reader);if(session&&!this.closedReaders.has(reader)){this.bindReferences(reader,session.adapter.document());this.decorateSession(session);}});
     };
+    ensureToolbar(reader,doc){
+      if(!this.running||this.closedReaders.has(reader))return;const buttons=[...doc.querySelectorAll('.zma-toolbar')];
+      if(buttons.length){buttons.slice(1).forEach(b=>b.remove());return;}
+      const container=doc.querySelector('.toolbar .end .custom-sections');if(container)this.onToolbar({reader,doc,append:b=>container.append(b)});
+    }
+    watchToolbar(reader,doc){
+      if(this.toolbarObservers.has(doc)||!doc.body||!doc.defaultView?.MutationObserver)return;
+      const observer=new doc.defaultView.MutationObserver(()=>this.ensureToolbar(reader,doc));observer.observe(doc.body,{childList:true,subtree:true});this.toolbarObservers.set(doc,{reader,observer});
+    }
+    restoreReaders(){
+      if(!this.running)return;for(const reader of this.Z.Reader._readers||[])if(this.isPDF(reader)&&!this.closedReaders.has(reader))this.guard(async()=>{
+        await reader._initPromise;if(!this.running||this.closedReaders.has(reader))return;const doc=reader._iframeWindow?.document;if(!doc)return;
+        this.watchToolbar(reader,doc);this.ensureToolbar(reader,doc);
+        const session=await this.addon.controller.ensureSession(reader);if(session&&!this.closedReaders.has(reader)){this.decorateSession(session);this.bindReferences(reader,session.adapter.document());}
+      });
+    }
     onMenu=({reader,params,append})=>{
       if(!this.isPDF(reader))return;const keys=Array.isArray(params?.ids)?params.ids.map(String):[];const key=keys.length===1?keys[0]:null;const item=key&&this.nativeAnnotation(reader,key);const region=item?.annotationType==='image'||['highlight','underline'].includes(item?.annotationType)&&!!item.annotationText?.trim();
       append({label:'向 DeepSeek 提问',disabled:!region,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);panel.showChat();try{await panel.addMaterial(()=>this.resolveSource(reader,key));}catch(e){panel.error(e);}})});
@@ -180,21 +224,20 @@
     };
     isPDF(reader){return reader?.type==='pdf'||reader?._type==='pdf';}
     async start(){
+      if(this.running)return;
       this.running=true;this.Z.Reader.registerEventListener('renderToolbar',this.onToolbar,ID);this.Z.Reader.registerEventListener('createAnnotationContextMenu',this.onMenu,ID);
       this.Z.Reader.registerEventListener('createViewContextMenu',this.onViewMenu,ID);
       for(const doc of this.addon.controller.preferenceDocuments||[])this.bindPreferencePaneWindow(doc.defaultView);
-      this.observer=this.Z.Notifier.registerObserver({notify:(_event,type)=>{this.prune();if(type==='item')this.refreshReferenceCards(undefined,true);}},['tab','item'],ID);
-      for(const reader of this.Z.Reader._readers||[])if(this.isPDF(reader))this.guard(async()=>{
-        await reader._initPromise;const session=await this.addon.controller.ensureSession(reader);if(session){this.decorateSession(session);this.bindReferences(reader,session.adapter.document());}const doc=reader._iframeWindow?.document;if(!doc)return;
-        if(!doc.querySelector('.zma-toolbar')){const container=doc.querySelector('.toolbar .end .custom-sections');if(container)this.onToolbar({reader,doc,append:b=>container.append(b)});}
-      });
+      this.observer=this.Z.Notifier.registerObserver({notify:(_event,type)=>{this.prune();if(type==='item')this.refreshReferenceCards(undefined,true);if(type==='tab')this.restoreReaders();}},['tab','item'],ID);
+      this.restoreReaders();
     }
-    async closeReader(reader){this.closedReaders.add(reader);const panel=this.panels.get(reader);this.panels.delete(reader);for(const [doc,entry]of this.cleanups)if(entry.reader===reader){entry.dispose();this.cleanups.delete(doc);}if(panel)await panel.destroy();}
+    async closeReader(reader){this.closedReaders.add(reader);for(const [doc,entry]of this.toolbarObservers)if(entry.reader===reader){entry.observer.disconnect();this.toolbarObservers.delete(doc);}const panel=this.panels.get(reader);this.panels.delete(reader);for(const [doc,entry]of this.cleanups)if(entry.reader===reader){entry.dispose();this.cleanups.delete(doc);}if(panel)await panel.destroy();}
     prune(){const live=new Set(this.Z.Reader._readers||[]);const readers=new Set([...this.panels.keys(),...[...this.cleanups.values()].map(x=>x.reader)]);for(const reader of readers)if(!live.has(reader))void this.closeReader(reader);}
     async stop(){
       this.running=false;this.key='';this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
+      for(const {observer}of this.toolbarObservers.values())observer.disconnect();this.toolbarObservers.clear();
       await Promise.allSettled(this.pending.values());await Promise.allSettled([...this.panels.values()].map(p=>p.destroy()));this.panels.clear();
-      for(const entry of this.cleanups.values())entry.dispose();this.cleanups.clear();this.cache.clear();
+      for(const entry of this.cleanups.values())entry.dispose();this.cleanups.clear();this.cache.clear();this.documents.clear();
       this.states.clear();this.activeRequests.clear();
       for(const win of this.settingsWindows)win.close();this.settingsWindows.clear();
       for(const reader of this.Z.Reader._readers||[])reader._iframeWindow?.document.querySelectorAll('.zma-toolbar,#zma-styles,#zma-math-styles').forEach(n=>n.remove());

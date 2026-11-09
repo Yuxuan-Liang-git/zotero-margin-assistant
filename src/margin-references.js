@@ -13,13 +13,21 @@
     const actions=el(doc,'div',undefined,'zma-reference-actions');actions.append(button(doc,'跳转原文',()=>host.jump(session.reader,source)),button(doc,'加入提问',async()=>{const panel=await host.panel(session.reader);panel.showChat();await panel.addMaterial(source);}));
     card.append(content);if(source.description)card.append(el(doc,'p',source.description));card.append(actions);return card;
   }
+  async function imageWidget(host,session,runtime,record){
+    const doc=runtime.card.ownerDocument,card=el(doc,'section',undefined,'zma-inline-reference zma-inline-image');
+    for(const eventName of ['pointerdown','mousedown','click','keydown'])card.addEventListener(eventName,e=>e.stopPropagation());
+    card.dataset.imageID=record.id;const image=el(doc,'img');image.alt='此页边批注插入的图片';image.src=await host.imageManager.readImage(session.reader,record);
+    image.addEventListener('load',()=>{if(runtime.card.isConnected)relayout(session,runtime);});
+    card.append(image,button(doc,'打开图片笔记',()=>host.guard(()=>host.openImageNote(session.reader,record))));return card;
+  }
   async function sync(host,session,runtime,force=false){
     if(!runtime.referenceRoot)return;
     const token=runtime.referenceRevision=(runtime.referenceRevision||0)+1;
     const state=await host.load(session.reader);if(token!==runtime.referenceRevision||!runtime.card.isConnected)return;
     const hrefs=[...new Set(linksIn(runtime.currentValue))];
     const records=hrefs.map(href=>{const relation=state.references.find(r=>r.annotationKey===runtime.annotation.key&&r.link===href);const loc=C.parseSourceLink(href);const source=relation?state.sources.find(s=>s.id===relation.sourceID):state.sources.find(s=>s.annotationKey===loc.annotationKey&&s.pageIndex===loc.pageIndex);return {href,source};});
-    const signature=JSON.stringify(records);
+    const images=(state.images||[]).filter(r=>r.annotationKey===runtime.annotation.key);
+    const signature=JSON.stringify({records,images});
     if(!force&&runtime.referenceSignature===signature){
       let valid=true;for(const {source}of records){try{if(!source)throw new Error('来源索引已失效');await host.resolveSource(session.reader,source);}catch(_){valid=false;}}
       if(token!==runtime.referenceRevision||!runtime.card.isConnected||valid)return;
@@ -28,6 +36,10 @@
     for(const {href,source}of records){
       try{if(!source)throw new Error('来源索引已失效，请重新标记或插入引用');fragment.append(await widget(host,session,runtime,source,href));}
       catch(e){fragment.append(el(runtime.card.ownerDocument,'p',e.message,'zma-invalid'));}
+      if(token!==runtime.referenceRevision||!runtime.card.isConnected)return;
+    }
+    for(const record of images){
+      try{fragment.append(await imageWidget(host,session,runtime,record));}catch(e){fragment.append(el(runtime.card.ownerDocument,'p','图片无法显示：'+e.message,'zma-invalid'));}
       if(token!==runtime.referenceRevision||!runtime.card.isConnected)return;
     }
     runtime.referenceRoot.replaceChildren(fragment);runtime.referenceSignature=signature;relayout(session,runtime);

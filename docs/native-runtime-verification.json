@@ -1,9 +1,9 @@
 {
   "zotero": "10.0.6",
   "harness": 6,
-  "packageVersion": "0.10.4",
-  "packageSha256": "b82d82214296ffac1193de945d3dc11954c7f33acafaf29b6738b97da81c96e9",
-  "process": 20720,
+  "packageVersion": "0.10.5",
+  "packageSha256": "6127ef2bc4d60bbfaae1c4fe91a4d61749eb92f523736b712c07344931d62a30",
+  "process": 57980,
   "steps": [
     {
       "name": "runtime-page-boundary",

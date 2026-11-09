@@ -1,0 +1,197 @@
+{
+  "packageSha256": "6127ef2bc4d60bbfaae1c4fe91a4d61749eb92f523736b712c07344931d62a30",
+  "sameProfile": true,
+  "reinstalledBetweenLaunches": false,
+  "reports": [
+    {
+      "zotero": "10.0.6",
+      "packageVersion": "0.10.5",
+      "packageSha256": "6127ef2bc4d60bbfaae1c4fe91a4d61749eb92f523736b712c07344931d62a30",
+      "launch": 1,
+      "reason": 1,
+      "process": 36196,
+      "steps": [
+        {
+          "name": "scan-automatic-current-page",
+          "ok": true,
+          "result": {
+            "mode": "current-page-image",
+            "imageWidth": 1592,
+            "manualMaterials": 0
+          }
+        },
+        {
+          "name": "native-display-math-line-break",
+          "ok": true,
+          "result": {
+            "rows": 2
+          }
+        },
+        {
+          "name": "restored-reader-toolbar",
+          "ok": true,
+          "result": {
+            "readerID": 2,
+            "buttonCount": 1,
+            "panelVisible": true,
+            "draftRestored": false
+          }
+        },
+        {
+          "name": "enter-sends-pdf-without-manual-material",
+          "ok": true,
+          "result": {
+            "manualMaterials": 0,
+            "context": "本轮使用：Automatic PDF context QA · 全文 3 页",
+            "markdown": true,
+            "complete": true
+          }
+        },
+        {
+          "name": "toolbar-rebuild-and-reopen",
+          "ok": true,
+          "result": {
+            "buttons": 1,
+            "reopened": true
+          }
+        },
+        {
+          "name": "native-margin-image-note-and-local-copy",
+          "ok": true,
+          "result": {
+            "imageWidth": 256,
+            "nativeNote": "LTN424UH",
+            "nativeEmbeddedImage": "I9Y5RDBW",
+            "localCopyBytes": 1821,
+            "diskAssociation": true,
+            "restoredAfterRestart": false,
+            "noteExportImage": true
+          }
+        }
+      ],
+      "api": "mock only; no request sent",
+      "phase": "scan-context",
+      "done": true
+    },
+    {
+      "zotero": "10.0.6",
+      "packageVersion": "0.10.5",
+      "packageSha256": "6127ef2bc4d60bbfaae1c4fe91a4d61749eb92f523736b712c07344931d62a30",
+      "launch": 2,
+      "reason": 1,
+      "process": 45616,
+      "steps": [
+        {
+          "name": "native-display-math-line-break",
+          "ok": true,
+          "result": {
+            "rows": 2
+          }
+        },
+        {
+          "name": "restored-reader-toolbar",
+          "ok": true,
+          "result": {
+            "readerID": 2,
+            "buttonCount": 1,
+            "panelVisible": true,
+            "draftRestored": true
+          }
+        },
+        {
+          "name": "enter-sends-pdf-without-manual-material",
+          "ok": true,
+          "result": {
+            "manualMaterials": 0,
+            "context": "本轮使用：Automatic PDF context QA · 全文 3 页",
+            "markdown": true,
+            "complete": true
+          }
+        },
+        {
+          "name": "toolbar-rebuild-and-reopen",
+          "ok": true,
+          "result": {
+            "buttons": 1,
+            "reopened": true
+          }
+        },
+        {
+          "name": "native-margin-image-note-and-local-copy",
+          "ok": true,
+          "result": {
+            "imageWidth": 256,
+            "nativeNote": "LTN424UH",
+            "nativeEmbeddedImage": "I9Y5RDBW",
+            "localCopyBytes": 1821,
+            "diskAssociation": true,
+            "restoredAfterRestart": true,
+            "noteExportImage": true
+          }
+        }
+      ],
+      "api": "mock only; no request sent",
+      "done": true
+    },
+    {
+      "zotero": "10.0.6",
+      "packageVersion": "0.10.5",
+      "packageSha256": "6127ef2bc4d60bbfaae1c4fe91a4d61749eb92f523736b712c07344931d62a30",
+      "launch": 3,
+      "reason": 1,
+      "process": 59492,
+      "steps": [
+        {
+          "name": "native-display-math-line-break",
+          "ok": true,
+          "result": {
+            "rows": 2
+          }
+        },
+        {
+          "name": "restored-reader-toolbar",
+          "ok": true,
+          "result": {
+            "readerID": 2,
+            "buttonCount": 1,
+            "panelVisible": true,
+            "draftRestored": true
+          }
+        },
+        {
+          "name": "enter-sends-pdf-without-manual-material",
+          "ok": true,
+          "result": {
+            "manualMaterials": 0,
+            "context": "本轮使用：Automatic PDF context QA · 全文 3 页",
+            "markdown": true,
+            "complete": true
+          }
+        },
+        {
+          "name": "toolbar-rebuild-and-reopen",
+          "ok": true,
+          "result": {
+            "buttons": 1,
+            "reopened": true
+          }
+        },
+        {
+          "name": "native-margin-image-note-and-local-copy",
+          "ok": true,
+          "result": {
+            "imageWidth": 256,
+            "nativeNote": "LTN424UH",
+            "nativeEmbeddedImage": "I9Y5RDBW",
+            "localCopyBytes": 1821,
+            "diskAssociation": true,
+            "restoredAfterRestart": true,
+            "noteExportImage": true
+          }
+        }
+      ],
+      "api": "mock only; no request sent",
+      "done": true
+    }
+  ]
+}

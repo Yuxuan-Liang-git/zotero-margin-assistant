@@ -26,13 +26,14 @@ def build():
     version = json.loads((PROJECT / 'package.json').read_text(encoding='utf-8'))['version']
     manifest['version'] = version
     manifest['name'] = 'Margin Comments + DeepSeek'
-    manifest['description'] = '页边批注、LaTeX、DeepSeek 区域提问与手动编号前文引用'
+    manifest['description'] = '页边批注、LaTeX、DeepSeek 文档提问、编号前文引用与笔记图片'
     # Zotero 10.0.6 requires this field even for manually distributed add-ons.
     # Reserved .invalid avoids accidentally installing an unrelated upstream build.
     manifest['applications']['zotero']['update_url'] = 'https://updates.invalid/margin-comments-deepseek/update.json'
     (out / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
     script = out / 'content/scripts/margincomments.js'
     text = script.read_text(encoding='utf-8')
+    text = replace_once(text, 'const markup = katex.renderToString(expression, {', 'const markup = katex.renderToString(_globalThis.ZMAMath?.normalizeDisplay(expression, delimiter.display) ?? expression, {')
     text = replace_once(text, 'const allowed = [...SUPPORTED_FORMATS, "br", "div"];', 'const allowed = [...SUPPORTED_FORMATS, "br", "div"];\n        if (_globalThis.ZMAReferences.isAllowedAnchor(element)) allowed.push("a");')
     text = replace_once(text, '''        while (element.attributes.length) {
           element.removeAttribute(element.attributes[0].name);
@@ -72,18 +73,28 @@ def build():
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
   Services.scriptloader.loadSubScript(rootURI + "content/vendor/marked/marked.umd.js", context);
-  for (const name of ["core", "capture", "references", "deepseek", "settings", "markdown", "panel", "margin-references", "host"]) {
+  for (const name of ["core", "capture", "document", "references", "deepseek", "settings", "math", "markdown", "panel", "margin-references", "images", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();
   const assistant = new context.ZMAHost.Host(Zotero.MarginComments, {
     Zotero, IOUtils, PathUtils, window: Zotero.getMainWindow(),
     unwrap: value => Components.utils.waiveXrays(value),
-    cloneInto: (value, target) => Components.utils.cloneInto(value, Components.utils.getGlobalForObject(target))
+    cloneInto: (value, target) => Components.utils.cloneInto(value, Components.utils.getGlobalForObject(target)),
+    chooseImage: async win => {
+      const { FilePicker } = ChromeUtils.importESModule('chrome://zotero/content/modules/filePicker.mjs');
+      const picker = new FilePicker();picker.init(win, '插入页边批注图片', picker.modeOpen);
+      picker.appendFilter('图片 (PNG / JPEG / GIF / WebP)', '*.png; *.jpg; *.jpeg; *.gif; *.webp');
+      return await picker.show() === picker.returnOK ? picker.file : null;
+    }
   });
   Zotero.MarginComments.assistant = assistant;
   await assistant.start();
   for (const session of Zotero.MarginComments.controller.sessions.values()) await session.refresh(true);''')
+    bootstrap = replace_once(bootstrap, '  return Zotero.MarginComments?.hooks.onMainWindowLoad(window);', '''  Zotero.MarginComments?.assistant?.mainWindowLoaded(window);
+  return Zotero.MarginComments?.hooks.onMainWindowLoad(window);''')
+    bootstrap = replace_once(bootstrap, '  return Zotero.MarginComments?.hooks.onMainWindowUnload(window);', '''  Zotero.MarginComments?.assistant?.mainWindowUnloaded(window);
+  return Zotero.MarginComments?.hooks.onMainWindowUnload(window);''')
     bootstrap = replace_once(bootstrap, 'function shutdown({ resourceURI, rootURI }, reason) {\n  if (reason === APP_SHUTDOWN) return;', 'async function shutdown({ resourceURI, rootURI }, reason) {\n  await Zotero.MarginComments?.assistant?.stop();\n  if (reason === APP_SHUTDOWN) return;')
     bootstrap = replace_once(bootstrap, '  Zotero.MarginComments?.hooks.onShutdown();', '  await Zotero.MarginComments?.hooks.onShutdown();')
     (out / 'bootstrap.js').write_text(bootstrap, encoding='utf-8')

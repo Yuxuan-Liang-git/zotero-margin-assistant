@@ -1,6 +1,22 @@
 # 验收记录
 
-日期：2026-10-13。交付版本：0.10.4。目标 Zotero：10.0.x。
+日期：2026-10-14。交付版本：0.10.5。目标 Zotero：10.0.x。
+
+## 当前 PDF、重启、Enter、多行公式及图片
+
+每轮发送自动读取当前 PDF 文字层。较短文档提供全文，长文档按问题挑选片段并显示页码；空文字层使用当前页截图，未实现整本扫描件 OCR。对话 JSON 不持久化整本提取文字。实际三页测试 PDF 包含尚未显示的末页，模拟客户端断言首末页内容均在自动请求中；扫描样本自动得到 1592 像素宽的当前页截图。Enter 发送，Shift+Enter 换行；中文输入法组合输入不触发发送。
+
+重启反馈未证明单一用户配置根因。新增回归复现了 PDF 会话尚未就绪且工具栏迟挂载的缺口；恢复逻辑现在先挂工具栏，再等待 PDF 会话，监听工具栏替换并保持一个可用按钮。主窗口使用当前窗口而非仅保留安装时的窗口引用；引导脚本转发窗口加载/卸载。独立审查发现发送时创建 AbortController 失败会留下 busy/锁，已先建 controller 再改变状态，回归通过。
+
+直接显示公式中的顶层 LaTeX `\\` 自动包装为 gathered/aligned，已有环境和矩阵保留。用户给出的偏导数样例在原插件桥接和 Zotero Gecko 中均显示为两行 MathML。
+
+页边评论新增“插入图片”按钮。使用本机 FilePicker 选择 PNG/JPEG/GIF/WebP，限制 10 MiB；副本写到 PDF 同目录 `margin-comments-images/`，原文件保留。原生笔记通过 `Attachments.importEmbeddedImage` 建立嵌入附件，使用 `data-attachment-key` 关联图片，记录 PDF 原文链接。图片显示在原页边评论的同侧，重启后恢复，可打开对应图片笔记。按 PDF 串行导入，防止不同卡片并发覆盖同一笔记；本地索引提交失败会恢复已有笔记及内存图片状态，并清理本次创建内容。新测试先复现两个笔记/遗漏失败回滚，再修复。
+
+当前验证结果和 SHA-256 详见 `dist/verification-report.json`、`docs/native-runtime-verification.json`、`docs/native-restart-verification.json`。69/69 回归测试、JavaScript 类型检查通过；实际安装的 Zotero 10.0.6 运行测试使用独立配置和数据，真实 DeepSeek API 被模拟替代。文件选择器接口核对本机源码，原生按钮验证通过注入本地测试图片路径完成，不声称测试了物理文件对话框操作。
+
+最终 0.10.5 XPI SHA-256 为 `6127ef2bc4d60bbfaae1c4fe91a4d61749eb92f523736b712c07344931d62a30`，1074801 字节。原有功能 10 项原生检查通过；同一配置首启 6 项及两次冷重启各 5 项检查通过，期间未覆盖/重装 XPI。每次实际进程不同，均恢复同一个 PDF 和同一个图片笔记/嵌入附件，图片宽 256 像素，副本 1821 字节与源文件完全一致，`Zotero.Notes.getExportableNote` 解析出嵌入图片。
+
+之前反复创建的新测试配置触发了 `https://www.zotero.org/start` 首次使用页；正确的开关是 `extensions.zotero.firstRun2`。两个 QA 脚本已关闭首次使用页及 Office 自动安装，重启验收复用同一份配置和安装包。正式用户配置和文献库未改动。
 
 ## Markdown、侧栏重开与文字引用
 
@@ -67,4 +83,6 @@ DeepSeek 的密码输入、模型、应用设置、连接测试和清除密钥�
 4. 配置密钥后，实际发送两处截图，并追问一次；核对流式结果及来源。模拟测试通过只证明请求与状态处理，不能证明账户/模型的真实调用已成功。
 5. 明确保存为原生笔记及追加批注，检查原评论没有丢失；关闭独立阅读器窗口时停止生成。
 
-验证报告和测试日志保存在 `dist/verification-report.json` 和 `evidence/final-tests-0104.txt`。
+6. 点击页边“插入图片”，核对对应 Zotero 笔记、PDF 同目录副本及重启后的图片显示。纯扫描 PDF 默认只用当前页截图；全文问题需另行 OCR。
+
+验证报告和测试日志保存在 `dist/verification-report.json` 和 `evidence/final-tests-0105.txt`。

@@ -1,12 +1,12 @@
 {
   "name": "zotero-margin-assistant-custom",
-  "version": "0.10.4",
+  "version": "0.10.5",
   "private": true,
   "description": "Additive DeepSeek and numbered-region references for custom Margin Comments",
   "scripts": {
     "test": "python scripts/build.py && node --test --test-concurrency=1 tests/*.test.cjs",
     "build": "python scripts/build.py",
-    "typecheck": "tsc --allowJs --checkJs --noEmit --target ES2022 --module commonjs --lib ES2022,DOM --skipLibCheck src/environment.d.ts src/core.js src/capture.js src/references.js src/deepseek.js src/settings.js src/markdown.js src/panel.js src/margin-references.js src/host.js src/assistant-settings.js"
+    "typecheck": "tsc --allowJs --checkJs --noEmit --target ES2022 --module commonjs --lib ES2022,DOM --skipLibCheck src/environment.d.ts src/core.js src/capture.js src/document.js src/references.js src/deepseek.js src/settings.js src/math.js src/markdown.js src/panel.js src/margin-references.js src/images.js src/host.js src/assistant-settings.js"
   },
   "devDependencies": { "playwright": "1.62.1", "typescript": "5.9.3", "pdf-lib": "1.17.1", "pdfjs-dist": "5.6.205", "@napi-rs/canvas": "0.1.100" }
 }

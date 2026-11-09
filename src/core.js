@@ -51,14 +51,20 @@
   }
   function escapeHTML(v) {return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function storedLink(s,groupID) {return `<a href="${sourceLink(s,groupID)}">${escapeHTML(`${s.type||'来源'} (${s.number||s.annotationKey}) · 第 ${s.pageLabel} 页`)}</a>`;}
-  function emptyState() {return {version:1,sources:[],references:[],history:[],draft:''};}
+  function emptyState() {return {version:1,sources:[],references:[],history:[],draft:'',images:[],imageNoteKey:null};}
+  function pickImage(record){
+    const mimeExtensions={'image/png':'png','image/jpeg':'jpg','image/gif':'gif','image/webp':'webp'};
+    if(!record||typeof record.id!=='string'||!/^[a-f0-9]{32}$/.test(record.id)||!keyPattern.test(record.annotationKey)||!keyPattern.test(record.noteKey)||!keyPattern.test(record.noteImageKey)||record.fileName!==`margin-comment-${record.id}.${mimeExtensions[record.mime]}`||!mimeExtensions[record.mime])throw new Error('图片记录数据损坏');
+    return {id:record.id,annotationKey:record.annotationKey,fileName:record.fileName,mime:record.mime,noteKey:record.noteKey,noteImageKey:record.noteImageKey};
+  }
   function cleanState(value) {
     if(!value||value.version!==1||!Array.isArray(value.sources)||!Array.isArray(value.references)||!Array.isArray(value.history)||typeof value.draft!=='string')throw new Error('数据损坏或版本不兼容');
     const idx=new ReferenceIndex([]);value.sources.forEach(s=>idx.add(s));
+    if(value.images!==undefined&&!Array.isArray(value.images)||value.imageNoteKey&&(!keyPattern.test(value.imageNoteKey)||typeof value.imageNoteKey!=='string'))throw new Error('图片记录数据损坏');
     return {version:1,sources:idx.records,references:value.references.map(r=>({annotationKey:String(r.annotationKey),sourceID:String(r.sourceID),link:String(r.link)})).filter(r=>keyPattern.test(r.annotationKey)&&parseSourceLink(r.link)),history:value.history.map(m=>{
       if(!['user','assistant'].includes(m.role)||typeof m.content!=='string')throw new Error('对话数据损坏');
       return {role:m.role,content:m.content,incomplete:!!m.incomplete,materials:(m.materials||[]).map(s=>({...pickSource(s),type:s.type,number:s.number,description:s.description}))};
-    }),draft:value.draft};
+    }),draft:value.draft,images:(value.images||[]).map(pickImage),imageNoteKey:value.imageNoteKey||null};
   }
   class LocalStore {
     constructor(adapter){this.adapter=adapter;this.queues=new Map();this.blocked=new Set();}

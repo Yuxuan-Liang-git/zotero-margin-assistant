@@ -13,16 +13,18 @@
       const header=el(d,'header');header.append(el(d,'strong','DeepSeek · 文档助手'),button(d,'设置',()=>this.host.settings()),button(d,'关闭',()=>this.close()));
       this.tabs=el(d,'nav');this.chat=el(d,'section');this.directory=el(d,'section');this.directory.hidden=true;
       this.tabs.append(button(d,'提问',()=>this.showChat()),button(d,'引用目录',()=>this.showDirectory()));
-      const info=el(d,'p','仅点击发送才上传所列区域；编号与草稿保存在本机。','zma-info');
+      const info=el(d,'p','自动读取当前 PDF，发送时提供文档背景；可附加框选材料。','zma-info');
       this.materialList=el(d,'div',undefined,'zma-materials');
       this.messages=el(d,'div',undefined,'zma-messages');
       this.question=el(d,'textarea');this.question.dataset.zma='question';this.question.placeholder='例如：公式 (7.41) 如何由 (6.30) 推出？';this.question.setAttribute('aria-label','问题');this.question.value=this.state.draft;
       this.question.addEventListener('input',()=>{this.state.draft=this.question.value;clearTimeout(this.draftTimer);this.draftTimer=setTimeout(()=>this.persist().catch(e=>this.error(e)),500);});
+      this.question.addEventListener('keydown',e=>{if(e.key!=='Enter'||e.shiftKey||e.ctrlKey||e.altKey||e.metaKey||e.isComposing||e.keyCode===229)return;e.preventDefault();if(!this.busy)void this.send().catch(error=>this.error(error));});
       this.sendButton=button(d,'发送',()=>this.send());this.sendButton.dataset.zma='send';
       this.stopButton=button(d,'停止生成',()=>this.controller?.abort());this.stopButton.disabled=true;
       const actions=el(d,'div',undefined,'zma-actions');actions.append(this.sendButton,this.stopButton,button(d,'添加当前页',()=>this.addMaterial(()=>this.host.currentPage(this.reader))),button(d,'新会话',async()=>{if(this.busy||this.host.isGenerating?.(this.reader))throw new Error('请先停止生成');this.state.history=[];this.state.draft='';this.question.value='';await this.persist();this.renderMessages();}));
-      this.status=el(d,'p','使用 Zotero 区域批注框选，再右键选择“向 DeepSeek 提问”。','zma-status');this.status.setAttribute('role','status');
-      const composer=el(d,'div',undefined,'zma-composer');composer.append(this.question,actions);this.chat.className='zma-chat';this.chat.append(info,this.materialList,this.messages,composer);
+      this.contextInfo=el(d,'p','文档背景：自动使用当前 PDF。','zma-context-info');
+      this.status=el(d,'p','Enter 发送，Shift+Enter 换行。','zma-status');this.status.setAttribute('role','status');
+      const composer=el(d,'div',undefined,'zma-composer');composer.append(this.question,actions);this.chat.className='zma-chat';this.chat.append(info,this.contextInfo,this.materialList,this.messages,composer);
       this.previewArea=el(d,'section',undefined,'zma-previews');
       this.node.append(header,this.tabs,this.previewArea,this.chat,this.directory,this.status);d.body.append(this.node);
       this.directory.className='zma-directory';this.installResizeHandle();
@@ -71,7 +73,7 @@
         if(m.role==='assistant'&&m.content){const actions=el(this.doc,'div',undefined,'zma-actions');actions.append(button(this.doc,'复制',()=>this.host.copy(m.content)),button(this.doc,'保存为笔记',()=>this.saveAnswer(i,'note')),button(this.doc,'保存到批注',()=>this.saveAnswer(i,'comment')));card.append(actions);}
         this.messages.append(card);
       });
-      if(!this.state.history.length)this.messages.append(el(this.doc,'p','围绕当前 PDF 提问：添加当前页，或在 PDF 中框选区域后右键“向 DeepSeek 提问”。可加入前文引用，一起解释公式之间的关系。','zma-empty-chat'));
+      if(!this.state.history.length)this.messages.append(el(this.doc,'p','直接问“当前这篇论文讲了什么”即可；助手会自动读取当前 PDF。也可框选内容或加入前文引用，进一步解释公式。','zma-empty-chat'));
       this.messages.scrollTop=this.messages.scrollHeight;
     }
     renderAnswer(node,text){if(root.ZMAMarkdown)root.ZMAMarkdown.render(node,text,this.host.addon.bridge.renderMathPreview);else this.host.addon.bridge.renderMathPreview(node,text);}
@@ -80,8 +82,8 @@
       // A retry replaces the failed pair, rather than duplicating its user message.
       const history=this.state.history.slice();
       if(history.at(-1)?.incomplete&&history.at(-2)?.role==='user'&&history.at(-2).content===question)history.splice(-2);
-      this.host.claimRequest?.(this.reader);this.busy=true;this.sendButton.disabled=true;this.stopButton.disabled=false;this.renderMaterials();this.status.textContent='准备来源…';
-      this.controller=this.host.newAbortController();const deadline=setTimeout(()=>this.controller?.abort(),180000);
+      const controller=this.host.newAbortController();this.host.claimRequest?.(this.reader);this.busy=true;this.sendButton.disabled=true;this.stopButton.disabled=false;this.renderMaterials();this.status.textContent='准备来源…';
+      this.controller=controller;const deadline=setTimeout(()=>this.controller?.abort(),180000);
       let user,answer;
       try{
         const hydrated=[];
@@ -91,9 +93,13 @@
           hydrated.push({...m,materials});
         }
         const refreshed=[];for(const material of this.materials)refreshed.push(await this.host.capture(this.reader,material.source));
-        const messages=D.buildMessages(hydrated,question,refreshed);
+        const baseMessages=D.buildMessages(hydrated,question,refreshed);
+        const context=await this.host.documentContext?.(this.reader,question,{budget:58000-D.textSize(baseMessages),signal:this.controller.signal,onProgress:(n,total)=>{if(!this.destroyed)this.status.textContent=`正在读取当前 PDF：${n}/${total} 页…`;}});
+        if(context&&!this.destroyed)this.contextInfo.textContent=(context.mode==='full-text'?`本轮使用：${context.title} · 全文 ${context.totalPages} 页`:`本轮使用：${context.title} · ${context.mode==='current-page-image'?'当前页截图':'相关文字节选'}（PDF 第 ${context.pages.join('、')} 页）`)+(context.material&&context.mode!=='current-page-image'?`；当前页截图（PDF 第 ${context.material.source.pageIndex+1} 页）`:'');
+        const messages=D.buildMessages(hydrated,question,refreshed,context);
         if(this.controller.signal.aborted)throw new Error('生成已停止');
-        user={role:'user',content:question,materials:refreshed.map(m=>({...C.pickSource(m.source),type:m.source.type,number:m.source.number,description:m.source.description})),incomplete:false};
+        const submitted=[...refreshed];if(context?.material&&submitted.length<8&&!submitted.some(m=>m.source.fullPage&&m.source.pageIndex===context.material.source.pageIndex))submitted.push(context.material);
+        user={role:'user',content:question,materials:submitted.map(m=>({...C.pickSource(m.source),type:m.source.type,number:m.source.number,description:m.source.description})),incomplete:false};
         answer={role:'assistant',content:'',materials:[],incomplete:true};
         this.state.history=[...history,user,answer];this.state.draft=this.question.value;await this.persist();this.renderMessages();
         this.status.textContent='DeepSeek 正在回答…';

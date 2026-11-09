@@ -127,3 +127,29 @@ test('answers render Markdown blocks and math without interpreting HTML or code 
 test('Markdown resolves its parser when script-loader context differs from the global object',async()=>{
   const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});try{const page=await browser.newPage();await page.setContent('<div id="answer"></div>');await page.addScriptTag({path:path.resolve(__dirname,'../content/vendor/marked/marked.umd.js')});await page.evaluate(()=>{globalThis._globalThis={};});await page.addScriptTag({path:path.resolve(__dirname,'../src/markdown.js')});const heading=await page.evaluate(()=>{_globalThis.ZMAMarkdown.render(document.getElementById('answer'),'## 原生作用域测试',(n,t)=>n.textContent=t);return document.querySelector('h2')?.textContent;});assert.equal(heading,'原生作用域测试');}finally{await browser.close();}
 });
+
+test('display math with a plain LaTeX line break renders as two MathML rows',async()=>{
+  const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});try{const page=await browser.newPage();await page.setContent('<div id="answer"></div>');await page.evaluate(()=>{globalThis._globalThis=globalThis;globalThis.Zotero={};});for(const name of ['core','references','math']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(require('node:fs').existsSync(file))await page.addScriptTag({path:file});}await page.addScriptTag({path:path.resolve(__dirname,'../build/content/scripts/margincomments.js')});const rows=await page.evaluate(()=>{Zotero.MarginComments.bridge.renderMathPreview(document.getElementById('answer'),'$$\n\\frac{\\partial e}{\\partial\\theta}=-\\frac{\\partial H}{\\partial\\theta}u \\\\\n\\frac{\\partial H}{\\partial\\theta}u\n$$');return document.querySelectorAll('math mtable mtr').length;});assert.equal(rows,2);}finally{await browser.close();}
+});
+
+test('margin image button imports into PDF state and shows the saved image after card recreation',async()=>{
+  const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+  try{const page=await browser.newPage();await page.setContent('<div id="card"><footer></footer></div>');
+    for(const name of ['core','deepseek','capture','panel','margin-references','host'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});
+    const available=await page.evaluate(async()=>{
+      const host=new ZMAHost.Host({controller:{}},{Zotero:{DataDirectory:{dir:'/data'}},IOUtils:{},PathUtils:{join:(...p)=>p.join('/')},window,chooseImage:async()=>'/chosen/photo.png'});
+      let state=ZMACore.emptyState();globalThis.imageImportCalls=[];globalThis.noteCalls=[];
+      host.load=async()=>state;host.save=async(_r,value)=>{state=ZMACore.cleanState(JSON.parse(JSON.stringify(value)));};host.bindReferences=()=>{};host.openImageNote=(_r,record)=>noteCalls.push(record.noteKey);
+      host.imageManager={importImage:async(_r,key,path,s,commit)=>{imageImportCalls.push({key,path});const record={id:'a'.repeat(32),annotationKey:key,fileName:'margin-comment-'+ 'a'.repeat(32)+'.png',mime:'image/png',noteKey:'NOTEPDF1',noteImageKey:'IMAGE234'};s.images=[record];s.imageNoteKey=record.noteKey;await commit(record);return record;},readImage:async()=> 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5FYAAAAASUVORK5CYII='};
+      const runtime={card:document.getElementById('card'),annotation:{key:'FORM0630'},currentValue:'图片说明'};
+      const session={reader:{itemID:1},persist:async()=>{},invalidateRuntimeHeight:()=>{},relayoutRuntime:()=>{}};
+      host.attachCard(session,runtime);globalThis.imageRuntime=runtime;globalThis.imageSession=session;globalThis.imageHost=host;
+      return !!runtime.card.querySelector('.zma-insert-image');
+    });assert.ok(available,'image insertion must be available inside each margin comment');
+    await page.locator('.zma-insert-image').click();await page.waitForFunction(()=>document.querySelector('.zma-inline-image img')?.complete);
+    assert.deepEqual(await page.evaluate(()=>imageImportCalls),[{key:'FORM0630',path:'/chosen/photo.png'}]);
+    await page.evaluate(async()=>{imageRuntime.card.remove();const card=document.createElement('div');card.innerHTML='<footer></footer>';document.body.append(card);globalThis.recreated={card,annotation:{key:'FORM0630'},currentValue:'图片说明'};imageHost.attachCard(imageSession,recreated);});
+    await page.waitForFunction(()=>document.querySelector('.zma-inline-image img')?.naturalWidth===1);
+    await page.getByRole('button',{name:'打开图片笔记'}).click();assert.deepEqual(await page.evaluate(()=>noteCalls),['NOTEPDF1']);
+  }finally{await browser.close();}
+});

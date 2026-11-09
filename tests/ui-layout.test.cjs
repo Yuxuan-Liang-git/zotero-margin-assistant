@@ -109,3 +109,35 @@ test('text references render their actual passage in the margin card without a s
     assert.match(await page.locator('.zma-inline-reference').innerText(),/前文定义/);assert.equal(await page.locator('.zma-inline-reference img').count(),0);
   }finally{await browser.close();}
 });
+
+test('Enter sends automatic PDF context without manually adding material; Shift Enter only adds a line',async()=>{
+  const {browser,page}=await setup();try{
+    await page.evaluate(async()=>{const panel=await fixture.host.panel(fixture.reader);panel.showChat();fixture.host.documentContext=async()=>({mode:'full-text',text:'PMSM paper abstract and conclusion from all 12 pages.',pages:[1,12],totalPages:12,title:'Current PDF'});fixture.host.client.generate=async messages=>{globalThis.actualMessages=messages;return 'document summary';};});
+    await page.locator('[data-zma="question"]').fill('当前这篇论文讲了什么');await page.locator('[data-zma="question"]').press('Shift+Enter');assert.match(await page.locator('[data-zma="question"]').inputValue(),/\n$/);assert.equal(await page.evaluate(()=>!!globalThis.actualMessages),false);
+    await page.locator('[data-zma="question"]').press('Enter');await page.waitForTimeout(80);const sent=await page.evaluate(()=>globalThis.actualMessages);assert.ok(sent,'Enter must send');assert.ok(sent.at(-1).content.some(p=>p.type==='text'&&p.text.includes('all 12 pages')));
+  }finally{await browser.close();}
+});
+
+test('Enter while Chinese IME is composing does not send the question',async()=>{
+  const {browser,page}=await setup();try{await page.evaluate(async()=>{const panel=await fixture.host.panel(fixture.reader);panel.showChat();panel.question.value='输入中的中文';fixture.host.client.generate=async()=>{globalThis.sentIME=true;return 'answer';};panel.question.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true,cancelable:true}));});await page.waitForTimeout(40);assert.equal(await page.evaluate(()=>!!globalThis.sentIME),false);}finally{await browser.close();}
+});
+
+test('restored reader gets its toolbar even when the PDF session is still loading and the toolbar mounts late',async()=>{
+  const {browser,page}=await setup();try{
+    await page.evaluate(()=>{const host=fixture.host;host.running=false;host.Z.Reader={_readers:[fixture.reader],registerEventListener:()=>{},_unregisterEventListenerByPluginID:()=>{}};host.Z.Notifier={registerObserver:()=>1,unregisterObserver:()=>{}};host.addon.controller.ensureSession=()=>new Promise(()=>{});host.start();});
+    await page.evaluate(()=>{const toolbar=document.createElement('div');toolbar.className='toolbar';toolbar.innerHTML='<div class="end"><div class="custom-sections"></div></div>';document.body.append(toolbar);});await page.waitForTimeout(80);assert.equal(await page.locator('.zma-toolbar').count(),1);
+  }finally{await browser.close();}
+});
+
+test('reader toolbar replacement restores one functional DeepSeek button',async()=>{
+  const {browser,page}=await setup();try{
+    await page.evaluate(()=>{const host=fixture.host;host.running=false;host.Z.Reader={_readers:[fixture.reader],registerEventListener:()=>{},_unregisterEventListenerByPluginID:()=>{}};host.Z.Notifier={registerObserver:()=>1,unregisterObserver:()=>{}};document.body.insertAdjacentHTML('beforeend','<div class="toolbar"><div class="end"><div class="custom-sections"></div></div></div>');host.start();});await page.waitForTimeout(80);
+    await page.evaluate(()=>document.querySelector('.custom-sections').replaceChildren());await page.waitForTimeout(80);assert.equal(await page.locator('.zma-toolbar').count(),1);await page.locator('.zma-toolbar').click();assert.ok(await page.locator('.zma-panel').isVisible());
+  }finally{await browser.close();}
+});
+
+test('a missing main window during send does not leave the panel busy or the PDF locked',async()=>{
+  const {browser,page}=await setup();try{
+    const result=await page.evaluate(async()=>{const panel=await fixture.host.panel(fixture.reader);panel.question.value='保留问题';fixture.host.newAbortController=()=>{throw new Error('主窗口正在关闭');};let error;try{await panel.send();}catch(e){error=e.message;}return {error,busy:panel.busy,disabled:panel.sendButton.disabled,locks:fixture.host.activeRequests.size,draft:panel.question.value};});assert.match(result.error,/主窗口/);assert.equal(result.busy,false);assert.equal(result.disabled,false);assert.equal(result.locks,0);assert.equal(result.draft,'保留问题');
+  }finally{await browser.close();}
+});
