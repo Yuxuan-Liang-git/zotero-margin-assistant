@@ -61,6 +61,29 @@ test('binding the nested PDF document also decorates native annotation popups in
  }finally{await browser.close();}
 });
 
+test('reference preview uses page-side whitespace instead of covering the PDF page',async()=>{
+ const {browser,page}=await setup();try{
+  await page.evaluate(()=>{const paper=document.createElement('div');paper.className='page';paper.dataset.pageNumber='1';paper.style.cssText='position:absolute;left:120px;top:50px;width:1000px;height:850px;background:white';document.querySelector('#split-view').prepend(paper);fixture.host.bindReferences(fixture.reader,document);});await page.locator('.zmc-card-preview a').hover();await page.locator('.zma-reference-popover img').waitFor({timeout:1500});
+  const geometry=await page.evaluate(()=>({paper:document.querySelector('.page').getBoundingClientRect().toJSON(),popup:document.querySelector('.zma-reference-popover').getBoundingClientRect().toJSON()}));assert.ok(geometry.popup.left>=geometry.paper.right+8,JSON.stringify(geometry));assert.ok(geometry.popup.right<=1440,JSON.stringify(geometry));assert.ok(geometry.popup.width>=240);
+  const evidence=path.resolve(__dirname,'../evidence/ui-0133');fs.mkdirSync(evidence,{recursive:true});await page.screenshot({path:path.join(evidence,'page-side-preview.png')});
+  await page.mouse.move(20,50);await page.waitForTimeout(250);await page.evaluate(()=>{document.querySelector('.page').style.width='400px';fixture.runtime.card.style.cssText='left:250px;right:auto;top:250px;width:264px';});await page.locator('.zmc-card-preview a').hover();await page.locator('.zma-reference-popover img').waitFor();const wide=await page.evaluate(()=>({pageRight:document.querySelector('.page').getBoundingClientRect().right,left:document.querySelector('.zma-reference-popover').getBoundingClientRect().left}));assert.ok(wide.left>=wide.pageRight+8,JSON.stringify(wide));
+ }finally{await browser.close();}
+});
+
+test('when page-side space is narrow the preview stays above or below the current annotation',async()=>{
+ const {browser,page}=await setup();try{
+  await page.setViewportSize({width:900,height:700});await page.evaluate(()=>{const paper=document.createElement('div');paper.className='page';paper.dataset.pageNumber='1';paper.style.cssText='position:absolute;left:12px;top:0;width:876px;height:900px;background:white';document.querySelector('#split-view').prepend(paper);fixture.runtime.card.style.cssText='left:200px;right:auto;top:240px;width:400px;height:150px';fixture.host.bindReferences(fixture.reader,document);});await page.locator('.zmc-card-preview a').hover();await page.locator('.zma-reference-popover img').waitFor({timeout:1500});
+  const geometry=await page.evaluate(()=>({current:fixture.runtime.card.getBoundingClientRect().toJSON(),popup:document.querySelector('.zma-reference-popover').getBoundingClientRect().toJSON()}));assert.ok(geometry.popup.top>=geometry.current.bottom+8||geometry.popup.bottom<=geometry.current.top-8,JSON.stringify(geometry));assert.ok(geometry.popup.bottom<=700&&geometry.popup.left>=0&&geometry.popup.right<=900,JSON.stringify(geometry));
+ }finally{await browser.close();}
+});
+
+test('preview avoids the current PDF formula mapped from a nested iframe into the native popup document',async()=>{
+ const {browser,page}=await setup();try{
+  await page.setViewportSize({width:1000,height:720});await page.evaluate(async()=>{const frame=document.createElement('iframe');frame.style.cssText='position:fixed;left:20px;top:50px;width:900px;height:650px;border:0';frame.srcdoc='<style>body{margin:0}</style><div class="page" data-page-number="1" style="width:880px;height:900px;background:white"></div>';await new Promise(resolve=>{frame.onload=resolve;document.querySelector('#split-view').prepend(frame);});fixture.runtime.card.style.cssText='position:fixed;left:400px;right:auto;top:300px;width:400px;height:80px';const adapter=fixture.session.adapter;adapter.document=()=>frame.contentDocument;adapter.page=()=>({element:frame.contentDocument.querySelector('.page'),viewport:{width:880,height:900,convertToViewportPoint:(x,y)=>[x,900-y]}});fixture.host.nativeAnnotation=()=>({annotationPosition:JSON.stringify({pageIndex:0,rects:[[80,300,720,420]]})});fixture.host.bindReferences(fixture.reader,document);});await page.locator('.zmc-card-preview a').hover();await page.locator('.zma-reference-popover img').waitFor({timeout:1500});
+  const popup=await page.locator('.zma-reference-popover').boundingBox();assert.ok(popup.y+popup.height<=530-8||popup.y>=650+8,JSON.stringify(popup));assert.ok(popup.x>=0&&popup.x+popup.width<=1000&&popup.y>=0&&popup.y+popup.height<=720);
+ }finally{await browser.close();}
+});
+
 test('conversation layout fits narrow and wide docks with readable math at every supported font size',async()=>{
  const {browser,page}=await setup();try{
   await page.evaluate(()=>{globalThis._globalThis=globalThis;globalThis.Zotero={};});
