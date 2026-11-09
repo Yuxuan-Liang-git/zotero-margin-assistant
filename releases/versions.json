@@ -3,7 +3,7 @@
   "importedOn": "2026-11-09",
   "historySource": "Preserved release source ZIP snapshots; import dates are not original development dates.",
   "archivedVersions": 44,
-  "latest": "0.19.0",
+  "latest": "0.19.1",
   "unavailableSnapshots": [
     "0.13.9"
   ],
@@ -1117,6 +1117,36 @@
       "sourceCommit": "90932550ddc8d704a719b6957ffb64a99436362a",
       "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.0",
       "commitSubject": "feat(pdf-images): 支持原图查看、页面贴图与带图导出 (v0.19.0)"
+    },
+    {
+      "version": "0.19.1",
+      "tag": "v0.19.1",
+      "summary": "修复 Notion 网页进程失效后刷新报 remoteTab is null 和关闭重开仍跳过加载的问题；异步等待浏览器就绪，重建失效容器，保留健康网页状态和 Cookie。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.19.1.xpi",
+          "bytes": 1420504,
+          "sha256": "8855cf3359c8a13d21cc220aba3cb7733fcca680e969da2a8e12d0b1444a70b1"
+        },
+        {
+          "name": "margin-comments-deepseek-0.19.1-source.zip",
+          "bytes": 3299943,
+          "sha256": "4a78fe72f75b9932b71553a2dc4d64d4f40a20d7d3c7cf9920658e3b416bf6b2"
+        },
+        {
+          "name": "verification-report-0.19.1.json",
+          "bytes": 2155,
+          "sha256": "a65844333a6b2daf90110a963c5405c3b7d90b67264371f52c85a1db24cee354"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 309,
+          "sha256": "ce1b5ae0de5e031845d76d943b3f720799a062c210b8d69e16f2732aac8b7692"
+        }
+      ],
+      "sourceCommit": "18681867da254872b7d3fafb96e04fa7d0119263",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.1",
+      "commitSubject": "fix(notion): 恢复网页进程失效后的侧栏加载 (v0.19.1)"
     }
   ]
 }
