@@ -47,3 +47,20 @@ Final verification: 29/29 tests, 0 failures, TypeScript checkJs exit 0, packaged
 2026-10-19 0.12.3: fixed assistant docking for native .split-view as well as legacy #split-view, keeping PDF Ctrl F popup visible and usable during resize/close/reopen. Reproduced history-source revalidation aborting an entire turn; strict SOURCE_STALE / SOURCE_MISSING validation remains, chat now explicitly omits unavailable historical/current regions without substituting or deleting original history, persists current omission warnings and labels invalid draft materials. Unknown errors/cancellation remain fatal. Recent real history fingerprint matched the PDF; active SQLite locked and local API unavailable, so no assertion about the actual edited region and no user data changes. 146/146 tests (71.5s), checkJs and isolated native first/cold launch 10/10 each passed; real find popup hit/focus and actually moved annotation verified using synthetic inference. XPI 204f11185caf2f418ab57662d3684faaeadcc3650d3985bd674f623d5f58877f, 1108672 bytes.
 
 2026-10-19 0.12.4: confirmed closing only hides the panel and preserves chat; screenshot established missing equation coverage plus PNG/request-space exhaustion. ChatGPT now attaches whole current PDF each turn for <=20-page, <=6 MiB files fitting the encoded auto budget (~4 MiB maximum), with per-turn filename/page/size audit metadata and no encoded body in history; large/DeepSeek fallback remains explicit. Deduplicated repeated source images without mutating history; optimized large automatic PNGs to smaller JPEG quality 0.9 at the same pixel size, explicit crops unchanged. 153/153 full tests (80.5s), checkJs, isolated first/cold restart 11/11 each passed. Actual 8-page 851593-byte Cho 2018 PDF copied into offline QA and checked byte-for-byte in Responses before/after reopen and cache clear, history and metadata retained. QA multi-tab startup wait corrected in fresh v2 after v1 cold reader race; XPI unchanged. All inference mocked, online equation recognition unverified, user data unchanged. XPI 80734c7797263ba0a620e67905eda1c2293fda0de88114020e4141b610e37da5, 1110462 bytes.
+
+2026-10-19 0.12.5
+
+## 0.12.5：阅读布局、字号与原生文字批注
+
+新增 设置 → 页边批注 → 文档助手 → 阅读外观，支持 12–24 px 整数字号，默认 14 px。预览、助手正文/公式/输入框即时更新，保存在 Zotero Prefs，重启恢复，不改变 PDF。更新只写面板 CSS 变量，不重建聊天和输入 DOM，草稿及选区保留。
+
+聊天区移除服务、模型、账户、思考强度、速度下拉框及登录/用量按钮，统一使用原生设置页。五个页头图标分别为新会话、记录、引用、设置、关闭；输入框固定在底部，发送和停止按钮切换。当前模型保留为简洁状态。消息采用轻边框/用户气泡、图标动作及折叠文档范围，保留不完整材料标记，不隐藏来源覆盖问题。
+
+用户明确“新增文字”指 PDF 添加文本。构建时仅过滤 text 类型的页边卡片，并移除相应显示复选框；原条目及 PDF 页面文字不删改。高亮/下划线中的前文文字引用与其他批注保留。即使 forcedKeys 主动定位也不重复显示。
+
+验证：157/157 全套测试通过，87.2 秒，evidence/ui-0125/tests.txt；checkJs 通过。真实 MathML 的浅深主题、320/420/540 px 宽度和 14/20/24 px 字号共 18 组布局无横向溢出，保留至少 200 px 消息阅读区，截图在 evidence/ui-0125/。新增字体测试先观察缺失偏好/控件导致失败，再实现后通过。
+
+隔离 Zotero 10.0.6 首次启动及冷重启各 12/12 通过：evidence/zotero-0125-appearance-v3/report-1.json 与 report-2.json。新增检查在 Gecko 里绑定真实设置片段，触发字号 change，确认 18/20 px 应用、草稿选区保留，冷重启确认 20 px 恢复；创建真实 text 批注，强制 reveal 后确认无页边卡片、原文字和条目仍在。此前完整 PDF、来源失效、搜索、附件、历史、剪贴板、LaTeX、阅读位置和账户配置恢复验收继续通过。在线推理为合成数据，未提交论文、未消耗账户额度；真实文献库及用户配置未修改。v1 QA 准备时遗漏 NODE_PATH 导致 pdf-lib 缺失；v2 设置页整份 XML 包含外部声明而无法直接导入，修正 QA 为带 namespace 的真实设置片段后在全新 v3 配置完成首启与冷重启。两次均为 QA 问题，产品构建未因此改变。
+
+XPI SHA-256：424fb0c27daa08fc6d6795c224bd0a58d99294c732125d856a82d3f831c31ef1，1112643 字节。原始 0.9.5 XPI 和 baseline 未修改。
+

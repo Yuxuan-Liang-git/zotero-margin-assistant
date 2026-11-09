@@ -20,6 +20,24 @@ async function setup(){
   return {browser,page};
 }
 
+test('conversation layout fits narrow and wide docks with readable math at every supported font size',async()=>{
+ const {browser,page}=await setup();try{
+  await page.evaluate(()=>{globalThis._globalThis=globalThis;globalThis.Zotero={};});
+  for(const name of ['markdown'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});
+  await page.addScriptTag({path:path.resolve(__dirname,'../content/vendor/marked/marked.umd.js')});
+  await page.addScriptTag({path:path.resolve(__dirname,'../build/content/scripts/margincomments.js')});
+  await page.evaluate(async()=>{fixture.host.addon.bridge.renderMathPreview=Zotero.MarginComments.bridge.renderMathPreview;globalThis.visualPanel=await fixture.host.panel(fixture.reader);const chat=visualPanel.conversation();chat.title='公式与参数辨识';chat.history=[{role:'user',content:'怎样理解信息矩阵与参数收敛的关系？',materials:[]},{role:'assistant',content:'## 信息矩阵与收敛\n\n信息矩阵衡量观测数据对参数的约束。**不同方向都得到激励**时，参数才能被区分。\n\n\\[J=\\mathbb E\\!\\left[\\psi(t)\\psi(t)^{\\mathsf T}\\right]\\]\n\n- 特征值较小：对应方向的信息较少。\n- 矩阵正定：所有参数方向都有信息。\n\n可以结合前文的公式继续核对推导。',materials:[]}];visualPanel.renderMessages();visualPanel.showChat();visualPanel.question.value='结合公式继续解释';});
+  const evidence=path.resolve(__dirname,'../evidence/ui-0125');fs.mkdirSync(evidence,{recursive:true});
+  for(const scheme of ['light','dark']){await page.emulateMedia({colorScheme:scheme});await page.evaluate(value=>document.documentElement.style.colorScheme=value,scheme);
+   for(const width of [320,420,540])for(const size of [14,20,24]){
+    await page.evaluate(async({width,size})=>{document.documentElement.style.setProperty('--zma-assistant-user-width',width+'px');await fixture.host.setFontSize(size);visualPanel.messages.scrollTop=0;},{width,size});
+    const g=await page.evaluate(()=>{const node=visualPanel.node,input=visualPanel.question.getBoundingClientRect(),r=node.getBoundingClientRect();return {overflow:node.scrollWidth-node.clientWidth,messages:visualPanel.messages.clientHeight,visible:input.bottom<=r.bottom&&input.left>=r.left,math:visualPanel.messages.querySelectorAll('math').length};});assert.ok(g.overflow<=1,JSON.stringify({scheme,width,size,g}));assert.ok(g.messages>200,JSON.stringify(g));assert.ok(g.visible,JSON.stringify(g));assert.equal(g.math,1);
+    if(width===420||size===24)await page.locator('.zma-panel').screenshot({path:path.join(evidence,`${scheme}-${width}-${size}.png`)});
+   }
+  }
+ }finally{await browser.close();}
+});
+
 test('reader focus navigation leaves composer caret, selection, multiline editing and IME to the browser',async()=>{
   const {browser,page}=await setup();try{
     await page.evaluate(async()=>{
@@ -54,7 +72,10 @@ test('reader focus navigation leaves composer caret, selection, multiline editin
   }finally{await browser.close();}
 });
 
-test('ChatGPT provider/model picker routes PDF context and local history to the selected client',async()=>{
+test('chat keeps model/account/reasoning/speed configuration in settings and font changes preserve the draft caret',async()=>{
+ const {browser,page}=await setup();try{const before=await page.evaluate(async()=>{globalThis.cleanPanel=await fixture.host.panel(fixture.reader);cleanPanel.showChat();cleanPanel.question.value='保留这段草稿';cleanPanel.question.focus();cleanPanel.question.setSelectionRange(2,4);return {selects:cleanPanel.node.querySelectorAll('select').length,loginButtons:[...cleanPanel.node.querySelectorAll('button')].filter(b=>/登录|用量/.test(b.textContent)).length};});assert.equal(before.selects,0);assert.equal(before.loginButtons,0);await page.evaluate(()=>fixture.host.setFontSize(20));const after=await page.evaluate(()=>({font:getComputedStyle(cleanPanel.question).fontSize,messages:getComputedStyle(cleanPanel.messages).fontSize,text:cleanPanel.question.value,start:cleanPanel.question.selectionStart,end:cleanPanel.question.selectionEnd}));assert.equal(after.font,'20px');assert.equal(after.messages,'20px');assert.equal(after.text,'保留这段草稿');assert.equal(after.start,2);assert.equal(after.end,4);assert.equal(await page.getByRole('button',{name:'设置',exact:true}).count(),1);assert.equal(await page.getByRole('button',{name:'对话记录',exact:true}).count(),1);}finally{await browser.close();}
+});
+test('provider changes through settings refresh the model badge and route document context to the selected client',async()=>{
   const {browser,page}=await setup();try{
     await page.evaluate(async()=>{
       const host=fixture.host;host.provider='deepseek';host.providerState=()=>({provider:host.provider,label:host.provider==='chatgpt'?'ChatGPT':'DeepSeek',signedIn:true,model:'qa-model',models:[{slug:'qa-model',displayName:'QA Model'}],accountLabel:'QA Account'});
@@ -62,8 +83,8 @@ test('ChatGPT provider/model picker routes PDF context and local history to the 
       host.documentContext=async()=>({mode:'full-text',text:'current PDF facts',pages:[1],totalPages:1,title:'PDF QA'});
       globalThis.providerPanel=await host.panel(fixture.reader);providerPanel.showChat();
     });
-    const selector=page.getByRole('combobox',{name:'AI 服务',exact:true});assert.equal(await selector.count(),1);await selector.selectOption('chatgpt');
-    assert.equal(await page.getByRole('combobox',{name:'ChatGPT 模型',exact:true}).inputValue(),'qa-model');assert.match(await page.locator('.zma-provider-info').innerText(),/Codex.*ChatGPT Work/);
+    assert.equal(await page.getByRole('combobox',{name:'AI 服务',exact:true}).count(),0);await page.evaluate(()=>fixture.host.setProvider('chatgpt'));
+    assert.match(await page.locator('.zma-model-badge').innerText(),/ChatGPT.*QA Model/);
     await page.getByRole('textbox',{name:'问题',exact:true}).fill('解释当前文档');await page.getByRole('button',{name:'发送',exact:true}).click();
     await page.waitForFunction(()=>!!globalThis.chatgptInput);assert.match(JSON.stringify(await page.evaluate(()=>chatgptInput)),/current PDF facts/);
     assert.match(await page.locator('.zma-messages').innerText(),/ChatGPT 文档答案/);assert.equal(await page.evaluate(()=>providerPanel.conversation().history.at(-1).provider),'chatgpt');

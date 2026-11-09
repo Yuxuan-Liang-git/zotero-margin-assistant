@@ -1,6 +1,12 @@
   <groupbox data-search-strings-raw="DeepSeek,ChatGPT,订阅,登录,API,密钥,区域提问,模型">
     <label><html:h2 class="zmc-prefs-heading">文档助手 · DeepSeek / ChatGPT</html:h2></label>
     <html:div id="zma-api-settings" style="display:grid;gap:8px;max-width:540px">
+      <html:h3>阅读外观</html:h3>
+      <html:label for="zma-font-size">文档助手字体大小</html:label>
+      <html:select id="zma-font-size"></html:select>
+      <html:p id="zma-font-preview" style="margin:0;padding:12px;border:1px solid #aaa;border-radius:8px;line-height:1.65">阅读示例：参数估计、公式推导与文献对话。</html:p>
+      <html:p id="zma-appearance-status" role="status" style="margin:0"></html:p>
+      <html:p>12–24 px，默认 14 px。即时应用于所有文档助手的文字、公式与输入框，重启后保留；不修改 PDF 页面和 Zotero 主界面字号。</html:p>
       <html:h3>ChatGPT 订阅</html:h3>
       <html:p>使用自己的 ChatGPT 订阅，无需 OpenAI API Key。登录会在系统浏览器打开 OpenAI 授权页；登录信息在本机加密保存。</html:p>
       <html:label for="zma-provider">默认 AI 服务</html:label>

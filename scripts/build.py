@@ -33,6 +33,9 @@ def build():
     (out / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
     script = out / 'content/scripts/margincomments.js'
     text = script.read_text(encoding='utf-8')
+    # Native free-text annotations already draw their content on the PDF page.
+    # Do not duplicate them as margin cards, including explicitly revealed keys.
+    text = replace_once(text, 'return forcedKeys.has(annotation.key) || annotation.type === "note" || annotation.comment.trim().length > 0;', 'return annotation.type !== "text" && (forcedKeys.has(annotation.key) || annotation.type === "note" || annotation.comment.trim().length > 0);')
     text = replace_once(text, 'const markup = katex.renderToString(expression, {', 'const markup = katex.renderToString(_globalThis.ZMAMath?.normalizeDisplay(expression, delimiter.display) ?? expression, {')
     text = replace_once(text, '              fragment.append(doc.createTextNode(text2.slice(start, cursor)), template.content);', '              const renderedMath = template.content.querySelector("math");\n              if (renderedMath) renderedMath.setAttribute("data-zma-latex", text2.slice(cursor, next));\n              fragment.append(doc.createTextNode(text2.slice(start, cursor)), template.content);')
     text = replace_once(text, 'const allowed = [...SUPPORTED_FORMATS, "br", "div"];', 'const allowed = [...SUPPORTED_FORMATS, "br", "div"];\n        if (_globalThis.ZMAReferences.isAllowedAnchor(element)) allowed.push("a");')
@@ -120,6 +123,9 @@ def build():
     shutil.copy2(PROJECT / 'src/assistant.css', out / 'content/assistant.css')
     shutil.copytree(PROJECT / 'content', out / 'content', dirs_exist_ok=True)
     prefs = (out / 'content/preferences.xhtml').read_text(encoding='utf-8')
+    start = prefs.index('      <html:label class="zmc-prefs-type-row" for="zmc-prefs-type-text">')
+    end = prefs.index('      </html:label>', start) + len('      </html:label>\n')
+    prefs = replace_once(prefs, prefs[start:end], '')
     prefs = replace_once(prefs, 'registerPreferencePaneWindow(window)"', 'registerPreferencePaneWindow(window); Zotero.MarginComments.assistant?.bindPreferencePaneWindow(window)"')
     prefs = replace_once(prefs, '</vbox>', (PROJECT / 'content/deepseek-settings.inc.xhtml').read_text(encoding='utf-8') + '\n</vbox>')
     (out / 'content/preferences.xhtml').write_text(prefs, encoding='utf-8')

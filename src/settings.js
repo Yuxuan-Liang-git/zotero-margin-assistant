@@ -9,6 +9,14 @@
     container.querySelector('#zma-api-clear').addEventListener('click',async event=>{const b=event.currentTarget;b.disabled=true;try{await api.clear();key.value='';key.placeholder='输入 DeepSeek API Key';status.textContent='密钥已清除。';}catch(e){status.textContent=e.message;}finally{b.disabled=false;}});
     container.querySelector('#zma-api-test').addEventListener('click',async event=>{const b=event.currentTarget;b.disabled=true;try{await apply();status.textContent='正在获取可用模型列表…';const models=await api.test();status.textContent=models.includes(model.value.trim())?'连接成功，当前模型可用。':'连接成功；当前模型不在列表中。可用模型：'+models.join(', ');}catch(e){status.textContent=e.message;}finally{b.disabled=false;}});
     if(api.chatgpt&&container.querySelector('#zma-provider'))bindChatGPT(container,api.chatgpt);
+    if(container.querySelector('#zma-font-size'))bindAppearance(container,api.appearance);
+  }
+  function bindAppearance(container,api){
+    const doc=container.ownerDocument,select=container.querySelector('#zma-font-size'),preview=container.querySelector('#zma-font-preview'),status=container.querySelector('#zma-appearance-status');
+    for(let size=12;size<=24;size++){const option=doc.createElementNS('http://www.w3.org/1999/xhtml','option');option.value=String(size);option.textContent=size+' px'+(size===14?'（默认）':'');select.append(option);}
+    const render=()=>{const size=api?.state().fontSize||14;select.value=String(size);preview.style.fontSize=size+'px';};select.disabled=!api;render();
+    select.addEventListener('change',async()=>{select.disabled=true;try{await api.setFontSize(select.value);status.textContent='字号已保存并即时应用，重启后保留。';}catch(e){status.textContent=e.message;}finally{select.disabled=false;render();}});
+    const dispose=api?.watch(render);if(dispose)doc.defaultView?.addEventListener('unload',dispose,{once:true});
   }
   function bindChatGPT(container,api){
     const doc=container.ownerDocument,find=id=>container.querySelector('#zma-'+id),provider=find('provider'),account=find('chatgpt-account'),model=find('chatgpt-model'),reasoning=find('chatgpt-reasoning'),speed=find('chatgpt-speed'),status=find('chatgpt-status');let working=false;

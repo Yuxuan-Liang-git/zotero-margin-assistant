@@ -67,3 +67,11 @@
 - [ ] Conduct fresh review and fix actionable issues with regression tests. Document exact verified scope and remaining Zotero/API acceptance; deliver XPI plus buildable source.
 
 No Git commit steps: this workspace is not a repository; preserve evidence in a per-plan ledger. Execution is authorized by the user's 2026-10-13 “允许执行”; proceed in the current session.
+
+
+## 0.12.5 执行结果
+
+- 完成外观偏好、原生设置预览、即时应用及重启恢复；模型/账户等配置收进设置。
+- 完成简化页头、问答排版、底部输入和可展开文档范围；保留输入及附件、引用、流式渲染功能。
+- 按用户明确选择排除 PDF 添加文本的重复页边卡片，保留原文字批注。
+- 浏览器全套回归、checkJs、18 组排版检查；原生隔离首次启动及冷重启验证由 appearance-smoke.py 串联现有验收，记录见 acceptance.md。

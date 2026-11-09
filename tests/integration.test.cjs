@@ -32,6 +32,9 @@ test('provider selection persists and a request snapshots the ChatGPT account; s
   assert.equal(typeof host.setProvider,'function');await host.setProvider('chatgpt');assert.equal(prefs.get('margincomments.provider'),'chatgpt');assert.deepEqual(host.selectedClient(),{provider:'chatgpt',id:'registered-account'});
   host.claimRequest({itemID:1});await assert.rejects(host.setProvider('deepseek'),/生成/);host.releaseRequest({itemID:1});await host.setProvider('deepseek');assert.equal(host.selectedClient(),host.client);
 });
+test('assistant font preference validates 12-24 pixels, persists across restart and updates open panels',async()=>{
+ const prefs=new Map(),adapters={Prefs:{get:k=>prefs.get(k),set:(k,v)=>prefs.set(k,v)}},{host}=fixture(adapters);assert.equal(host.appearanceState().fontSize,14);let updated=0,notified=0;host.panels.set({}, {applyAppearance:()=>updated++});const stop=host.appearanceAPI().watch(()=>notified++);await host.setFontSize('20');assert.equal(host.appearanceState().fontSize,20);assert.equal(prefs.get('margincomments.fontSize'),20);assert.equal(updated,1);assert.equal(notified,1);assert.equal(fixture(adapters).host.appearanceState().fontSize,20);await assert.rejects(host.setFontSize(40),/12.*24/);assert.equal(prefs.get('margincomments.fontSize'),20);stop();await host.setFontSize(18);assert.equal(notified,1);
+});
 test('source identity is taken from native image annotation and changes invalidate it',async()=>{
   assert.equal(typeof H.Host,'function');const {host,annotation}=fixture();
   const s=await host.resolveSource({itemID:1},'FORM0630');assert.equal(s.pageIndex,65);assert.equal(s.pageLabel,'60');assert.equal(s.fingerprint,'123:9');

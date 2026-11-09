@@ -7,6 +7,10 @@
     // selection, word navigation and IME, instead of emulating caret movement.
     if(tag==='textarea')node.setAttribute('contenteditable','true');return node;}
   function button(doc,label,action){const b=el(doc,'button',label);b.type='button';b.addEventListener('click',()=>Promise.resolve().then(action).catch(e=>doc.defaultView?.alert?.(e.message)));return b;}
+  function iconButton(doc,label,kind,action){
+    const b=button(doc,label,action),svg=doc.createElementNS('http://www.w3.org/2000/svg','svg'),path=doc.createElementNS('http://www.w3.org/2000/svg','path'),icons={new:'M8 3v10M3 8h10',history:'M2 7a6 6 0 1 1 1 4M2 3v4h4M8 4v4l3 2',reference:'M2 3h4a3 3 0 0 1 2 1 3 3 0 0 1 2-1h4v10h-4a3 3 0 0 0-2 1 3 3 0 0 0-2-1H2zM8 4v10',settings:'M6 2h4l.5 2 2 .5 1.5 3-1.5 1.5.5 2-3 2L8 12l-2 1-3-2 .5-2L2 7.5l1.5-3 2-.5zM10 7.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0',close:'M4 4l8 8M12 4l-8 8',attach:'M5 9l5-5a2 2 0 0 1 3 3l-6 6a3.5 3.5 0 0 1-5-5l6-6',page:'M4 2h5l3 3v9H4zM9 2v4h3M6 9h4M6 11h4',send:'M8 13V3M3.5 7.5L8 3l4.5 4.5',stop:'M4 4h8v8H4z',copy:'M6 2h7v9h-3M3 5h7v9H3z',note:'M3 2h10v9l-3 3H3zM10 14v-3h3M5 5h6M5 8h5',comment:'M2 2h12v9H7l-4 3v-3H2zM5 5h6M5 8h4'};
+    svg.setAttribute('viewBox','0 0 16 16');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.5');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');path.setAttribute('d',icons[kind]||icons.new);svg.append(path);b.replaceChildren(svg);b.classList.add('zma-icon-button');b.setAttribute('aria-label',label);b.title=label;return b;
+  }
   class Panel{
     /** @type {(()=>void)|undefined} */
     disposeMath;
@@ -16,48 +20,35 @@
     async init(){
       this.state=await this.host.load(this.reader);this.conversationId=this.state.activeConversationId;const d=this.doc;
       this.node=el(d,'aside',undefined,'zma-panel');this.node.setAttribute('aria-label','区域阅读助手');this.node.hidden=true;
-      const header=el(d,'header');header.append(el(d,'strong','文档助手 · DeepSeek / ChatGPT'),button(d,'设置',()=>this.host.settings()),button(d,'关闭',()=>this.close()));
-      this.providerBar=el(d,'div',undefined,'zma-provider-bar');this.providerSelect=el(d,'select');this.providerSelect.setAttribute('aria-label','AI 服务');
-      for(const [value,label]of [['deepseek','DeepSeek API'],['chatgpt','ChatGPT 订阅']]){const option=el(d,'option',label);option.value=value;this.providerSelect.append(option);}
-      this.modelSelect=el(d,'select');this.modelSelect.setAttribute('aria-label','ChatGPT 模型');
-      this.reasoningSelect=el(d,'select');this.reasoningSelect.setAttribute('aria-label','思考强度');this.reasoningSelect.title='思考强度越高，通常耗时和用量越多';
-      this.speedSelect=el(d,'select');this.speedSelect.setAttribute('aria-label','生成速度');this.speedSelect.title='快速和极速会消耗更多共享额度；极速需账户资格';
-      this.providerInfo=el(d,'small',undefined,'zma-provider-info');this.usageButton=button(d,'管理用量',()=>this.host.chatGPTAPI?.().usage());
-      this.providerBar.append(this.providerSelect,this.modelSelect,this.reasoningSelect,this.speedSelect,button(d,'登录 / 账户',()=>this.host.settings()),this.usageButton,this.providerInfo);
-      this.providerSelect.addEventListener('change',()=>void Promise.resolve(this.host.setProvider?.(this.providerSelect.value)).catch(e=>this.error(e)).finally(()=>this.refreshProvider()));
-      this.modelSelect.addEventListener('change',()=>void Promise.resolve(this.host.setChatGPTModel?.(this.modelSelect.value)).catch(e=>this.error(e)).finally(()=>this.refreshProvider()));
-      this.reasoningSelect.addEventListener('change',()=>void Promise.resolve(this.host.setChatGPTReasoning?.(this.reasoningSelect.value)).catch(e=>this.error(e)).finally(()=>this.refreshProvider()));
-      this.speedSelect.addEventListener('change',()=>void Promise.resolve(this.host.setChatGPTSpeed?.(this.speedSelect.value)).catch(e=>this.error(e)).finally(()=>this.refreshProvider()));
-      this.tabs=el(d,'nav');this.chat=el(d,'section');this.directory=el(d,'section');this.directory.hidden=true;this.conversationList=el(d,'section',undefined,'zma-conversations');this.conversationList.hidden=true;
-      this.tabs.append(button(d,'提问',()=>this.showChat()),button(d,'对话记录',()=>this.showConversations()),button(d,'引用目录',()=>this.showDirectory()));
-      const info=el(d,'p','发送时自动加入当前 PDF；超限时使用文字片段与页面图片。可附加框选材料。','zma-info');
+      const header=el(d,'header',undefined,'zma-header'),tools=el(d,'nav',undefined,'zma-header-actions');header.append(el(d,'strong','文档助手','zma-heading'),tools);
+      this.historyButton=iconButton(d,'对话记录','history',()=>this.conversationList.hidden?this.showConversations():this.showChat());this.referenceButton=iconButton(d,'引用目录','reference',()=>this.directory.hidden?this.showDirectory():this.showChat());
+      this.newButton=iconButton(d,'新会话','new',()=>this.newConversation());tools.append(this.newButton,this.historyButton,this.referenceButton,iconButton(d,'设置','settings',()=>this.host.settings()),iconButton(d,'关闭','close',()=>this.close()));
+      this.chat=el(d,'section');this.directory=el(d,'section');this.directory.hidden=true;this.conversationList=el(d,'section',undefined,'zma-conversations');this.conversationList.hidden=true;
       this.activeLabel=el(d,'strong',undefined,'zma-active-conversation');
       this.materialList=el(d,'div',undefined,'zma-materials');
       this.messages=el(d,'div',undefined,'zma-messages');
-      this.question=el(d,'textarea');this.question.dataset.zma='question';this.question.placeholder='例如：公式 (7.41) 如何由 (6.30) 推出？';this.question.setAttribute('aria-label','问题');this.question.value=this.conversation().draft;
+      this.question=el(d,'textarea');this.question.dataset.zma='question';this.question.placeholder='询问这篇文献，或粘贴图片与附件…';this.question.setAttribute('aria-label','问题');this.question.value=this.conversation().draft;
       this.question.addEventListener('input',()=>{const conversation=this.conversation();conversation.draft=this.question.value;C.touchConversation(conversation);clearTimeout(this.draftTimer);this.draftTimer=setTimeout(()=>this.persist().catch(e=>this.error(e)),500);});
       this.question.addEventListener('keydown',e=>{if(e.key!=='Enter'||e.shiftKey||e.ctrlKey||e.altKey||e.metaKey||e.isComposing||e.keyCode===229)return;e.preventDefault();if(!this.busy)void this.send().catch(error=>this.error(error));});
-      this.sendButton=button(d,'发送',()=>this.send());this.sendButton.dataset.zma='send';
-      this.stopButton=button(d,'停止生成',()=>this.controller?.abort());this.stopButton.disabled=true;
-      const actions=el(d,'div',undefined,'zma-actions');actions.append(this.sendButton,this.stopButton,button(d,'添加附件',async()=>this.addFiles(await this.host.chooseAttachments())),button(d,'添加当前页',()=>this.addMaterial(()=>this.host.currentPage(this.reader))),button(d,'新会话',()=>this.newConversation()));
+      this.sendButton=iconButton(d,'发送','send',()=>this.send());this.sendButton.dataset.zma='send';this.sendButton.classList.add('zma-send');
+      this.stopButton=iconButton(d,'停止生成','stop',()=>this.controller?.abort());this.stopButton.disabled=true;this.stopButton.classList.add('zma-stop');
+      this.modelBadge=el(d,'span',undefined,'zma-model-badge');const actions=el(d,'div',undefined,'zma-composer-actions');actions.append(iconButton(d,'添加附件','attach',async()=>this.addFiles(await this.host.chooseAttachments())),iconButton(d,'添加当前页','page',()=>this.addMaterial(()=>this.host.currentPage(this.reader))),this.modelBadge,this.sendButton,this.stopButton);
       this.contextInfo=el(d,'p','文档背景：自动使用当前 PDF。','zma-context-info');
-      this.status=el(d,'p','Enter 发送，Shift+Enter 换行。','zma-status');this.status.setAttribute('role','status');
-      const composer=el(d,'div',undefined,'zma-composer');composer.append(this.question,actions);this.chat.className='zma-chat';this.chat.append(this.activeLabel,info,this.contextInfo,this.materialList,this.messages,composer);
+      this.contextDetails=el(d,'details',undefined,'zma-context');this.contextSummary=el(d,'summary','当前 PDF · 自动读取');this.contextDetails.append(this.contextSummary,this.contextInfo);
+      this.status=el(d,'p','Enter 发送 · Shift+Enter 换行','zma-status');this.status.setAttribute('role','status');
+      const composer=el(d,'div',undefined,'zma-composer');composer.append(this.question,actions);this.chat.className='zma-chat';this.chat.append(this.activeLabel,this.contextDetails,this.messages,this.materialList,composer);
       this.previewArea=el(d,'section',undefined,'zma-previews');
-      this.node.append(header,this.providerBar,this.tabs,this.previewArea,this.chat,this.conversationList,this.directory,this.status);d.body.append(this.node);
+      this.node.append(header,this.previewArea,this.chat,this.conversationList,this.directory,this.status);d.body.append(this.node);
       this.directory.className='zma-directory';this.installResizeHandle();
       this.disposeClipboard=root.ZMAClipboard?.install(this.node,{copy:text=>this.host.copy(text),read:()=>this.host.readClipboard?.(),readFiles:()=>this.host.readAttachmentClipboard?.()||[],onFiles:files=>this.addFiles(files),onQuote:text=>this.quoteSelection(text),onError:error=>this.error(error)});
       this.question.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files')){event.preventDefault();event.stopPropagation();}});this.question.addEventListener('drop',event=>{if(event.dataTransfer?.files.length){event.preventDefault();event.stopPropagation();void this.addFiles(Array.from(event.dataTransfer.files)).catch(e=>this.error(e));}});
-      this.refreshProvider();this.renderMaterials();this.renderMessages();this.renderConversationList();return this;
+      this.applyAppearance();this.refreshProvider();this.renderMaterials();this.renderMessages();this.renderConversationList();return this;
     }
     refreshProvider(){
-      const state=this.host.providerState?.()||{provider:'deepseek',model:this.host.model||''};this.providerSelect.value=state.provider;this.modelSelect.hidden=state.provider!=='chatgpt';this.usageButton.hidden=state.provider!=='chatgpt';
-      this.modelSelect.replaceChildren();for(const model of state.models||[]){const option=el(this.doc,'option',model.displayName);option.value=model.slug;this.modelSelect.append(option);}this.modelSelect.value=state.model||'';
-      this.reasoningSelect.hidden=state.provider!=='chatgpt';this.reasoningSelect.replaceChildren();const labels={default:'思考：模型默认',none:'思考：关闭',minimal:'思考：最少',low:'轻量 Light',medium:'中等 Medium',high:'高 High',xhigh:'超高 Extra High',max:'最大 Max'};
-      for(const value of ['default',...(state.reasoningEfforts||[])]){const option=el(this.doc,'option',labels[value]||value);option.value=value;this.reasoningSelect.append(option);}this.reasoningSelect.value=(state.reasoningEfforts||[]).includes(state.reasoningEffort)?state.reasoningEffort:'default';this.reasoningSelect.disabled=this.busy||!state.signedIn;
-      this.speedSelect.hidden=state.provider!=='chatgpt';this.speedSelect.replaceChildren();const speeds=state.speedTiers||['default'],speedLabels={default:'标准 Standard',fast:'快速 Fast（更多用量）',ultrafast:'极速 Ultrafast（需资格）'};for(const value of speeds){const option=el(this.doc,'option',speedLabels[value]||value);option.value=value;this.speedSelect.append(option);}this.speedSelect.value=speeds.includes(state.speed)?state.speed:'default';this.speedSelect.disabled=this.busy||!state.signedIn;
-      this.providerSelect.disabled=this.busy;this.modelSelect.disabled=this.busy||!state.signedIn;this.providerInfo.textContent=state.provider==='chatgpt'?(state.signedIn?`使用 Codex / ChatGPT Work 共享额度 · ${state.accountLabel||''}`:'请在设置中 Continue with ChatGPT 登录'):`使用 DeepSeek API · ${state.model||''}`;
+      const state=this.host.providerState?.()||{provider:'deepseek',model:this.host.model||''},model=state.models?.find(m=>m.slug===state.model)?.displayName||state.model||'';
+      this.modelBadge.textContent=state.provider==='chatgpt'?(state.signedIn?'ChatGPT'+(model?' · '+model:''):'ChatGPT · 请到设置登录'):'DeepSeek'+(model?' · '+model:'');this.modelBadge.title=this.modelBadge.textContent+'；模型、账户与生成选项在设置中调整';this.sendButton.hidden=this.busy;this.stopButton.hidden=!this.busy;this.newButton.disabled=this.busy;
     }
+    applyAppearance(){this.node.style.setProperty('--zma-font-size',`${this.host.appearanceState?.().fontSize||14}px`);}
     installResizeHandle(){
       const handle=el(this.doc,'div',undefined,'zma-resizer');handle.setAttribute('role','separator');handle.setAttribute('aria-label','调整文档助手宽度');handle.setAttribute('aria-orientation','vertical');this.node.prepend(handle);
       let dragging=false;const resize=e=>{if(!dragging)return;const viewport=this.doc.defaultView.innerWidth,width=Math.max(280,Math.min(viewport*.55,viewport-e.clientX));this.doc.documentElement.style.setProperty('--zma-assistant-user-width',`${width}px`);};
@@ -66,8 +57,8 @@
     open(){this.node.hidden=false;this.doc.body.classList.add('zma-assistant-open');}
     close(){this.node.hidden=true;this.doc.body.classList.remove('zma-assistant-open');}
     conversation(){return C.activeConversation(this.state,this.conversationId);}
-    showChat(){this.open();this.chat.hidden=false;this.directory.hidden=true;this.conversationList.hidden=true;}
-    showConversations(){this.open();this.chat.hidden=true;this.directory.hidden=true;this.conversationList.hidden=false;this.renderConversationList();}
+    showChat(){this.open();this.chat.hidden=false;this.directory.hidden=true;this.conversationList.hidden=true;this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');}
+    showConversations(){this.open();this.chat.hidden=true;this.directory.hidden=true;this.conversationList.hidden=false;this.historyButton.setAttribute('aria-pressed','true');this.referenceButton.setAttribute('aria-pressed','false');this.renderConversationList();}
     renderConversationList(){
       this.conversationList.replaceChildren(button(this.doc,'新会话',()=>this.newConversation()));
       for(const conversation of [...this.state.conversations].sort((a,b)=>b.updatedAt-a.updatedAt)){
@@ -82,7 +73,7 @@
     async switchConversation(id){
       if(this.busy||this.pendingMaterials.size||this.host.isGenerating?.(this.reader))throw new Error('请先等待当前操作完成');
       C.selectConversation(this.state,id);this.conversationId=id;this.materials=[];this.question.value=this.conversation().draft;
-      this.contextInfo.textContent='文档背景：自动使用当前 PDF。';this.renderMaterials();this.renderMessages();this.renderConversationList();this.showChat();await this.persist();
+      this.contextInfo.textContent='文档背景：自动使用当前 PDF。';this.contextSummary.textContent='当前 PDF · 自动读取';this.contextDetails.open=false;this.renderMaterials();this.renderMessages();this.renderConversationList();this.showChat();await this.persist();
     }
     async newConversation(){
       if(this.busy||this.pendingMaterials.size||this.host.isGenerating?.(this.reader))throw new Error('请先等待当前操作完成');
@@ -143,7 +134,7 @@
       card.append(text);if(m.role==='assistant'&&m.content)this.addAnswerActions(card,m,i);return card;
     }
     addAnswerActions(card,m,i){
-      const actions=el(this.doc,'div',undefined,'zma-actions');actions.append(button(this.doc,'复制',()=>this.host.copy(m.content)),button(this.doc,'保存为笔记',()=>this.saveAnswer(i,'note')),button(this.doc,'保存到批注',()=>this.saveAnswer(i,'comment')));card.append(actions);
+      const actions=el(this.doc,'div',undefined,'zma-actions zma-message-actions');actions.append(iconButton(this.doc,'复制','copy',()=>this.host.copy(m.content)),iconButton(this.doc,'保存为笔记','note',()=>this.saveAnswer(i,'note')),iconButton(this.doc,'保存到批注','comment',()=>this.saveAnswer(i,'comment')));card.append(actions);
     }
     renderAnswer(node,text){if(root.ZMAMarkdown)root.ZMAMarkdown.render(node,text,this.host.addon.bridge.renderMathPreview);else this.host.addon.bridge.renderMathPreview(node,text);}
     async compactHistory(conversation,history,signal,client=this.host.client){
@@ -192,6 +183,7 @@
         const context=await this.host.documentContext?.(this.reader,question,{budget:Math.min(24000,58000-D.textSize(baseMessages)),imageLimit:Math.max(0,8-refreshed.length-attachments.length),imageBudget:Math.max(0,Math.min(4*1024*1024,12*1024*1024-JSON.stringify(baseMessages).length-100000)),preferPDFFile:provider==='chatgpt',signal:this.controller.signal,onProgress:(n,total)=>{if(!this.destroyed)this.status.textContent=`正在读取当前 PDF：${n}/${total} 页…`;}});
         const requestAttachments=D.contextAttachments(attachments,context,refreshed),submitted=D.contextMaterials(refreshed,context,requestAttachments),wholePDF=context?.mode==='full-pdf'&&requestAttachments.some(f=>f.dataURL===context.file?.dataURL);
         if(context&&!this.destroyed){const imagePages=submitted.filter(m=>m.source.fullPage).map(m=>m.source.pageIndex+1);this.contextInfo.textContent=wholePDF?`本轮使用：${context.title} · 已附带完整 PDF 文件（共 ${context.totalPages} 页，含正文与图像公式）`:(context.mode==='full-text'?`本轮使用：${context.title} · 完整文字层 ${context.totalPages} 页`:`本轮使用：${context.title} · ${context.mode==='current-page-image'?'无全文文字层':'相关文字节选'}（PDF 第 ${context.pages.join('、')} 页）`)+`；页面图片：${imagePages.length?'PDF 第 '+imagePages.join('、')+' 页':'未加入'}`+(context.scannedPages?.length?'；扫描页尚无全文识别索引':'')+(context.imageWarning?'；'+context.imageWarning:'');}
+        if(context&&!this.destroyed){const images=submitted.filter(m=>m.source.fullPage).length;this.contextSummary.textContent=wholePDF?`完整 PDF · ${context.totalPages} 页`:context.mode==='full-text'?`文档文字层 · ${images} 页图像`:`文档节选 · ${images} 页图像`;const limited=!!context.imageWarning||unavailableCount>0;this.contextDetails.classList.toggle('zma-context-warning',limited);if(limited)this.contextSummary.textContent+=' · 部分材料未加入';}
         if(unavailableCount&&!this.destroyed)this.contextInfo.textContent+=`；${unavailableCount} 处引用已失效，本轮未发送，原记录保留`;
         const messages=D.buildMessages(hydrated,question,refreshed,context,conversation.summary||'',attachments,currentWarnings);
         if(this.controller.signal.aborted)throw new Error('生成已停止');
@@ -265,7 +257,7 @@
       }),button(doc,'取消',()=>{form.remove();this.relinkID=null;}));this.node.append(form);number.focus();
     }
     async showDirectory(target){
-      this.open();this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=false;this.directory.replaceChildren();this.insertTarget=target;
+      this.open();this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=false;this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','true');this.directory.replaceChildren();this.insertTarget=target;
       const query=el(this.doc,'input');query.placeholder='输入编号，例如 6.30';query.setAttribute('aria-label','查找引用编号');
       const type=el(this.doc,'select');type.append(el(this.doc,'option','全部'));C.TYPES.forEach(t=>type.append(el(this.doc,'option',t)));
       const list=el(this.doc,'div');

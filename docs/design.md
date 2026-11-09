@@ -138,3 +138,12 @@ AI 输出先留在会话中。写入批注使用明确的保存操作和编辑�
 - 已解包的 0.9.5：`manifest.json`、`bootstrap.js`、`content/scripts/margincomments.js`。
 - DeepSeek 官方图像输入文档：https://api-docs.deepseek.com/guides/vision/
 - 原项目公开仓库：https://github.com/XiaoDuComrade/zotero-margin-comments；其公开版本与本地定制包不同，不能据此替代本地基线。
+
+
+## 0.12.5 阅读界面与外观
+
+定向参考 Copilot 的会话布局：标题和五个带可访问名称的图标入口、可折叠文档范围、独立滚动消息区、固定底部输入框；用户消息有浅色背景，助手正文去除厚重边框，附件/复制/笔记操作缩为图标。保留原生 textarea、输入焦点标记、Enter/Shift+Enter/IME、选择和 LaTeX 复制行为。配置项全部移入既有原生设置页，侧栏只有当前模型状态。浅深主题使用系统 Canvas/CanvasText 色，18 个宽度/字号/主题组合做几何检查并留存截图。
+
+Host 外观状态采用 Zotero Prefs margincomments.fontSize，校验 12–24 整数，默认 14。只在各面板节点写 CSS 变量，更新不重建 DOM，保留草稿、选区、会话和滚动位置；设置预览和打开的面板即时联动，关闭设置窗口解除监听。不调用 API 保存动作，不重写密钥。
+
+原生 free-text（text）批注内容已绘制在 PDF 页内，因此 shouldDisplayAnnotation 排除该类型，即使 forcedKeys 也不重复页边卡片。其原始条目、文字和 PDF 位置不修改；生成包中移除对应显示复选框，其他类型和前文文字引用不受影响。原始 baseline 与原 XPI 不修改。
