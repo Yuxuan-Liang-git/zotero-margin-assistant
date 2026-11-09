@@ -1,0 +1,101 @@
+{
+  "zotero": "10.0.6",
+  "harness": 5,
+  "packageVersion": "0.10.3",
+  "packageSha256": "742365d119b62434e2121f9f876039a98c19b27b489061e128bf437a8a85115d",
+  "process": 53004,
+  "steps": [
+    {
+      "name": "runtime-page-boundary",
+      "ok": true,
+      "result": {
+        "wrappedGetViewport": "undefined",
+        "unwrappedGetViewport": "function",
+        "nativeRenderer": "function"
+      }
+    },
+    {
+      "name": "capture-real-scanned-region",
+      "ok": true,
+      "result": {
+        "width": 1280,
+        "height": 1200,
+        "bytes": 397522
+      }
+    },
+    {
+      "name": "current-page-material",
+      "ok": true,
+      "result": {
+        "pageIndex": 0,
+        "rects": [
+          [
+            0,
+            0,
+            595.275591,
+            897.675591
+          ]
+        ]
+      }
+    },
+    {
+      "name": "question-panel-material",
+      "ok": true,
+      "result": {
+        "materialCount": 1,
+        "panelVisible": true
+      }
+    },
+    {
+      "name": "inline-reference-in-native-margin",
+      "ok": true,
+      "result": {
+        "side": "right",
+        "parentAnnotation": "TARGRF23",
+        "width": 240,
+        "cardWidth": 264,
+        "imageWidth": 1280
+      }
+    },
+    {
+      "name": "native-dialogue-buttons-mocked-api",
+      "ok": true,
+      "result": {
+        "turns": 2,
+        "messages": 4,
+        "api": "mock; no request sent",
+        "sendButtonVisible": true
+      }
+    },
+    {
+      "name": "native-zotero-preference-pane",
+      "ok": true,
+      "result": {
+        "masked": true,
+        "cleared": true
+      }
+    },
+    {
+      "name": "native-source-change-invalidates-preview",
+      "ok": true,
+      "result": {
+        "staleImageRemoved": true,
+        "notice": "来源需要重新定位：PDF 文件或区域已经改变"
+      }
+    }
+  ],
+  "phase": "initialize-reader-adapter",
+  "hostRunning": true,
+  "panelGeometry": {
+    "position": "fixed",
+    "display": "flex",
+    "x": 580,
+    "y": 40,
+    "width": 420,
+    "height": 487,
+    "viewportWidth": 1000,
+    "viewportHeight": 527,
+    "stylesheetReady": true
+  },
+  "done": true
+}

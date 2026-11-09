@@ -62,10 +62,16 @@ def build():
     layoutPage(mounted)''')
     text = replace_once(text, '''  _globalThis.addon = instance;''', '''  instance.bridge = { renderStoredComment, readStoredComment, renderMathPreview, installMathResources };
   _globalThis.addon = instance;''')
+    text = replace_once(text, '''      this.invalidateRuntimeHeight(runtime);
+    }
+    renderComment(root, value)''', '''      this.invalidateRuntimeHeight(runtime);
+      Zotero.MarginComments.assistant?.syncReferences(this, runtime);
+    }
+    renderComment(root, value)''')
     script.write_text(text, encoding='utf-8')
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
-  for (const name of ["core", "capture", "references", "deepseek", "settings", "panel", "host"]) {
+  for (const name of ["core", "capture", "references", "deepseek", "settings", "panel", "margin-references", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();

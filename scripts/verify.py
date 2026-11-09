@@ -23,7 +23,7 @@ with zipfile.ZipFile(package) as archive:
     assert manifest['applications']['zotero']['strict_max_version']=='10.0.*'
     assert manifest['applications']['zotero']['id']=='margin-comments@local.zotero'
     assert manifest['applications']['zotero']['update_url']=='https://updates.invalid/margin-comments-deepseek/update.json'
-    for name in ['bootstrap.js','content/scripts/core.js','content/scripts/capture.js','content/scripts/references.js','content/scripts/deepseek.js','content/scripts/settings.js','content/scripts/panel.js','content/scripts/host.js','content/scripts/assistant-settings.js','content/assistant-settings.xhtml','content/assistant.css','content/vendor/katex/katex.min.css']:
+    for name in ['bootstrap.js','content/scripts/core.js','content/scripts/capture.js','content/scripts/references.js','content/scripts/deepseek.js','content/scripts/settings.js','content/scripts/panel.js','content/scripts/margin-references.js','content/scripts/host.js','content/scripts/assistant-settings.js','content/assistant-settings.xhtml','content/assistant.css','content/vendor/katex/katex.min.css']:
         assert name in names,name
     for path in (PROJECT/'build').rglob('*.js'):
         subprocess.run([args.node,'--check',str(path)],check=True,capture_output=True)
@@ -52,9 +52,9 @@ with zipfile.ZipFile(source_zip,'w',zipfile.ZIP_DEFLATED) as archive:
                 archive.write(path,path.relative_to(PROJECT).as_posix())
     for name in ['package.json','README.md','progress.md']:
         archive.write(PROJECT/name,name)
-smoke_path=PROJECT/'evidence/zotero-smoke-v4/report.json'
+smoke_path=PROJECT/'evidence/zotero-ui-release-final/report.json'
 smoke=json.loads(smoke_path.read_text(encoding='utf-8')) if smoke_path.exists() else None
-native_smoke='passed: actual Zotero 10.0.6 isolated reader capture, panel and native API preferences' if smoke and smoke.get('done') and all(step['ok'] for step in smoke['steps']) else 'not passed or not run'
+native_smoke='passed: actual Zotero 10.0.6 isolated reader capture, visible dock, inline margin reference, two mock dialogue turns, source invalidation and native API preferences' if smoke and smoke.get('done') and len(smoke['steps'])==8 and all(step['ok'] for step in smoke['steps']) and smoke.get('packageSha256')==hashlib.sha256(package.read_bytes()).hexdigest() else 'not passed or not run'
 report={'date':'2026-10-13','xpi_sha256':hashlib.sha256(package.read_bytes()).hexdigest(),'xpi_size':package.stat().st_size,'baseline_verified_against_original':baseline_verified,'changed_baseline_files':changed,'resource_and_syntax_checks':'passed','source_zip':str(source_zip),'real_api_test':'not run; user key not configured','native_zotero_smoke':native_smoke,'current_user_profile_gui_test':'not run; existing profile/library unchanged'}
 (PROJECT/'dist/verification-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(report))

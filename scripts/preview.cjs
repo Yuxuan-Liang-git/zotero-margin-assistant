@@ -11,18 +11,20 @@ const {chromium}=require('playwright'),{createCanvas}=require('@napi-rs/canvas')
   const materials=[];for(const s of sources)materials.push(await R.captureRegion(pdf,s,{createElement:()=>createCanvas(1,1)}));
   fs.writeFileSync(path.join(evidence,'scan-crop.png'),Buffer.from(materials[0].dataURL.split(',')[1],'base64'));await task.destroy();
   const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
-  try{const tab=await browser.newPage({viewport:{width:1440,height:1050},deviceScaleFactor:1});
-    await tab.setContent('<html lang="zh-CN"><head></head><body style="background:#e8eaee;margin:0;font:16px system-ui"><div style="padding:16px;background:white;border-bottom:1px solid #bbb">Zotero 阅读器界面检查 · 使用扫描件局部 · 模拟回答，未调用 DeepSeek</div><main style="margin:45px;width:780px;padding:20px;background:white"><h2>当前页阅读</h2><p>圈选当前公式，在旁边展开已标记的前文来源。</p><img id="page" style="width:750px"/><p>页边批注：依据前文 <a href="#">段落（示例 A）</a> 继续推导。</p></main></body></html>');
+  try{const tab=await browser.newPage({viewport:{width:1600,height:1000},deviceScaleFactor:1});
+    await tab.setContent('<html lang="zh-CN"><head><style>body{background:#e8eaee;margin:0;font:15px system-ui;overflow:hidden}#split-view{position:fixed;left:0;right:0;top:40px;bottom:0;overflow:auto}main{margin:24px;width:730px;padding:20px;background:white}.zmc-card{position:absolute;right:12px;top:210px;width:290px;padding:12px;background:white;border:1px solid #2ea8e5;border-radius:5px;box-sizing:border-box}.zmc-card footer{margin-top:10px}</style></head><body><div style="height:40px;padding:8px;box-sizing:border-box;background:white">本机界面示例 · 扫描页局部 · 模拟回答，未调用 DeepSeek</div><div id="split-view"><main><h2>当前页阅读</h2><p>框选当前内容，引用前文后直接在页边对照。</p><img id="page" style="width:720px"/></main><article class="zmc-card" data-annotation-key="CURRENT2"><div class="zmc-card-preview"></div><footer></footer></article></div></body></html>');
     await tab.addStyleTag({path:path.join(project,'src/assistant.css')});
     await tab.evaluate(()=>{globalThis._globalThis=globalThis;globalThis.Zotero={};});
-    for(const name of ['core','references','deepseek','panel'])await tab.addScriptTag({path:path.join(project,'src/'+name+'.js')});
+    for(const name of ['core','references','deepseek','panel','margin-references'])await tab.addScriptTag({path:path.join(project,'src/'+name+'.js')});
     await tab.addScriptTag({path:path.join(project,'build/content/scripts/margincomments.js')});
     await tab.evaluate(async({materials,sources})=>{
       document.getElementById('page').src=materials[1].dataURL;
-      const state=ZMACore.emptyState();state.sources=sources;
-      const host={addon:Zotero.MarginComments,scope:()=>({libraryID:1,attachmentKey:'ABCD1234'}),load:async()=>state,save:async()=>{},capture:async(_r,s)=>materials.find(m=>m.source.annotationKey===s.annotationKey),newAbortController:()=>new AbortController(),copy:()=>{},settings:()=>{},currentPage:async()=>sources[1]};
-      const panel=await new ZMAPanel.Panel(host,{itemID:1},document).init();panel.open();await panel.addMaterial(sources[1]);await panel.preview(sources[0]);
-      panel.question.value='这段推导如何使用前面的结论？';
+      const state=ZMACore.emptyState();state.sources=sources;const source=sources[0],link=ZMACore.sourceLink(source);state.references=[{annotationKey:'CURRENT2',sourceID:source.id,link}];
+      const card=document.querySelector('.zmc-card'),preview=card.querySelector('.zmc-card-preview'),runtime={card,preview,currentValue:ZMACore.storedLink(source),annotation:{key:'CURRENT2'},referenceRoot:document.createElement('div')};runtime.referenceRoot.className='zma-reference-stack';card.insertBefore(runtime.referenceRoot,card.querySelector('footer'));preview.append(document.createTextNode('依据前文结论继续推导：'));ZMAReferences.render(preview,runtime.currentValue);
+      const session={reader:{itemID:1},invalidateRuntimeHeight:()=>{},relayoutRuntime:()=>{}};
+      const host={addon:Zotero.MarginComments,scope:()=>({libraryID:1,attachmentKey:'ABCD1234'}),load:async()=>state,save:async()=>{},capture:async(_r,s)=>materials.find(m=>m.source.annotationKey===s.annotationKey),resolveSource:async(_r,s)=>s,sourceLink:ZMACore.sourceLink,newAbortController:()=>new AbortController(),copy:()=>{},settings:()=>{},currentPage:async()=>sources[1]};
+      const panel=await new ZMAPanel.Panel(host,session.reader,document).init();await panel.addMaterial(sources[1]);await ZMAMarginReferences.sync(host,session,runtime);
+      state.history=[{role:'user',content:'这段推导如何使用前面的结论？',materials:[sources[1]]},{role:'assistant',content:'这是用于检查界面的模拟回答。前文引用显示在当前批注下方，可直接对照；需要联合提问时，点击引用截图下的“加入提问”。'}];panel.renderMessages();panel.question.value='继续解释这里的符号定义。';
     },{materials,sources});
     await tab.screenshot({path:path.join(evidence,'assistant-preview.png'),fullPage:true});
   }finally{await browser.close();}

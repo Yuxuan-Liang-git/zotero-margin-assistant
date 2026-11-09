@@ -44,7 +44,7 @@ test('closing an external reader immediately destroys its panel without a tab ev
 });
 test('reader closed during assistant initialization cannot publish a stale panel',async()=>{
   const {host}=fixture();host.running=true;let finish;globalThis.waitInit=new Promise(resolve=>{finish=resolve;});
-  const reader={itemID:1,_iframeWindow:{document:{}}};host.addon.controller.ensureSession=async()=>({adapter:{document:()=>({})}});host.addon.bridge={installMathResources:()=>()=>{}};host.installStyles=()=>{};host.bindReferences=()=>{};
+  const reader={itemID:1,_iframeWindow:{document:{}}};host.addon.controller.ensureSession=async()=>({adapter:{document:()=>({})},cardRuntimes:()=>[]});host.addon.bridge={installMathResources:()=>()=>{}};host.installStyles=()=>{};host.bindReferences=()=>{};
   const pending=host.panel(reader);await new Promise(r=>setTimeout(r,0));await host.closeReader(reader);finish();await assert.rejects(pending,/关闭/);assert.equal(host.panels.size,0);globalThis.waitInit=null;
 });
 test('DeepSeek settings command opens its native Zotero preferences without a separate dialog',()=>{

@@ -5,6 +5,8 @@
   const R=root.ZMACapture||(typeof require!=='undefined'?require('./capture.js'):null);
   const ID='margin-comments-assistant@local.zotero';
   class Host{
+    /** @type {string|undefined} */
+    styleText;
     constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value}){
       this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
       this.directory=P.join(Z.DataDirectory.dir,'margin-comments-assistant');
@@ -48,7 +50,7 @@
       if(this.cache.size>=16)this.cache.delete(this.cache.keys().next().value);this.cache.set(key,result);return result;
     }
     load(reader){const scope=this.scope(reader),key=C.scopeKey(scope);if(!this.states.has(key))this.states.set(key,this.store.load(scope));return this.states.get(key);}
-    save(reader,state){return this.store.save(this.scope(reader),state);}
+    async save(reader,state){await this.store.save(this.scope(reader),state);this.refreshReferenceCards(reader);}
     claimRequest(reader){const key=C.scopeKey(this.scope(reader));if(this.activeRequests.has(key))throw new Error('此 PDF 已在另一窗口正在生成，请先停止或等待完成');this.activeRequests.add(key);}
     releaseRequest(reader){this.activeRequests.delete(C.scopeKey(this.scope(reader)));}
     isGenerating(reader){return this.activeRequests.has(C.scopeKey(this.scope(reader)));}
@@ -59,15 +61,18 @@
       if(this.pending.has(reader))return this.pending.get(reader);
       const task=(async()=>{
         const session=await this.addon.controller.ensureSession(reader);if(this.closedReaders.has(reader)||!this.running)throw new Error('窗口已关闭');if(!session)throw new Error('PDF 阅读器尚未就绪');
-        const doc=reader._iframeWindow?.document;if(!doc)throw new Error('阅读器窗口不存在');
-        const panel=await new root.ZMAPanel.Panel(this,reader,doc).init();
+        this.decorateSession(session);const doc=reader._iframeWindow?.document;if(!doc)throw new Error('阅读器窗口不存在');
+        this.installStyles(doc);const panel=await new root.ZMAPanel.Panel(this,reader,doc).init();
         if(!this.running||this.closedReaders.has(reader)){await panel.destroy();throw new Error('阅读助手或窗口已关闭');}
         this.installStyles(doc);panel.disposeMath=this.addon.bridge.installMathResources(doc,()=>{});
         this.panels.set(reader,panel);this.bindReferences(reader,session.adapter.document());return panel;
       })();this.pending.set(reader,task);try{return await task;}finally{this.pending.delete(reader);}
     }
     installStyles(doc){
-      if(!doc.getElementById('zma-styles')){const link=doc.createElement('link');link.id='zma-styles';link.rel='stylesheet';link.href='chrome://margincomments/content/assistant.css';doc.head.append(link);}
+      if(!doc.getElementById('zma-styles')){
+        if(this.Z?.File?.getContentsFromURL){this.styleText??=this.Z.File.getContentsFromURL('chrome://margincomments/content/assistant.css');const style=doc.createElementNS('http://www.w3.org/1999/xhtml','style');style.id='zma-styles';style.textContent=this.styleText;doc.head.append(style);}
+        else{const link=doc.createElement('link');link.id='zma-styles';link.rel='stylesheet';link.href='chrome://margincomments/content/assistant.css';doc.head.append(link);}
+      }
       if(!doc.getElementById('zma-math-styles')){const link=doc.createElement('link');link.id='zma-math-styles';link.rel='stylesheet';link.href='chrome://margincomments/content/vendor/katex/katex.min.css';doc.head.append(link);}
     }
     bindReferences(reader,doc){
@@ -77,23 +82,35 @@
         const link=event.target?.closest?.('a[href]');if(!link||!C.parseSourceLink(link.getAttribute('href')))return;
         event.preventDefault();event.stopPropagation();
         this.guard(async()=>{
-          const panel=await this.panel(reader);const href=link.getAttribute('href');const location=C.parseSourceLink(href);const scope=this.scope(reader);
+          const state=await this.load(reader);const href=link.getAttribute('href');const location=C.parseSourceLink(href);const scope=this.scope(reader);
           if(location.attachmentKey!==scope.attachmentKey||location.groupID!==this.groupID(scope))throw new Error('该链接不属于当前 PDF');
-          const relation=panel.state.references.find(r=>r.link===href);let source;
-          if(relation){source=panel.state.sources.find(s=>s.id===relation.sourceID);if(!source)throw new Error('来源索引已删除，请重新插入引用');}
-          else source=panel.state.sources.find(s=>s.annotationKey===location.annotationKey&&s.pageIndex===location.pageIndex);
+          const targetKey=link.closest('.zmc-card')?.dataset.annotationKey;const relation=state.references.find(r=>r.link===href&&r.annotationKey===targetKey);let source;
+          if(relation){source=state.sources.find(s=>s.id===relation.sourceID);if(!source)throw new Error('来源索引已删除，请重新插入引用');}
+          else source=state.sources.find(s=>s.annotationKey===location.annotationKey&&s.pageIndex===location.pageIndex);
           if(!source)throw new Error('此设备没有该来源的索引，请在原文手动重新标记');
-          await panel.preview(source);
+          await this.previewReference(reader,source,{annotationKey:targetKey});
         });
       };const unload=()=>{void this.closeReader(reader);};doc.addEventListener('click',listener,true);doc.defaultView?.addEventListener('unload',unload,{once:true});
       this.cleanups.set(doc,{reader,dispose:()=>{doc.removeEventListener('click',listener,true);doc.defaultView?.removeEventListener('unload',unload);doc.querySelectorAll?.('#zma-styles,#zma-math-styles').forEach(n=>n.remove());}});
     }
     attachCard(session,runtime){
+      if(runtime.referenceRoot)return;
       const doc=runtime.card.ownerDocument;this.bindReferences(session.reader,doc);
       const b=root.ZMAPanel.button(doc,'插入引用',async()=>{
         await session.persist(runtime);const panel=await this.panel(session.reader);await panel.showDirectory({annotationKey:runtime.annotation.key,session,runtime});
       });b.className='zma-insert-reference';b.disabled=runtime.annotation.readOnly;
       b.addEventListener('pointerdown',e=>e.stopPropagation());b.addEventListener('mousedown',e=>e.preventDefault());runtime.card.querySelector('footer')?.append(b);
+      runtime.referenceRoot=root.ZMAPanel.el(doc,'div',undefined,'zma-reference-stack');runtime.card.insertBefore(runtime.referenceRoot,runtime.card.querySelector('footer'));
+      this.syncReferences(session,runtime);
+    }
+    syncReferences(session,runtime){void root.ZMAMarginReferences.sync(this,session,runtime).catch(e=>{if(runtime.referenceRoot)runtime.referenceRoot.textContent=e.message;});}
+    decorateSession(session){for(const runtime of session.cardRuntimes())if(!runtime.referenceRoot)this.attachCard(session,runtime);}
+    refreshReferenceCards(reader,force=false){for(const session of this.addon.controller.sessions?.values()||[]){if(reader&&Number(session.reader.itemID)!==Number(reader.itemID))continue;for(const runtime of session.cardRuntimes())if(runtime.referenceRoot)void root.ZMAMarginReferences.sync(this,session,runtime,force).catch(()=>{});}}
+    async previewReference(reader,source,target){
+      const session=await this.addon.controller.ensureSession(reader);if(!session)throw new Error('阅读器尚未就绪');
+      const runtime=session.cardRuntimes().find(r=>r.annotation.key===(target?.annotationKey||session.activeKey));
+      if(!runtime)throw new Error('请先选择当前页批注，再查看前文引用');
+      await root.ZMAMarginReferences.show(this,session,runtime,source);
     }
     async insertReference(reader,target,source,state){
       await this.resolveSource(reader,source);
@@ -104,7 +121,7 @@
       await this.save(reader,state);
       const value=String(annotation.annotationComment||'');
       if(!value.includes(stored)){annotation.annotationComment=value+(value?'\n':'')+stored;await annotation.saveTx();}
-      await target.session?.refresh(true);
+      const session=target.session||await this.addon.controller.ensureSession(reader);session?.forcedKeys.add(target.annotationKey);await session?.refresh(true);
     }
     async saveComment(reader,source,text,sources=[]){
       await this.resolveSource(reader,source);const item=this.nativeAnnotation(reader,source.annotationKey);
@@ -130,12 +147,12 @@
     }
     onToolbar=event=>{
       if(!this.isPDF(event.reader))return;
-      const b=root.ZMAPanel.button(event.doc,'阅读助手',async()=>{const panel=await this.panel(event.reader);panel.open();});b.className='zma-toolbar';b.title='DeepSeek 区域提问与前文引用';event.append(b);
-      this.guard(async()=>{const session=await this.addon.controller.ensureSession(event.reader);if(session)this.bindReferences(event.reader,session.adapter.document());});
+      const b=root.ZMAPanel.button(event.doc,'DeepSeek',async()=>{const panel=await this.panel(event.reader);panel.showChat();});b.className='zma-toolbar';b.title='打开 DeepSeek 文档提问侧边栏';event.append(b);
+      this.guard(async()=>{const session=await this.addon.controller.ensureSession(event.reader);if(session){this.bindReferences(event.reader,session.adapter.document());this.decorateSession(session);}});
     };
     onMenu=({reader,params,append})=>{
       if(!this.isPDF(reader))return;const keys=Array.isArray(params?.ids)?params.ids.map(String):[];const key=keys.length===1?keys[0]:null;const item=key&&this.nativeAnnotation(reader,key);const region=item?.annotationType==='image';
-      append({label:'向 DeepSeek 提问',disabled:!region,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);await panel.addMaterial(await this.resolveSource(reader,key));})});
+      append({label:'向 DeepSeek 提问',disabled:!region,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);panel.showChat();try{await panel.addMaterial(()=>this.resolveSource(reader,key));}catch(e){panel.error(e);}})});
       append({label:'标记为引用来源',disabled:!region||item.isEditable?.()===false||this.isReadOnly(reader),onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);await panel.markSource(await this.resolveSource(reader,key));})});
       append({label:'插入前文引用',disabled:!item||item.isEditable?.()===false||this.isReadOnly(reader),onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);await panel.showDirectory({annotationKey:key});})});
     };
@@ -143,9 +160,9 @@
     async start(){
       this.running=true;this.Z.Reader.registerEventListener('renderToolbar',this.onToolbar,ID);this.Z.Reader.registerEventListener('createAnnotationContextMenu',this.onMenu,ID);
       for(const doc of this.addon.controller.preferenceDocuments||[])this.bindPreferencePaneWindow(doc.defaultView);
-      this.observer=this.Z.Notifier.registerObserver({notify:()=>this.prune()},['tab'],ID);
+      this.observer=this.Z.Notifier.registerObserver({notify:(_event,type)=>{this.prune();if(type==='item')this.refreshReferenceCards(undefined,true);}},['tab','item'],ID);
       for(const reader of this.Z.Reader._readers||[])if(this.isPDF(reader))this.guard(async()=>{
-        await reader._initPromise;const doc=reader._iframeWindow?.document;if(!doc)return;
+        await reader._initPromise;const session=await this.addon.controller.ensureSession(reader);if(session){this.decorateSession(session);this.bindReferences(reader,session.adapter.document());}const doc=reader._iframeWindow?.document;if(!doc)return;
         if(!doc.querySelector('.zma-toolbar')){const container=doc.querySelector('.toolbar .end .custom-sections');if(container)this.onToolbar({reader,doc,append:b=>container.append(b)});}
       });
     }

@@ -1,16 +1,16 @@
 (function(root){
   'use strict';
   const C=root.ZMACore,D=root.ZMADeepSeek;
-  function el(doc,tag,text,className){const node=doc.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;}
+  function el(doc,tag,text,className){const node=doc.createElementNS('http://www.w3.org/1999/xhtml',tag);if(text!==undefined)node.textContent=text;if(className)node.setAttribute('class',className);return node;}
   function button(doc,label,action){const b=el(doc,'button',label);b.type='button';b.addEventListener('click',()=>Promise.resolve().then(action).catch(e=>doc.defaultView?.alert?.(e.message)));return b;}
   class Panel{
     /** @type {(()=>void)|undefined} */
     disposeMath;
-    constructor(host,reader,doc){this.host=host;this.reader=reader;this.doc=doc;this.materials=[];this.destroyed=false;this.busy=false;this.relinkID=null;}
+    constructor(host,reader,doc){this.host=host;this.reader=reader;this.doc=doc;this.materials=[];this.pendingMaterials=new Set();this.destroyed=false;this.busy=false;this.relinkID=null;}
     async init(){
       this.state=await this.host.load(this.reader);const d=this.doc;
       this.node=el(d,'aside',undefined,'zma-panel');this.node.setAttribute('aria-label','区域阅读助手');this.node.hidden=true;
-      const header=el(d,'header');header.append(el(d,'strong','区域阅读助手'),button(d,'DeepSeek 设置',()=>this.host.settings()),button(d,'关闭',()=>{this.node.hidden=true;}));
+      const header=el(d,'header');header.append(el(d,'strong','DeepSeek · 文档助手'),button(d,'设置',()=>this.host.settings()),button(d,'关闭',()=>this.close()));
       this.tabs=el(d,'nav');this.chat=el(d,'section');this.directory=el(d,'section');this.directory.hidden=true;
       this.tabs.append(button(d,'提问',()=>this.showChat()),button(d,'引用目录',()=>this.showDirectory()));
       const info=el(d,'p','仅点击发送才上传所列区域；编号与草稿保存在本机。','zma-info');
@@ -20,23 +20,38 @@
       this.question.addEventListener('input',()=>{this.state.draft=this.question.value;clearTimeout(this.draftTimer);this.draftTimer=setTimeout(()=>this.persist().catch(e=>this.error(e)),500);});
       this.sendButton=button(d,'发送',()=>this.send());this.sendButton.dataset.zma='send';
       this.stopButton=button(d,'停止生成',()=>this.controller?.abort());this.stopButton.disabled=true;
-      const actions=el(d,'div',undefined,'zma-actions');actions.append(this.sendButton,this.stopButton,button(d,'添加当前页',async()=>this.addMaterial(await this.host.currentPage(this.reader))),button(d,'新会话',async()=>{if(this.busy||this.host.isGenerating?.(this.reader))throw new Error('请先停止生成');this.state.history=[];this.state.draft='';this.question.value='';await this.persist();this.renderMessages();}));
+      const actions=el(d,'div',undefined,'zma-actions');actions.append(this.sendButton,this.stopButton,button(d,'添加当前页',()=>this.addMaterial(()=>this.host.currentPage(this.reader))),button(d,'新会话',async()=>{if(this.busy||this.host.isGenerating?.(this.reader))throw new Error('请先停止生成');this.state.history=[];this.state.draft='';this.question.value='';await this.persist();this.renderMessages();}));
       this.status=el(d,'p','使用 Zotero 区域批注框选，再右键选择“向 DeepSeek 提问”。','zma-status');this.status.setAttribute('role','status');
-      this.chat.append(info,this.materialList,this.messages,this.question,actions);
+      const composer=el(d,'div',undefined,'zma-composer');composer.append(this.question,actions);this.chat.className='zma-chat';this.chat.append(info,this.materialList,this.messages,composer);
       this.previewArea=el(d,'section',undefined,'zma-previews');
       this.node.append(header,this.tabs,this.previewArea,this.chat,this.directory,this.status);d.body.append(this.node);
+      this.directory.className='zma-directory';this.installResizeHandle();
       this.renderMaterials();this.renderMessages();return this;
     }
-    open(){this.node.hidden=false;}
+    installResizeHandle(){
+      const handle=el(this.doc,'div',undefined,'zma-resizer');handle.setAttribute('role','separator');handle.setAttribute('aria-label','调整文档助手宽度');handle.setAttribute('aria-orientation','vertical');this.node.prepend(handle);
+      let dragging=false;const resize=e=>{if(!dragging)return;const viewport=this.doc.defaultView.innerWidth,width=Math.max(280,Math.min(viewport*.55,viewport-e.clientX));this.doc.documentElement.style.setProperty('--zma-assistant-user-width',`${width}px`);};
+      handle.addEventListener('pointerdown',e=>{dragging=true;handle.setPointerCapture?.(e.pointerId);e.preventDefault();});handle.addEventListener('pointermove',resize);handle.addEventListener('pointerup',e=>{resize(e);dragging=false;handle.releasePointerCapture?.(e.pointerId);});handle.addEventListener('pointercancel',()=>{dragging=false;});
+    }
+    open(){this.node.hidden=false;this.doc.body.classList.add('zma-assistant-open');}
+    close(){this.node.hidden=true;this.doc.body.classList.remove('zma-assistant-open');}
     showChat(){this.open();this.chat.hidden=false;this.directory.hidden=true;}
     error(e){if(!this.destroyed)this.status.textContent=e.message||String(e);}
     async persist(){if(this.destroyed)return;await this.host.save(this.reader,this.state);}
     async addMaterial(source){
-      if(this.busy)throw new Error('生成期间不能更改材料');
-      if(this.materials.some(m=>m.source.annotationKey===source.annotationKey&&m.source.pageIndex===source.pageIndex))return;
-      if(this.materials.length>=8)throw new Error('每次最多 8 个区域');
-      const material=await this.host.capture(this.reader,source);if(this.destroyed)return;
-      this.materials.push(material);this.showChat();this.renderMaterials();
+      this.showChat();this.status.textContent='正在读取所选材料…';
+      if(this.busy||this.host.isGenerating?.(this.reader))throw new Error('生成期间不能更改材料');
+      const loader=typeof source==='function';let key=loader?Symbol('source-lookup'):`${source.annotationKey}:${source.pageIndex}`;
+      if(!loader&&(this.pendingMaterials.has(key)||this.materials.some(m=>m.source.annotationKey===source.annotationKey&&m.source.pageIndex===source.pageIndex)))return;
+      if(this.materials.length+this.pendingMaterials.size>=8)throw new Error('每次最多 8 个区域');
+      this.pendingMaterials.add(key);this.sendButton.disabled=true;
+      try{
+        if(loader){source=await source();if(this.destroyed)return;const resolvedKey=`${source.annotationKey}:${source.pageIndex}`;this.pendingMaterials.delete(key);if(this.pendingMaterials.has(resolvedKey)||this.materials.some(m=>m.source.annotationKey===source.annotationKey&&m.source.pageIndex===source.pageIndex))return;key=resolvedKey;this.pendingMaterials.add(key);}
+        if(this.busy||this.host.isGenerating?.(this.reader))throw new Error('生成期间不能更改材料');
+        const material=await this.host.capture(this.reader,source);if(this.destroyed)return;
+        if(this.busy||this.host.isGenerating?.(this.reader))throw new Error('生成期间不能更改材料');
+        this.materials.push(material);this.showChat();this.renderMaterials();this.status.textContent='材料已加入，可输入问题或继续添加前文。';
+      }finally{this.pendingMaterials.delete(key);if(!this.destroyed)this.sendButton.disabled=this.busy||this.pendingMaterials.size>0;}
     }
     renderMaterials(){
       this.materialList.replaceChildren();
@@ -56,9 +71,11 @@
         if(m.role==='assistant'&&m.content){const actions=el(this.doc,'div',undefined,'zma-actions');actions.append(button(this.doc,'复制',()=>this.host.copy(m.content)),button(this.doc,'保存为笔记',()=>this.saveAnswer(i,'note')),button(this.doc,'保存到批注',()=>this.saveAnswer(i,'comment')));card.append(actions);}
         this.messages.append(card);
       });
+      if(!this.state.history.length)this.messages.append(el(this.doc,'p','围绕当前 PDF 提问：添加当前页，或在 PDF 中框选区域后右键“向 DeepSeek 提问”。可加入前文引用，一起解释公式之间的关系。','zma-empty-chat'));
+      this.messages.scrollTop=this.messages.scrollHeight;
     }
     async send(){
-      if(this.busy)return;const question=this.question.value.trim();if(!question)throw new Error('请输入问题');
+      if(this.busy)return;if(this.pendingMaterials.size)throw new Error('材料正在读取，请完成后再发送');const question=this.question.value.trim();if(!question)throw new Error('请输入问题');
       // A retry replaces the failed pair, rather than duplicating its user message.
       const history=this.state.history.slice();
       if(history.at(-1)?.incomplete&&history.at(-2)?.role==='user'&&history.at(-2).content===question)history.splice(-2);
@@ -80,7 +97,7 @@
         this.state.history=[...history,user,answer];this.state.draft=this.question.value;await this.persist();this.renderMessages();
         this.status.textContent='DeepSeek 正在回答…';
         answer.content=await this.host.client.generate(messages,{signal:this.controller.signal,onDelta:delta=>{
-          answer.content+=delta;if(!this.destroyed){const last=this.messages.lastElementChild?.querySelector('.zma-answer');if(last)last.textContent=answer.content;}
+          answer.content+=delta;if(!this.destroyed){const follow=this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80;const last=this.messages.lastElementChild?.querySelector('.zma-answer');if(last)last.textContent=answer.content;if(follow)this.messages.scrollTop=this.messages.scrollHeight;}
         }});
         answer.incomplete=false;if(this.question.value.trim()===question)this.question.value='';this.state.draft=this.question.value;this.status.textContent='回答完成，可追问或保存。';
       }catch(e){
@@ -88,7 +105,7 @@
         this.state.draft=this.question.value;this.error(e);
       }finally{
         clearTimeout(deadline);this.controller=null;this.busy=false;this.host.releaseRequest?.(this.reader);
-        if(!this.destroyed){this.sendButton.disabled=false;this.stopButton.disabled=true;this.renderMaterials();this.renderMessages();await this.persist().catch(e=>this.error(e));}
+        if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();this.renderMessages();await this.persist().catch(e=>this.error(e));}
       }
     }
     async saveAnswer(index,kind){
@@ -149,15 +166,8 @@
       };
       query.addEventListener('input',refresh);type.addEventListener('change',refresh);this.directory.append(query,type,list);refresh();query.focus();
     }
-    async preview(source){
-      this.open();
-      for(const existing of this.previewArea.querySelectorAll('.zma-preview:not([data-pinned])'))existing.remove();
-      const card=el(this.doc,'article',undefined,'zma-preview');
-      card.append(el(this.doc,'strong',`${source.type||'来源'} (${source.number||''}) · 第 ${source.pageLabel} 页`),button(this.doc,'关闭',()=>card.remove()));this.previewArea.append(card);
-      try{const m=await this.host.capture(this.reader,source);const img=el(this.doc,'img');img.src=m.dataURL;img.alt='前文原始截图';card.append(img,el(this.doc,'p',source.description||''),button(this.doc,'跳转原文',()=>this.host.jump(this.reader,source)),button(this.doc,'加入提问',()=>this.addMaterial(source)),button(this.doc,'固定/取消固定',()=>{if(card.dataset.pinned)delete card.dataset.pinned;else card.dataset.pinned='true';}));}
-      catch(e){card.append(el(this.doc,'p',e.message,'zma-invalid'));}
-    }
-    async destroy(){this.destroyed=true;clearTimeout(this.draftTimer);this.controller?.abort();this.disposeMath?.();await this.host.save(this.reader,this.state).catch(()=>{});this.node.remove();}
+    async preview(source){await this.host.previewReference(this.reader,source,this.insertTarget);}
+    async destroy(){this.destroyed=true;this.close();clearTimeout(this.draftTimer);this.controller?.abort();this.disposeMath?.();await this.host.save(this.reader,this.state).catch(()=>{});this.node.remove();}
   }
   root.ZMAPanel={Panel,el,button};if(typeof module!=='undefined')module.exports=root.ZMAPanel;
 })(typeof _globalThis!=='undefined'?_globalThis:globalThis);
