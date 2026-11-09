@@ -1,0 +1,1078 @@
+{
+  "repository": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant",
+  "importedOn": "2026-11-09",
+  "historySource": "Preserved release source ZIP snapshots; import dates are not original development dates.",
+  "archivedVersions": 44,
+  "latest": "0.19.0",
+  "unavailableSnapshots": [
+    "0.13.9"
+  ],
+  "releases": [
+    {
+      "version": "0.10.0",
+      "tag": "v0.10.0",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.10.0.xpi",
+          "bytes": 1042152,
+          "sha256": "06cb1ee08bb6f19cbe40309642ea2dc62f9da783e545dd1765df62a70dd82360"
+        },
+        {
+          "name": "margin-comments-deepseek-0.10.0-source.zip",
+          "bytes": 1074302,
+          "sha256": "ccc259f677e3a3384d869cbc15cdcd18500e29d824154d8c03d56b01ee6a0a66"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "11629006d2dff3d07d9512a340e8e739ea8785eb5214c298745c502d36958ccd"
+        }
+      ],
+      "sourceCommit": "ff8f25d2549fab32e71c01ff486d664df92a58f4",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.10.0"
+    },
+    {
+      "version": "0.10.1",
+      "tag": "v0.10.1",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.10.1.xpi",
+          "bytes": 1044488,
+          "sha256": "7161a05d4a4288931ca990ac231a264b23f479172bab855306eba68d3b724308"
+        },
+        {
+          "name": "margin-comments-deepseek-0.10.1-source.zip",
+          "bytes": 1076079,
+          "sha256": "1b83752f461ef4f73ed084f360452677d4e54eaf146baff883f4de8abdb4c6d0"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "dc79229f4b2625c6d2c674e77e639f8cf2151e07ca96a776cb8e740dc01c44d9"
+        }
+      ],
+      "sourceCommit": "34c25fc03aec8838ffb1be4a04f6cb953c855fe1",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.10.1"
+    },
+    {
+      "version": "0.10.2",
+      "tag": "v0.10.2",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.10.2.xpi",
+          "bytes": 1044505,
+          "sha256": "cf2af78dc9de66ec5605ea1cb7c310aa0d69baab3d85a8903475f5b2f1540578"
+        },
+        {
+          "name": "margin-comments-deepseek-0.10.2-source.zip",
+          "bytes": 1083669,
+          "sha256": "549f927d03d4eca77c053d92cf0ebc6507c61419c3ef2fa5c044c9d0c4e9befc"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "d3239fb4145d287656f48314d21bd0561826d3ba6809376b5d365ec59af66ab7"
+        }
+      ],
+      "sourceCommit": "a65a3e57e3920ac9015e40190748c6fcba09ee0e",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.10.2"
+    },
+    {
+      "version": "0.10.3",
+      "tag": "v0.10.3",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.10.3.xpi",
+          "bytes": 1048190,
+          "sha256": "742365d119b62434e2121f9f876039a98c19b27b489061e128bf437a8a85115d"
+        },
+        {
+          "name": "margin-comments-deepseek-0.10.3-source.zip",
+          "bytes": 1095967,
+          "sha256": "2f9d8c467921a0097f926dbbab0bf49b0b6a000bc7dc43142ffe61adf5378115"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "cc9d57b93549b24e492b86f6f41b0b4407e90d9d5db1c660027ca7c7a7757ee7"
+        }
+      ],
+      "sourceCommit": "a65f417ba0cdc1e2e91c957458040c1af418cfa6",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.10.3"
+    },
+    {
+      "version": "0.10.4",
+      "tag": "v0.10.4",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.10.4.xpi",
+          "bytes": 1066194,
+          "sha256": "b82d82214296ffac1193de945d3dc11954c7f33acafaf29b6738b97da81c96e9"
+        },
+        {
+          "name": "margin-comments-deepseek-0.10.4-source.zip",
+          "bytes": 1120039,
+          "sha256": "749075d03841d0534b7d0abc7c69e960948a15a9768e75636ecf031db1a8ee64"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "57241f51c2f2172b9d99a7d2ff8cbc2fd2868891375c39f45b104106ee3564ed"
+        }
+      ],
+      "sourceCommit": "cddb1b362fd8bcde0315932928b0328274f53ed2",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.10.4"
+    },
+    {
+      "version": "0.10.5",
+      "tag": "v0.10.5",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.10.5.xpi",
+          "bytes": 1074801,
+          "sha256": "6127ef2bc4d60bbfaae1c4fe91a4d61749eb92f523736b712c07344931d62a30"
+        },
+        {
+          "name": "margin-comments-deepseek-0.10.5-source.zip",
+          "bytes": 1144417,
+          "sha256": "ed20697e9ce6cecc6151b893408a9fd5f04422992f4cdd97693a8797b9e82a3c"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "95f74cf117f2ef2d938ee506a50836fa22df1bd0770772cd62f03007b1a301ea"
+        }
+      ],
+      "sourceCommit": "1aa1bf5f0215a52f7b1e488989c95aa4ecb4b9e6",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.10.5"
+    },
+    {
+      "version": "0.10.6",
+      "tag": "v0.10.6",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.10.6.xpi",
+          "bytes": 1078396,
+          "sha256": "634c3f04645e2a1b92e1c0e0efc40c80798221d6d77a63a8b3d77b0f8338b164"
+        },
+        {
+          "name": "margin-comments-deepseek-0.10.6-source.zip",
+          "bytes": 1157318,
+          "sha256": "6a186df56a8e9c7e01ce90afcd499f9bdc06209632423c4f9916802655c87cf0"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "4ebfd46342f4fc0f91cbe0874a2b879afbecdb55e928ad1ddaaa4f308447e4f8"
+        }
+      ],
+      "sourceCommit": "545aa81a0273f287f387aa24112fa1f6f606e601",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.10.6"
+    },
+    {
+      "version": "0.10.7",
+      "tag": "v0.10.7",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.10.7.xpi",
+          "bytes": 1078397,
+          "sha256": "29ec11e333edafebffffa7f0f00103e7faa42eca077f9397e34c8d45ff5165e6"
+        },
+        {
+          "name": "margin-comments-deepseek-0.10.7-source.zip",
+          "bytes": 1163575,
+          "sha256": "27b5ec383a326f2cd100a8315fbfceacd6cff8770211566a9dbe2720b3d38843"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "1c6b4baa97d893811d685a2c5727c908b6e63ef4695aed5b43bfa17192a47a10"
+        }
+      ],
+      "sourceCommit": "4c5549ab2d080b8dd0d702158e0fbcfe372b2a9b",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.10.7"
+    },
+    {
+      "version": "0.10.8",
+      "tag": "v0.10.8",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.10.8.xpi",
+          "bytes": 1080195,
+          "sha256": "0b5e9f3d41a2ed0e23d3834e9be57da47876365f7ff01b3ea7a55f5785fba60a"
+        },
+        {
+          "name": "margin-comments-deepseek-0.10.8-source.zip",
+          "bytes": 1167253,
+          "sha256": "d8b4748fd2a17e065711f80aeb76e40044a3a237460fc56b2358a6d7255ba595"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "a8815b4969237600550d3bbcb34def09ac3b62867035982b271c07aac50a8d14"
+        }
+      ],
+      "sourceCommit": "b06704d108cdbda05ecfa50f6a32820c777901c8",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.10.8"
+    },
+    {
+      "version": "0.10.9",
+      "tag": "v0.10.9",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.10.9.xpi",
+          "bytes": 1083130,
+          "sha256": "1e3bed783e186b8d79ba9223ec00f283f9a6d44e25134cde16fc77d544258c6f"
+        },
+        {
+          "name": "margin-comments-deepseek-0.10.9-source.zip",
+          "bytes": 1180989,
+          "sha256": "4b5899cb6e8ae7d5242eb8a40d9114c281a371000307286753881e4feadbb38e"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "ef1b70cb4dd66274840f9a608ad5289e773abbf26f4ff568e23062bdc1728361"
+        }
+      ],
+      "sourceCommit": "bbb9c22ac25c7f3620572a97c0832dd6d83fe1d8",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.10.9"
+    },
+    {
+      "version": "0.10.10",
+      "tag": "v0.10.10",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.10.10.xpi",
+          "bytes": 1083291,
+          "sha256": "bbc7c0a00ec99d654b1dfc4d6a99b903ef17fdc94a093480626cf5cc3fca581d"
+        },
+        {
+          "name": "margin-comments-deepseek-0.10.10-source.zip",
+          "bytes": 1183552,
+          "sha256": "d2c8f11c4fd32c0f987f5775e5caf3895cf8ce1811c8e0b3b56a073ac57403b8"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 213,
+          "sha256": "8df3ecc29f836ed8e21c33f6d7d2d20d471f92614c2a47b16d8a3f7ef4a3c263"
+        }
+      ],
+      "sourceCommit": "01e316f692b3023e2b37706cff8c18ddf0cfc2c1",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.10.10"
+    },
+    {
+      "version": "0.11.0",
+      "tag": "v0.11.0",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.11.0.xpi",
+          "bytes": 1096531,
+          "sha256": "e37a38019ef561c56ff9e2f4088cafeb146de73851f09ad2e3f3b4870ae8591f"
+        },
+        {
+          "name": "margin-comments-deepseek-0.11.0-source.zip",
+          "bytes": 1210902,
+          "sha256": "1993c768503eba248ffd0346248b088fc4e6a2e36becb6aac2eee574a6ab1700"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "d5e426137051ed637e437cf7a16453bac8356cc1686591614c56ccd3dec30213"
+        }
+      ],
+      "sourceCommit": "becfb698317c09cc08aa9694ac0f1a78ac21e20b",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.11.0"
+    },
+    {
+      "version": "0.11.1",
+      "tag": "v0.11.1",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.11.1.xpi",
+          "bytes": 1099621,
+          "sha256": "176779476d09e5df150e5f136b72a3a7f3b90fe651b12f3b77262ff1b2e180bf"
+        },
+        {
+          "name": "margin-comments-deepseek-0.11.1-source.zip",
+          "bytes": 1217178,
+          "sha256": "94725b9da69a1d42244e518bcd84cb15700dc9d3c6d7260ad7a11325d398b5cd"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "c0684fd776176aea0061a05546b6e2108e4a0481ee6fbb8b63279b9a931fca12"
+        }
+      ],
+      "sourceCommit": "134be7db557dad6b44edd5a113fbef2c4ba807b2",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.11.1"
+    },
+    {
+      "version": "0.11.2",
+      "tag": "v0.11.2",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.11.2.xpi",
+          "bytes": 1101496,
+          "sha256": "bd55f3bdbde03dc658f73238f2092bf9e1179b1e35663a9624551544e56a88e3"
+        },
+        {
+          "name": "margin-comments-deepseek-0.11.2-source.zip",
+          "bytes": 1221623,
+          "sha256": "e66111e25bb91e46630061c2f8e5ab75091b7940ad9e4b665d38bad0fc945b5f"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "caddc3ba086df9a60f0d3c01f71cb82f3ea83c09d3a8037b6d9fadae6a9b1d46"
+        }
+      ],
+      "sourceCommit": "2f5156afc8284a2626929d2e61ada87b617e96c2",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.11.2"
+    },
+    {
+      "version": "0.11.3",
+      "tag": "v0.11.3",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.11.3.xpi",
+          "bytes": 1102107,
+          "sha256": "92557543e20d2fc2caa5bd021ff6db061da8c93aef5504f09f9c89e113bd2fc7"
+        },
+        {
+          "name": "margin-comments-deepseek-0.11.3-source.zip",
+          "bytes": 1224471,
+          "sha256": "dd4c1d2b7707194f75f78221d4103312b04d1a943f59295ccbcd8e12ea188d86"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "b11d0cecfc979f0e3f9231718121f39e8b9397f7c0f7aa00dd65e4e25178efae"
+        }
+      ],
+      "sourceCommit": "0f6c24031cb816424f7343cde4f246a3f2658883",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.11.3"
+    },
+    {
+      "version": "0.12.0",
+      "tag": "v0.12.0",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.12.0.xpi",
+          "bytes": 1106439,
+          "sha256": "9088db5c80ea546eb33cd8fa4ae3d689093c3dc20f98db3db898514f5288582e"
+        },
+        {
+          "name": "margin-comments-deepseek-0.12.0-source.zip",
+          "bytes": 1237088,
+          "sha256": "e70d5d0e9733dff920f584458db5634d85bd346966fd3964186bee460a88b5cf"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "1c01f182586708f7cb035093ec07563eb8b9a1b95625c554fb590c0054b8c5ef"
+        }
+      ],
+      "sourceCommit": "0bdcf28d98579b7d43d0698f56b1ee2eeab49822",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.12.0"
+    },
+    {
+      "version": "0.12.1",
+      "tag": "v0.12.1",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.12.1.xpi",
+          "bytes": 1106725,
+          "sha256": "2d49daec40f70239eb88ece1e6540b7a666d93edbd32b03084695f2c97c60ca8"
+        },
+        {
+          "name": "margin-comments-deepseek-0.12.1-source.zip",
+          "bytes": 1240406,
+          "sha256": "789b74280062edea3a496cdb37c75777401868cabeafdf8c8c4ca89acbe4d536"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "f776530403d947d631f933639db8a86e7157b28a3ba1aa10686b42e9a3941ea4"
+        }
+      ],
+      "sourceCommit": "62de4ddde5da415d46682fb28d47acb4988efeca",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.12.1"
+    },
+    {
+      "version": "0.12.2",
+      "tag": "v0.12.2",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.12.2.xpi",
+          "bytes": 1108111,
+          "sha256": "a1495b92143f345b54c4e6b1bcf311119f28c629e063a63a5b977c5da9677294"
+        },
+        {
+          "name": "margin-comments-deepseek-0.12.2-source.zip",
+          "bytes": 1248182,
+          "sha256": "704e822234122609dd665f59aceb429d39bce051bba62fa66e43456e944fca66"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "6c8d349bcff319fe13ffda3ca6e220ed6da9bc438c50326b0c35f5ea2b4d21ab"
+        }
+      ],
+      "sourceCommit": "53219cbcb1d555d6d6824421d331b3a7138901d5",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.12.2"
+    },
+    {
+      "version": "0.12.3",
+      "tag": "v0.12.3",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.12.3.xpi",
+          "bytes": 1108672,
+          "sha256": "204f11185caf2f418ab57662d3684faaeadcc3650d3985bd674f623d5f58877f"
+        },
+        {
+          "name": "margin-comments-deepseek-0.12.3-source.zip",
+          "bytes": 1254952,
+          "sha256": "45c62a3c6de4b7af7601f9f17e2ff7f5ca868afe899e3e41903290fd8f8fa465"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "372346d44fccef0673f91967c8c67c7cbd4b22da29a8516abf89b42d84b8daf9"
+        }
+      ],
+      "sourceCommit": "56e88bfc7b1ad9bafc7ca01862eb9854dbb13a12",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.12.3"
+    },
+    {
+      "version": "0.12.4",
+      "tag": "v0.12.4",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.12.4.xpi",
+          "bytes": 1110462,
+          "sha256": "80734c7797263ba0a620e67905eda1c2293fda0de88114020e4141b610e37da5"
+        },
+        {
+          "name": "margin-comments-deepseek-0.12.4-source.zip",
+          "bytes": 1263856,
+          "sha256": "88321899cd417165c43a64731774ac1fc8b5fb016df3e5c90d28dc29dccc94e5"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "d211a4e0403588798ae5fd3340bc438ceca6922b7e607f5761fc8bdeb0b55d9e"
+        }
+      ],
+      "sourceCommit": "5301acb1e9609e2be2321f314ac389452197e16d",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.12.4"
+    },
+    {
+      "version": "0.12.5",
+      "tag": "v0.12.5",
+      "summary": "调整文档助手排版：顶部只保留新会话、对话记录、引用目录、设置和关闭入口，阅读区使用更轻的问答布局，底部保留附件、当前页和发送/停止。服务、模型、账户、思考强度、速度、登录和用量管理统一移至设置；底部仅显示当前模型。文档输入范围改为可展开的提示，部分材料未加入时仍有明显标记。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.12.5.xpi",
+          "bytes": 1112643,
+          "sha256": "424fb0c27daa08fc6d6795c224bd0a58d99294c732125d856a82d3f831c31ef1"
+        },
+        {
+          "name": "margin-comments-deepseek-0.12.5-source.zip",
+          "bytes": 1274506,
+          "sha256": "c66e7f4c9d867dcc782871420e175723c8baaa75c3e927741410d1ad805cc370"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "af95254a1cff788e8dd15251e4205852d65bd397fed50debe0008cf63c989a7d"
+        }
+      ],
+      "sourceCommit": "6b68889f31f8bdd31554f4b7eb37daaa8a91bc06",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.12.5"
+    },
+    {
+      "version": "0.12.6",
+      "tag": "v0.12.6",
+      "summary": "将“引用并批注提问”改为就地气泡，支持多条批注收起、重开、编辑、删除、本地草稿恢复和一次合并发送。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.12.6.xpi",
+          "bytes": 1115702,
+          "sha256": "489aeac20beb5c030485791b3c81a9851373e1718d5afbf512da9460fcbc7c94"
+        },
+        {
+          "name": "margin-comments-deepseek-0.12.6-source.zip",
+          "bytes": 1286575,
+          "sha256": "8b391cb6753874b7c04a4db22837a85a05498b028bf5885653d0dfd3ff407b72"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "20bb13eec91da624b2bcd9773131f3ceb623ba0aa8d87fc683576bfb94aa10bb"
+        }
+      ],
+      "sourceCommit": "82b765396fd6ff7cdf8fbfe4360b6297241cfe4d",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.12.6"
+    },
+    {
+      "version": "0.12.7",
+      "tag": "v0.12.7",
+      "summary": "将批注气泡扩展到 PDF：选中文字后右键“批注并提问（选中文字）”，或对已有高亮/下划线/框选区域右键“批注并提问”。气泡在 PDF 选区旁打开，区域可预览截图；点击外部收起，编号留在页面，也可从输入框旁重开。PDF 批注与对话批注可混合一次发送，原文/截图和对应批注一并提供；文字选区不自动创建永久高亮。草稿保存在原有 PDF 同目录 JSON，关闭或重启可恢复。PDF 选区与手动附件/区域材料合计每轮仍最多8项，超过会明确提示并保留草稿；其他容量限制沿用原规则。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.12.7.xpi",
+          "bytes": 1117412,
+          "sha256": "9467217c64ec00195b8636563e5f2065f6d250cd3dc24acc0bb65ab3f39b8381"
+        },
+        {
+          "name": "margin-comments-deepseek-0.12.7-source.zip",
+          "bytes": 1296377,
+          "sha256": "68d84e65c80c0b2afbe4e60b8063f68cd3a0478e62c965ccd9cfef78c7967ccd"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "38da1e74c4469a9ee49c75d084717d67592a6444299004caa950ff63ea7573cf"
+        }
+      ],
+      "sourceCommit": "b94eb821a6f23e393f02ee44a790bdc4bb76caea",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.12.7"
+    },
+    {
+      "version": "0.12.8",
+      "tag": "v0.12.8",
+      "summary": "修复 PDF 选区暂不可见或页面尚未渲染时，气泡报 `anchor.getBoundingClientRect is not a function` 的问题。无可见编号时使用 PDF 可视区域回退位置，仍可编辑和收起。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.12.8.xpi",
+          "bytes": 1117414,
+          "sha256": "80e08665c7a4055e6e83f6976bd65d076749bdfacb90fa07a857992e77d04c2d"
+        },
+        {
+          "name": "margin-comments-deepseek-0.12.8-source.zip",
+          "bytes": 1298864,
+          "sha256": "a938191c3d5368fb90cd5385a6b4f56ea61b737a5a74f7d42687e1bb21c0bbb5"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "a27c2330d200f4bef9842d2271ec1f29956e702641e227841f7780d728093929"
+        }
+      ],
+      "sourceCommit": "ba63914833472429f8cd130173cda46851582ba9",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.12.8"
+    },
+    {
+      "version": "0.13.0",
+      "tag": "v0.13.0",
+      "summary": "保留当前插件和自动读取 PDF 的方式，为 ChatGPT 增加按需联网检索、可点击的文中来源及最多3张带出处的检索配图。设置 → 页边批注 → 文档助手中可调整“联网搜索”和“展示检索配图”，默认自动/开启；这些选项不占用聊天顶部。回答先给直观解释，再按需要展开概念、公式和例子。外部资料和论文原文分别标明，配图来自检索结果，不是生成图片。来源、图片地址与说明随本地对话保存，重开可恢复。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.13.0.xpi",
+          "bytes": 1122913,
+          "sha256": "ec2e3365f6eea67722df654130006b906f24be8f4bc0d661c2b7b06c7dcf6131"
+        },
+        {
+          "name": "margin-comments-deepseek-0.13.0-source.zip",
+          "bytes": 1314515,
+          "sha256": "412e47c34cc4d663edfb844720d96b258eecb2216306410443fbacf226dd42ea"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "c6e0d50f170c4e3a72817b52495c95a56741ed85c05dd94b5d5a0a869966847d"
+        }
+      ],
+      "sourceCommit": "d22611ed41ae14f321ca4b7a69158f3f3b2c1f37",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.13.0"
+    },
+    {
+      "version": "0.13.1",
+      "tag": "v0.13.1",
+      "summary": "修复包含中文顿号等标点的合法 LaTeX 公式回退为源码，以及 `**中文句子。**后文` 未加粗的问题。流式回答和旧历史重新打开时均使用修复后的渲染；原回答和公式 LaTeX 不改写，代码块、转义标记及非法公式仍按原文保留。超长公式可在公式区域横向滚动查看。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.13.1.xpi",
+          "bytes": 1123503,
+          "sha256": "1e8125a2f980280c566f5e5ff076c10ed564682de78664be7eba6f5d6968e86e"
+        },
+        {
+          "name": "margin-comments-deepseek-0.13.1-source.zip",
+          "bytes": 1321848,
+          "sha256": "30fe4bc341e8e22bb08535a32748e8fafe6efee9e746380e7fffe69f73230e70"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "6692a998d37652a4ea5b8dc80e3445dc9c72fdcc62c775ae05d0322dd135d23d"
+        }
+      ],
+      "sourceCommit": "669565af84617b9ff3a88390654e9013e57e2ca4",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.13.1"
+    },
+    {
+      "version": "0.13.2",
+      "tag": "v0.13.2",
+      "summary": "为前文引用增加悬停预览：鼠标移到页边批注或 Zotero 原生批注弹窗中的引用链接上，稍作停留即可查看来源公式、截图或文字，不跳离当前页；鼠标可移入浮层继续查看，移出链接和浮层后收起，Esc关闭。浮层支持“跳转原文”和“加入提问”。文字引用中的 LaTeX 继续渲染。已有的引用链接和本地索引可直接使用，不需要重建。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.13.2.xpi",
+          "bytes": 1127049,
+          "sha256": "0767baa50d571de3c6a721977ac030c49735da529aa81dc1da3dab1dbf0c5b85"
+        },
+        {
+          "name": "margin-comments-deepseek-0.13.2-source.zip",
+          "bytes": 1332578,
+          "sha256": "85a27fa7d3ff47ab7de819f9e55de9401081cc3feeda68cef7de4118ff00fd7c"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "12f93c9be7a02e7171827f29e02921205fa9f4ec506f4d4b1587e95a4c4747f9"
+        }
+      ],
+      "sourceCommit": "5a984ac5e16fcdd6b7f0ccee89bfe15c0a4ecfe5",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.13.2"
+    },
+    {
+      "version": "0.13.3",
+      "tag": "v0.13.3",
+      "summary": "调整引用浮层的位置：优先使用可见 PDF 页面两侧的空白，按可用宽度缩小浮层；两侧不足时，避开当前批注及公式选区，放在其上方或下方，限制宽高并允许内部滚动。兼容 PDF 子窗口与外层原生批注窗口的坐标，避开已打开的文档助手区域。不改变 PDF 缩放、原文、引用索引或对话。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.13.3.xpi",
+          "bytes": 1128347,
+          "sha256": "99b9afeefeb9139c41e8cd51fe92826daee1b2bee5e471c9e440bbc09ad313c2"
+        },
+        {
+          "name": "margin-comments-deepseek-0.13.3-source.zip",
+          "bytes": 1337059,
+          "sha256": "6068ed73a64339ba31910e7cf46b01217149bf759641cc88a65dc6c8ec35751d"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "07639c3e6f0efce7330ff020ebf014eea6836004a3523008175f50ccc8d86f1b"
+        }
+      ],
+      "sourceCommit": "21dbe5d543ed3b2da83269a8ba3d337e8ef56e7d",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.13.3"
+    },
+    {
+      "version": "0.13.4",
+      "tag": "v0.13.4",
+      "summary": "支持 PDF“新增文字/添加文本”中的 LaTeX：例如输入 `参数 \\(y=Hu+e\\)`，独立公式输入 `\\[\\frac{a}{b}\\]`。结束原生编辑后在原位置自动显示公式，再次进入编辑时显示源码；可文字/公式混排。公式跟随原批注的字号、颜色、位置、缩放和旋转，不重复显示为页边卡片。普通文字、未完成或不支持的公式保留原样；全部 LaTeX 仍保存在原生批注中，不写入 MathML。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.13.4.xpi",
+          "bytes": 1130232,
+          "sha256": "590abad3b6053b5c0b55a63ef4c87edca17140bc349cdb7257439c15d378796c"
+        },
+        {
+          "name": "margin-comments-deepseek-0.13.4-source.zip",
+          "bytes": 1347209,
+          "sha256": "3f927e2d4efb2ea5dfecaf7563dfd4973656de435a9bc5967b2c850b1171184e"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "1149f96459cd756e10d3f937eba6c491345c798ee818d06b39da6d04906a7b5b"
+        }
+      ],
+      "sourceCommit": "135a232b9679ca494bb3d2f4ae87fc1096fe8ab3",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.13.4"
+    },
+    {
+      "version": "0.13.5",
+      "tag": "v0.13.5",
+      "summary": "增加对话导入/导出，入口在助手顶部的“对话记录”，不占用主聊天工具栏。选择“导入对话”，可以选择解压后的 ChatGPT `conversations.json`、插件导出的 JSON 或既有本地历史 JSON；也可直接粘贴问答。文件中有多段对话时按标题筛选，只选择需要的一段；包含分支时沿当前分支导入，无当前分支标识时列出可选路径。预览标题、角色、文字和遗漏附件提示，确认后为当前 PDF 新建独立对话，保留原有记录。随后的提问同时使用导入历史与当前 PDF，按既有规则压缩长上下文；结束时尚未回答的提问放入输入框草稿。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.13.5.xpi",
+          "bytes": 1138456,
+          "sha256": "20de24f8059fe77d78998a4230a0fc448a58ab6ac8d7296d0adab8e784915278"
+        },
+        {
+          "name": "margin-comments-deepseek-0.13.5-source.zip",
+          "bytes": 1373179,
+          "sha256": "df4bf1c68eb15b622f6473fcc6f19057b5fe19994f54c36c655c835fa641d417"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "7b724d8c18a740154842ef824b99dccd4b6a66b44efb9ae4af7ed5d9da576b70"
+        }
+      ],
+      "sourceCommit": "4cbf11069ec471c2ef086dda34b0d3285561a9b6",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.13.5"
+    },
+    {
+      "version": "0.13.6",
+      "tag": "v0.13.6",
+      "summary": "减少后台重复刷新：工具栏监听限定在工具栏及其直接父容器，不再因每次流式回答更新扫描整个阅读器；仅在来源索引、引用或图片记录变化时刷新页边引用；普通条目更新只刷新相关 PDF，删除事件仍保留保守失效检查。工具栏被重建时自动重新绑定，关闭阅读器时清理监听。对话存储格式、API 配置及公式渲染规则不变。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.13.6.xpi",
+          "bytes": 1139230,
+          "sha256": "af6f84f3f0d6f2a96031682f463b43074083e3693dcbc3a9ef812c50d1605f74"
+        },
+        {
+          "name": "margin-comments-deepseek-0.13.6-source.zip",
+          "bytes": 1386404,
+          "sha256": "312c0549ca8738db7aea1ee3b70b18dcefd84fd3475025148037eb42e7f7c947"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "d730742058505c5aed42fcb28036151afb338db77db691f66629d631af579073"
+        }
+      ],
+      "sourceCommit": "382a9a4055d88d5a641ec359c21e41ef9c814fb1",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.13.6"
+    },
+    {
+      "version": "0.13.7",
+      "tag": "v0.13.7",
+      "summary": "修复底部消息输入框高度难以调整的问题：拖住输入框上沿中央的短横线，向上拉高、向下缩小；可点击/Tab 聚焦横线后使用上下方向键微调，Home/End 调到当前允许的最小/最大高度。移除旧版固定的180像素上限，按窗口与附件等实际占用空间限制高度，保留回答区和发送按钮。调整时保留草稿与光标，关闭再打开同一个侧栏保留当前高度；高度为当前侧栏的界面状态，不写入对话记录。安装时覆盖旧版并完全重启 Zotero。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.13.7.xpi",
+          "bytes": 1140223,
+          "sha256": "e7107694168f55ed2b3f61a48d45108443bf636dd8b399613c290a67181d3726"
+        },
+        {
+          "name": "margin-comments-deepseek-0.13.7-source.zip",
+          "bytes": 1393942,
+          "sha256": "048de4c512a4b2459616f65b4892692c11482b5599070c281c97f68b5d1c09fb"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "1c3eb4ac78fa6feac561f91489228f5f63847b3aaed746881322f7a1777700f6"
+        }
+      ],
+      "sourceCommit": "5858e7eaee25fbeb873ea38542013d886cd46742",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.13.7"
+    },
+    {
+      "version": "0.13.8",
+      "tag": "v0.13.8",
+      "summary": "取消输入框最小高度：向下拖动上沿横线可以把输入区和按钮完全收起，只保留横线。双击横线恢复默认大小（随当前字号调整）；也可聚焦横线后按 Enter 恢复，Home 收起。收起期间保留草稿和光标，窗口调整及关闭/重开侧栏不会自动展开。向上拖动横线可直接重新展开。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.13.8.xpi",
+          "bytes": 1140399,
+          "sha256": "b32b2797345b318a43fdd95d5c3a0f814f7eea0069c08541c3254531dbfac6bd"
+        },
+        {
+          "name": "margin-comments-deepseek-0.13.8-source.zip",
+          "bytes": 1396822,
+          "sha256": "45b629e78c180ebc4de89f021783b1aee5efeffc51f7060a7802b6785d3b78fe"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "c4a200e0aef7d875b06a23aa30035b666bc83701280d8fd838e0d4fc3fe0d1d9"
+        }
+      ],
+      "sourceCommit": "8fcce2b4085fab47421b3fc3da43693e5543c6fe",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.13.8"
+    },
+    {
+      "version": "0.13.10",
+      "tag": "v0.13.10",
+      "summary": "补齐 ChatGPT HTTP 400 的错误诊断：识别订阅能力错误、`detail` 字符串、字符串错误及带索引的输入校验位置，分别提示 PDF/文件、图片、联网、速度或思考强度拒绝。在失败回答处点击“复制错误诊断”，可复制 HTTP 状态、已识别的错误代码和字段、请求 ID、返回格式及模型/档位/材料数量；不包含正文、附件字节、文件名、账户或凭据，不保存到对话文件。服务端明确拒绝思考强度时可点击“使用默认思考强度重试”；仅由点击触发，不自动重复付费请求或移除材料。失败问题、附件/选区及历史保留。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.13.10.xpi",
+          "bytes": 1141670,
+          "sha256": "cc4a46b2bcd9e67e0ef510af7d5f01127038373a15617b8ebbd5d2411387a48e"
+        },
+        {
+          "name": "margin-comments-deepseek-0.13.10-source.zip",
+          "bytes": 1403866,
+          "sha256": "37ffe07ca424b52cf2ed9ec0858b946052f525cca488ee1c31ba5d67df9611fa"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 213,
+          "sha256": "290156562351f9f66f10d1af84d5132ab384659b28cb7901bd5e8437d1f99d7b"
+        }
+      ],
+      "sourceCommit": "38a4ecf8717fc99c243dacdc7b6493779d3eda5f",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.13.10"
+    },
+    {
+      "version": "0.13.11",
+      "tag": "v0.13.11",
+      "summary": "修正上一版仍丢失未知 `detail` 文字的问题。失败回答可展开“服务端错误说明”，复制诊断也包含脱敏后的文字摘录（最多2000字符）；会移除已知令牌、带标签的凭据、附件数据、路径/邮箱，以及能匹配的完整请求文本回显。说明只保留在本次失败界面，不写入对话文件。服务端可能回显文档片段，分享诊断前可先展开查看；不把脱敏当作所有任意回显都已消除的保证。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.13.11.xpi",
+          "bytes": 1142608,
+          "sha256": "2b4b09ca43596c373727ddbd2e3da514ddcb1fd14bc4924214e9661072e33f67"
+        },
+        {
+          "name": "margin-comments-deepseek-0.13.11-source.zip",
+          "bytes": 1411349,
+          "sha256": "f75b0f812e3f8602668c918bbe8f597a54bc4a97577b895e8bcf96df32b48841"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 213,
+          "sha256": "a562fc70e2690d3d58bf838736566f4826ef645e3995bee61bcd2e5ed9467bf2"
+        }
+      ],
+      "sourceCommit": "1cfef5c53a7b43eb4bf10c5971c36811c2d62b6c",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.13.11"
+    },
+    {
+      "version": "0.14.0",
+      "tag": "v0.14.0",
+      "summary": "增加每份 PDF 的阅读摘要笔记，跨会话整理已经追问过的难点、推导条件、公式联系与待解决问题。顶部笔记图标打开摘要；已有摘要在重开助手时直接显示。完整回答后空闲20秒增量更新，前台提问优先；模型判断无新理解时保持原文。自动更新会使用当前 AI 服务的额度，可在设置中关闭，仍可手动整理。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.14.0.xpi",
+          "bytes": 1149976,
+          "sha256": "d5e9e5f5ea4869b7b9c1ee2fdc647dac5624b03f1d0c2151831aeb2d37d2a826"
+        },
+        {
+          "name": "margin-comments-deepseek-0.14.0-source.zip",
+          "bytes": 1435851,
+          "sha256": "77f15cfd34f3d45be9aaea45784f4c2eb03577243dcb6ae3c33aa4a13951412f"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "27e71b4bda3d7a1815e766abfbc25c7bd93c592786694fb57f427650c0455a7a"
+        }
+      ],
+      "sourceCommit": "c1d2e7cd8b996fa7c4a330d484c28c842dcd3888",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.14.0"
+    },
+    {
+      "version": "0.14.1",
+      "tag": "v0.14.1",
+      "summary": "将阅读摘要改为可独立阅读的笔记，按“文章内容、关键公式解释、补充讨论”组织。根据新增理解决定是否更新，并将解释、纠正或补充融入对应章节，要求交代必要符号与条件，去除问答过程和更新日志。改为直接接收 Markdown，减少长公式的 JSON 转义失败；旧摘要即使已经处理完全部历史，也可以点击“重新整理”，自动更新开启时会在空闲后重组。人工改写继续保留，失败不清空正文或进度。安装时覆盖旧版并完全重启 Zotero。详见整理方式与验证边界。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.14.1.xpi",
+          "bytes": 1152026,
+          "sha256": "8e89ed86ab7f42c5007962b5be654caa2b97e5f96b59928ec7311701e246ce8b"
+        },
+        {
+          "name": "margin-comments-deepseek-0.14.1-source.zip",
+          "bytes": 1447909,
+          "sha256": "c691f3ce840dc6ce6c5629aa6e4e1fba5a67688c1fe1151e2dacf8c4f9f651ee"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "60f54ce9377821a5c977068fb34a5d3684872ffc331ae7a75ba0b00a1c87e61b"
+        }
+      ],
+      "sourceCommit": "2f0e70836b0137d3d377c52c720541e4685d97d2",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.14.1"
+    },
+    {
+      "version": "0.15.0",
+      "tag": "v0.15.0",
+      "summary": "从保留的源码 ZIP 和 XPI 恢复的历史发布快照。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.15.0.xpi",
+          "bytes": 1159151,
+          "sha256": "af5a1d5819bb8ef87956773d59c6ceb225ccc35b39ffb37faa7602f450b2f6b1"
+        },
+        {
+          "name": "margin-comments-deepseek-0.15.0-source.zip",
+          "bytes": 1470399,
+          "sha256": "d6419cb97741f163490473cf469861e9fe46177ce0fba9755010a42fa065ac25"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "e48d0e6ad4bf1289a54a666db23249d6b8e8ffecf2ccf16c8562ad1c802105be"
+        }
+      ],
+      "sourceCommit": "b3d5b29abd53a30bd8eb4c92a9d24ab997f85c85",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.15.0"
+    },
+    {
+      "version": "0.16.0",
+      "tag": "v0.16.0",
+      "summary": "将 Notion 和文档助手分成可以同时显示的独立栏目，默认 Notion 在左、助手在右，PDF 在中间。拖动任一标题栏到窗口的目标半边可交换左右位置，拖动各栏内侧边缘可单独调宽。位置和宽度随偏好保存，各栏也可单独关闭和重新打开。两栏顶部均采用一行紧凑标题栏，操作收进“⋯”菜单，减少常驻控件占用。也可聚焦标题栏后按 Alt + 左右方向键切换位置。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.16.0.xpi",
+          "bytes": 1163281,
+          "sha256": "a24088ab2a6b88157444312906aefe1da9c21c7ab52f26f4d03542c59f9a35d8"
+        },
+        {
+          "name": "margin-comments-deepseek-0.16.0-source.zip",
+          "bytes": 1482600,
+          "sha256": "5012d58ed922f12e94ec2bd7c16efacfeb09c2623d62e3c05b18d23aab43bf68"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "20ccff0986dac97f6538c8ca1aee7993721f619fa49c417733319269d33ceef4"
+        }
+      ],
+      "sourceCommit": "b4ba31f52fda9fbfacb81cd4907c9d6dbbf3bddb",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.16.0"
+    },
+    {
+      "version": "0.17.0",
+      "tag": "v0.17.0",
+      "summary": "增加跨论文研究记忆。默认在同一Zotero文献库内检索已完成的问答和正式阅读摘要，讨论A时可联系此前阅读B的相关内容。每轮按剩余上下文预算选取最多三篇论文、6000字符，回答中的阅读来源可点击返回原论文和会话。索引在后台分批建立，设置中集中提供开关、状态、重建和研究笔记Markdown导出。网页端可将导出的摘要加入ChatGPT项目资料后继续讨论。首版采用本地文本检索，实际论文中的跨语言同义关联需要结合使用效果检验。使用说明和验证范围",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.17.0.xpi",
+          "bytes": 1178017,
+          "sha256": "981fd5183d788bf3943ee3ea4cffe96f21f2c87d35b9fa53e02eddea64ff8f2a"
+        },
+        {
+          "name": "margin-comments-deepseek-0.17.0-source.zip",
+          "bytes": 1525744,
+          "sha256": "7fc8f2a030aa69a1432ad213437285f2488fb01273670cb6d97fa2459ed83a93"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "424e7c6fc3c84e693a97d4dd1e7c054cb666f4247c4fe7657ee481a0f3decc67"
+        }
+      ],
+      "sourceCommit": "e3d5ccd6f5343b65d3eca914d3616307df7d6681",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.17.0"
+    },
+    {
+      "version": "0.18.0",
+      "tag": "v0.18.0",
+      "summary": "将研究记忆扩展到整个个人文献库，覆盖全部分类中的书目信息、PDF文字、普通Zotero笔记和文字标注。未建立聊天记录的论文也能参与本地检索，回答中的出处可以打开条目、原笔记或PDF页面。后台优先同步元数据和已有缓存，再逐篇提取缺少的文字。设置中提供覆盖数量、暂停、继续、重建和研究笔记导出。纯扫描件显示需要OCR，单个PDF自动提取上限为64 MiB，正文使用独立分段索引覆盖长文献后半部分。覆盖安装后完全重启Zotero。使用说明与验收",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.18.0.xpi",
+          "bytes": 1192555,
+          "sha256": "6d0934c418c541b8bc3dda5c463852b7255aaa1e4531b434ff9855df862f0fda"
+        },
+        {
+          "name": "margin-comments-deepseek-0.18.0-source.zip",
+          "bytes": 1567887,
+          "sha256": "b07039e278f225954e2170ddbfd9a05f0d500f1600836a2a7d4ae8adb4972755"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "5ff4d337b5ce335cc0a17b080abe2e3f08bfed65aa101d6201b3abf240b9db36"
+        }
+      ],
+      "sourceCommit": "037039e98b3cce9c07745b0e54d911270dfbeb91",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.18.0"
+    },
+    {
+      "version": "0.18.1",
+      "tag": "v0.18.1",
+      "summary": "支持在页边批注中按 Ctrl+V 粘贴截图，也可把一张或多张本地图片拖入对应批注。图片随即显示在该批注下方，并保存到 PDF 专用的 Zotero 图片笔记和 PDF 同目录的 `margin-comments-images/`。支持 PNG、JPEG、GIF、WebP，每张最多10 MiB，批注底部显示导入结果。仅含图片的空白批注也能在重新打开 PDF 后恢复。覆盖安装后完全重启 Zotero。使用说明与验收",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.18.1.xpi",
+          "bytes": 1195095,
+          "sha256": "f07d003608efa9aa90a080fafd3c638b920279d7b7a022b0f9690dcab7b6c635"
+        },
+        {
+          "name": "margin-comments-deepseek-0.18.1-source.zip",
+          "bytes": 1586888,
+          "sha256": "07681e873c271074628ac44b409006842ce1360906aab26106e3508beabe48a4"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 211,
+          "sha256": "1f76f2b92f51fbf8693c8747829a92232d61ae10869fce049d5590d0e1f603fd"
+        }
+      ],
+      "sourceCommit": "1720fead7dd2c7b7abbf94b778ec0c35e4fa4ef1",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.18.1"
+    },
+    {
+      "version": "0.18.2",
+      "tag": "v0.18.2",
+      "summary": "修正 ChatGPT 登录前读取授权配置失败时的笼统提示。现在区分连接失败、超时、HTTP 状态、无效 JSON 和具体配置校验字段，临时读取失败时自动重试一次。覆盖安装后完全重启 Zotero，在“设置→页边批注→ChatGPT 订阅”点击“Continue with ChatGPT”重试。排查结果与验证范围",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.18.2.xpi",
+          "bytes": 1195423,
+          "sha256": "b51e3af236233a1761f78d3ae62c42b86c68b2b70bb161e6ec69368afef49664"
+        },
+        {
+          "name": "margin-comments-deepseek-0.18.2-source.zip",
+          "bytes": 1593384,
+          "sha256": "d54a6b54c80d94533f238e348376b40041b1aff57d65bef4e8c3af3b2437e4f9"
+        },
+        {
+          "name": "verification-report-0.18.2.json",
+          "bytes": 9555,
+          "sha256": "b6a026b5e52d9608f17087127eddea889352a26249c1e36ee8dba2b6c8da5655"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 309,
+          "sha256": "61f0abe8467355136a0b7f2cb27b3f108cbae1740e291da366d71595cfefaa6e"
+        }
+      ],
+      "sourceCommit": "b7175a987c2d3c42c0fe8699ea8b85677771b68d",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.18.2"
+    },
+    {
+      "version": "0.19.0",
+      "tag": "v0.19.0",
+      "summary": "增加原图查看器。点击页边图片或“查看原图”，可适应窗口、按100%原尺寸阅读、放大缩小和拖动平移，Esc关闭。PDF 页面右键可插入或粘贴图片，也可聚焦页面后按 Ctrl+V，或直接拖入本地图片。选中图片后可拖动、等比缩放、锁定或移除页面放置，位置在重新打开和重启后恢复。页边批注中的已有图片可通过“放到 PDF 页面”复用。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.19.0.xpi",
+          "bytes": 1419660,
+          "sha256": "3d427ea56e368dfa63b16614d493b22b7cdfa02125576ea63346d03de29229fd"
+        },
+        {
+          "name": "margin-comments-deepseek-0.19.0-source.zip",
+          "bytes": 1851205,
+          "sha256": "abe04139c6628219a3662dff98cd00b1399cbcb717932097d6c80ce5bb89dabe"
+        },
+        {
+          "name": "verification-report-0.19.0.json",
+          "bytes": 10853,
+          "sha256": "c791bb8078edafc6368abe125bf87a470ba5c45405983df49685942e7b53f763"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 309,
+          "sha256": "f868a10e1a466d21d581d60ee77d418da167afb96b7c208cf08be195f1ee36fc"
+        }
+      ],
+      "sourceCommit": "f20e94680e6c91be1eec00f3faedb17e00c0caa9",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.0"
+    }
+  ]
+}
