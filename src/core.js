@@ -82,7 +82,8 @@
   function cleanMessage(m){
     if(!['user','assistant'].includes(m?.role)||typeof m.content!=='string'||m.materials!==undefined&&!Array.isArray(m.materials))throw new Error('对话数据损坏');
     const sourceWarnings=Array.isArray(m.sourceWarnings)?m.sourceWarnings.filter(s=>typeof s==='string').slice(0,16).map(s=>s.slice(0,240)):[];
-    return {role:m.role,content:m.content,incomplete:!!m.incomplete,...(sourceWarnings.length?{sourceWarnings}:{}),...(m.attachments?.length?{attachments:m.attachments.map(pickAttachment)}:{}),materials:(m.materials||[]).map(s=>({...pickSource(s),type:s.type,number:s.number,description:s.description})),...(['deepseek','chatgpt'].includes(m.provider)?{provider:m.provider,...(typeof m.model==='string'&&/^[a-z0-9._-]{1,128}$/i.test(m.model)?{model:m.model}:{})}:{})};
+    const p=m.pdfContext,pdfContext=p?.mode==='full-pdf'&&Number.isSafeInteger(p.totalPages)&&p.totalPages>=1&&p.totalPages<=20&&Number.isSafeInteger(p.fileSize)&&p.fileSize>0&&p.fileSize<=6*1024*1024&&typeof p.fileName==='string'?{mode:'full-pdf',totalPages:p.totalPages,fileSize:p.fileSize,fileName:p.fileName.replace(/[\\/\x00-\x1f]/g,'_').slice(0,240)}:undefined;
+    return {role:m.role,content:m.content,incomplete:!!m.incomplete,...(pdfContext?{pdfContext}:{}),...(sourceWarnings.length?{sourceWarnings}:{}),...(m.attachments?.length?{attachments:m.attachments.map(pickAttachment)}:{}),materials:(m.materials||[]).map(s=>({...pickSource(s),type:s.type,number:s.number,description:s.description})),...(['deepseek','chatgpt'].includes(m.provider)?{provider:m.provider,...(typeof m.model==='string'&&/^[a-z0-9._-]{1,128}$/i.test(m.model)?{model:m.model}:{})}:{})};
   }
   function cleanConversation(c){
     if(!c||!conversationID.test(c.id)||typeof c.title!=='string'||c.title.length>120||!Number.isSafeInteger(c.createdAt)||c.createdAt<0||!Number.isSafeInteger(c.updatedAt)||c.updatedAt<0||!Array.isArray(c.history)||typeof c.draft!=='string')throw new Error('对话数据损坏');

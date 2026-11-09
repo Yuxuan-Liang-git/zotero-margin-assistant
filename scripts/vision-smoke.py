@@ -18,12 +18,12 @@ insertion=r'''
         const png=Uint8Array.from(win.atob(context.materials[0].dataURL.split(',')[1]),c=>c.charCodeAt(0));await IOUtils.write(PathUtils.join(work,'mixed-page-'+seed.launch+'.png'),png);
         chat.draftAttachments=[];host.selectedClient=()=>({summarize:async()=> '旧对话摘要',generate:async messages=>{sent=messages;return '合成回答：请核对页面图片公式。';}});
         panel.question.value='Explain formula (6.30)';await panel.send();
-        if(chat.history.at(-1).incomplete||sent.at(-1).content.filter(p=>p.type==='image_url').length!==2)throw new Error('Automatic images not submitted: '+panel.status.textContent);
-        if(chat.history.at(-2).materials.filter(s=>s.automaticPage).length!==2)throw new Error('Automatic source markers not persisted');
+        if(chat.history.at(-1).incomplete||!sent.at(-1).content.some(p=>p.type==='file')&&sent.at(-1).content.filter(p=>p.type==='image_url').length!==2)throw new Error('Automatic PDF/images not submitted: '+panel.status.textContent);
+        if(chat.history.at(-2).pdfContext?.mode!=='full-pdf'&&chat.history.at(-2).materials.filter(s=>s.automaticPage).length!==2)throw new Error('PDF coverage/source markers not persisted');
         const totalImages=sent.flatMap(m=>Array.isArray(m.content)?m.content:[]).filter(p=>p.type==='image_url').length;
         // Earlier pasted/manual materials are retained; automatic page snapshots belong to this turn only.
-        if(!panel.contextInfo.textContent.includes('页面图片：PDF 第 1、2 页'))throw new Error('Actual image coverage missing from UI');
-        return {textLayerOmitsRasterFormula:true,pageImageCount:2,requestImageCount:totalImages,textAndImages:true,autoSourcesPersisted:true,coldRestart:seed.launch>1,noExternalApiCalls:true};
+        if(!panel.contextInfo.textContent.includes('已附带完整 PDF')&&!panel.contextInfo.textContent.includes('页面图片：PDF 第 1、2 页'))throw new Error('Actual image coverage missing from UI');
+        return {textLayerOmitsRasterFormula:true,pageImageCount:2,requestImageCount:totalImages,textAndImages:true,coverageRecorded:true,fullPDFRecorded:chat.history.at(-2).pdfContext?.mode==='full-pdf',coldRestart:seed.launch>1,noExternalApiCalls:true};
       }finally{host.selectedClient=originalClient;chat.draft=draft;chat.draftAttachments=files;panel.question.value=draft;await panel.persist();}
     });
 '''

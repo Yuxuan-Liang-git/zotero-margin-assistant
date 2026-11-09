@@ -16,6 +16,15 @@ test('automatic formula screenshots share the attachment cap and disclose only a
  const selected=D.contextMaterials([page(1)],context,files);assert.deepEqual(selected.map(m=>m.source.pageIndex),[0,6]);
  const parts=D.buildMessages([],'Explain',[page(1)],context,'',files).at(-1).content;assert.equal(parts.filter(p=>p.type==='image_url').length,8);const description=parts.at(-1).text;assert.match(description,/页面图片.*1、7/);assert.doesNotMatch(description,/图片.*9/);assert.match(description,/公式.*文字层/);
 });
+test('automatic full PDF context uses file input once per request and describes whole-document coverage',()=>{
+ const context={mode:'full-pdf',totalPages:8,pages:[1,2,3,4,5,6,7,8],text:'',title:'Short paper',file:{name:'paper.pdf',mime:'application/pdf',dataURL:'data:application/pdf;base64,JVBERi0='}};
+ const first=D.buildMessages([],'Explain equation (26)',[],context),second=D.buildMessages([{role:'user',content:'Earlier question',materials:[]},{role:'assistant',content:'Earlier answer'}],'Continue',[],context);
+ for(const messages of [first,second]){const parts=messages.at(-1).content;assert.equal(parts.filter(p=>p.type==='file').length,1);assert.match(parts.at(-1).text,/完整 PDF 文件/);assert.match(parts.at(-1).text,/8 页/);assert.doesNotMatch(parts.at(-1).text,/其他页.*未读取/);}
+ assert.equal(D.buildMessages([],'Explain',[],context,'',[context.file]).at(-1).content.filter(p=>p.type==='file').length,1);
+});
+test('identical page images in history and the current question are sent once while source explanations and answers remain',()=>{
+ const source={libraryID:1,attachmentKey:'ABCD1234',annotationKey:'PAGE0006',fingerprint:'10:20',pageIndex:6,pageLabel:'7',rects:[[0,0,600,800]],fullPage:true},material={source,dataURL:'data:image/png;base64,YQ==',text:''},history=[{role:'user',content:'first',materials:[material]},{role:'assistant',content:'first answer'},{role:'user',content:'second',materials:[material]},{role:'assistant',content:'second answer'}],before=JSON.stringify(history),messages=D.buildMessages(history,'third',[material]);assert.equal(messages.flatMap(m=>Array.isArray(m.content)?m.content:[]).filter(p=>p.type==='image_url').length,1);assert.ok(messages.some(m=>m.role==='assistant'&&m.content==='first answer'));assert.ok(JSON.stringify(messages).includes('省略重复副本'));assert.equal(JSON.stringify(history),before);
+});
 test('stream handles UTF8 splits and multiline network chunks',async()=>{
   assert.equal(typeof D.DeepSeekClient,'function');
   const raw='data: {"choices":[{"delta":{"content":"中文"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":"解释"}}]}\n\ndata: [DONE]\n\n';

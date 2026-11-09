@@ -47,5 +47,11 @@
     image.removeAttribute('src');
     return {source:{...source},dataURL,text:'',width,height};
   }
-  const api={cropBounds,captureRegion,captureNativeRegion};root.ZMACapture=api;if(typeof module!=='undefined')module.exports=api;
+  async function compactAutomaticPage(material,document){
+    if(!material.source?.automaticPage||!material.dataURL?.startsWith('data:image/png;base64,')||material.dataURL.length<256000)return material;
+    let image,canvas;
+    try{image=document.createElement('img');await new Promise((resolve,reject)=>{image.onload=()=>resolve(undefined);image.onerror=()=>reject(new Error('页面图像无法解码'));image.src=material.dataURL;});canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0);const dataURL=canvas.toDataURL('image/jpeg',.9);return dataURL.startsWith('data:image/jpeg;base64,')&&dataURL.length<material.dataURL.length?{...material,dataURL}:material;}
+    catch{return material;}finally{image?.removeAttribute('src');if(canvas)canvas.width=canvas.height=1;}
+  }
+  const api={cropBounds,captureRegion,captureNativeRegion,compactAutomaticPage};root.ZMACapture=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof _globalThis!=='undefined'?_globalThis:globalThis);

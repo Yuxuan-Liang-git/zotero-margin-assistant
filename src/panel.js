@@ -30,7 +30,7 @@
       this.speedSelect.addEventListener('change',()=>void Promise.resolve(this.host.setChatGPTSpeed?.(this.speedSelect.value)).catch(e=>this.error(e)).finally(()=>this.refreshProvider()));
       this.tabs=el(d,'nav');this.chat=el(d,'section');this.directory=el(d,'section');this.directory.hidden=true;this.conversationList=el(d,'section',undefined,'zma-conversations');this.conversationList.hidden=true;
       this.tabs.append(button(d,'提问',()=>this.showChat()),button(d,'对话记录',()=>this.showConversations()),button(d,'引用目录',()=>this.showDirectory()));
-      const info=el(d,'p','自动读取当前 PDF，发送时提供文档背景；可附加框选材料。','zma-info');
+      const info=el(d,'p','发送时自动加入当前 PDF；超限时使用文字片段与页面图片。可附加框选材料。','zma-info');
       this.activeLabel=el(d,'strong',undefined,'zma-active-conversation');
       this.materialList=el(d,'div',undefined,'zma-materials');
       this.messages=el(d,'div',undefined,'zma-messages');
@@ -138,6 +138,7 @@
       const card=el(this.doc,'article',undefined,`zma-message zma-${m.role}`);card.append(el(this.doc,'strong',m.role==='user'?'问题':m.incomplete?'回答（未完成）':'回答'));
       const text=el(this.doc,'div',undefined,'zma-answer');text.tabIndex=0;if(m.role==='assistant'){if(m.content)this.renderAnswer(text,m.content);}else text.textContent=m.content;
       if(m.attachments?.length){const files=el(this.doc,'p',m.attachments.map(a=>a.name).join('、'),'zma-message-files');card.append(files);}
+      if(m.pdfContext?.mode==='full-pdf')card.append(el(this.doc,'small',`本轮已附带完整 PDF：${m.pdfContext.fileName}（${m.pdfContext.totalPages} 页）`,'zma-message-files'));
       if(m.sourceWarnings?.length)card.append(el(this.doc,'small',m.sourceWarnings.join('\n'),'zma-invalid'));
       card.append(text);if(m.role==='assistant'&&m.content)this.addAnswerActions(card,m,i);return card;
     }
@@ -188,13 +189,13 @@
         const attachments=[];for(const file of conversation.draftAttachments||[])attachments.push(await this.host.loadAttachment(this.reader,file));
         if(this.host.provider==='deepseek'&&[...attachments,...hydrated.flatMap(m=>m.attachments||[])].some(a=>a.mime==='application/pdf'))throw new Error('PDF 附件当前请使用 ChatGPT；DeepSeek 可接收图片附件。');
         const baseMessages=D.buildMessages(hydrated,question,refreshed,undefined,conversation.summary||'',attachments,currentWarnings);
-        const context=await this.host.documentContext?.(this.reader,question,{budget:Math.min(24000,58000-D.textSize(baseMessages)),imageLimit:Math.max(0,8-refreshed.length-attachments.length),imageBudget:Math.max(0,Math.min(4*1024*1024,12*1024*1024-JSON.stringify(baseMessages).length-100000)),signal:this.controller.signal,onProgress:(n,total)=>{if(!this.destroyed)this.status.textContent=`正在读取当前 PDF：${n}/${total} 页…`;}});
-        const submitted=D.contextMaterials(refreshed,context,attachments);
-        if(context&&!this.destroyed){const imagePages=submitted.filter(m=>m.source.fullPage).map(m=>m.source.pageIndex+1);this.contextInfo.textContent=(context.mode==='full-text'?`本轮使用：${context.title} · 完整文字层 ${context.totalPages} 页`:`本轮使用：${context.title} · ${context.mode==='current-page-image'?'无全文文字层':'相关文字节选'}（PDF 第 ${context.pages.join('、')} 页）`)+`；页面图片：${imagePages.length?'PDF 第 '+imagePages.join('、')+' 页':'未加入'}`+(context.scannedPages?.length?'；扫描页尚无全文识别索引':'')+(context.imageWarning?'；'+context.imageWarning:'');}
+        const context=await this.host.documentContext?.(this.reader,question,{budget:Math.min(24000,58000-D.textSize(baseMessages)),imageLimit:Math.max(0,8-refreshed.length-attachments.length),imageBudget:Math.max(0,Math.min(4*1024*1024,12*1024*1024-JSON.stringify(baseMessages).length-100000)),preferPDFFile:provider==='chatgpt',signal:this.controller.signal,onProgress:(n,total)=>{if(!this.destroyed)this.status.textContent=`正在读取当前 PDF：${n}/${total} 页…`;}});
+        const requestAttachments=D.contextAttachments(attachments,context,refreshed),submitted=D.contextMaterials(refreshed,context,requestAttachments),wholePDF=context?.mode==='full-pdf'&&requestAttachments.some(f=>f.dataURL===context.file?.dataURL);
+        if(context&&!this.destroyed){const imagePages=submitted.filter(m=>m.source.fullPage).map(m=>m.source.pageIndex+1);this.contextInfo.textContent=wholePDF?`本轮使用：${context.title} · 已附带完整 PDF 文件（共 ${context.totalPages} 页，含正文与图像公式）`:(context.mode==='full-text'?`本轮使用：${context.title} · 完整文字层 ${context.totalPages} 页`:`本轮使用：${context.title} · ${context.mode==='current-page-image'?'无全文文字层':'相关文字节选'}（PDF 第 ${context.pages.join('、')} 页）`)+`；页面图片：${imagePages.length?'PDF 第 '+imagePages.join('、')+' 页':'未加入'}`+(context.scannedPages?.length?'；扫描页尚无全文识别索引':'')+(context.imageWarning?'；'+context.imageWarning:'');}
         if(unavailableCount&&!this.destroyed)this.contextInfo.textContent+=`；${unavailableCount} 处引用已失效，本轮未发送，原记录保留`;
         const messages=D.buildMessages(hydrated,question,refreshed,context,conversation.summary||'',attachments,currentWarnings);
         if(this.controller.signal.aborted)throw new Error('生成已停止');
-        user={role:'user',content:question,...(currentWarnings.length?{sourceWarnings:currentWarnings}:{}),...(attachments.length?{attachments:attachments.map(C.pickAttachment)}:{}),materials:submitted.map(m=>({...C.pickSource(m.source),type:m.source.type,number:m.source.number,description:m.source.description})),incomplete:false};
+        user={role:'user',content:question,...(wholePDF?{pdfContext:{mode:'full-pdf',fileName:context.file.name,fileSize:context.file.size,totalPages:context.totalPages}}:{}),...(currentWarnings.length?{sourceWarnings:currentWarnings}:{}),...(attachments.length?{attachments:attachments.map(C.pickAttachment)}:{}),materials:submitted.map(m=>({...C.pickSource(m.source),type:m.source.type,number:m.source.number,description:m.source.description})),incomplete:false};
         answer={role:'assistant',content:'',materials:[],incomplete:true,...(provider?{provider,model}:{} )};
         conversation.history=[...history,user,answer];conversation.draft=this.question.value;C.touchConversation(conversation);await this.persist();
         if(retry){this.messages.lastElementChild?.remove();this.messages.lastElementChild?.remove();}

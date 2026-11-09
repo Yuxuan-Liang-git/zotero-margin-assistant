@@ -15,7 +15,7 @@ parser.add_argument('--native-run',default='zotero-0106-native-final')
 parser.add_argument('--restart-run',default='zotero-0105-final')
 parser.add_argument('--conversation-run',default='zotero-0106-conversation-qa')
 parser.add_argument('--upgrade-run',default='zotero-0106-upgrade')
-parser.add_argument('--clipboard-run',default='zotero-0123-find-v2')
+parser.add_argument('--clipboard-run',default='zotero-0124-whole-v2')
 args=parser.parse_args()
 version=json.loads((PROJECT/'package.json').read_text(encoding='utf-8'))['version']
 package=PROJECT/f'dist/margin-comments-deepseek-{version}.xpi'
@@ -80,7 +80,7 @@ upgrade_smoke='passed: AddonManager upgraded active 0.10.5 to active 0.10.6 besi
 clipboard_dir=PROJECT/'evidence'/args.clipboard_run
 clipboard_reports=[json.loads((clipboard_dir/f'report-{n}.json').read_text(encoding='utf-8')) if (clipboard_dir/f'report-{n}.json').exists() else None for n in [1,2]]
 clipboard_installed=clipboard_dir/'profile/extensions/margin-comments@local.zotero.xpi'
-clipboard_ok=clipboard_installed.exists() and hashlib.sha256(clipboard_installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r.get('launch')==n and r.get('packageSha256')==package_hash and len(r.get('steps',[])) in [4,5,6,7,8,9,10] and all(s['ok'] for s in r['steps']) for n,r in enumerate(clipboard_reports,1)) and len({r['process'] for r in clipboard_reports if r})==2
+clipboard_ok=clipboard_installed.exists() and hashlib.sha256(clipboard_installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r.get('launch')==n and r.get('packageSha256')==package_hash and len(r.get('steps',[])) in [4,5,6,7,8,9,10,11] and all(s['ok'] for s in r['steps']) for n,r in enumerate(clipboard_reports,1)) and len({r['process'] for r in clipboard_reports if r})==2
 editing_keys_ok=clipboard_ok and all(any(s.get('name')=='sidebar-clipboard-and-latex' and s.get('result',{}).get('editingKeysNotCancelled') and s['result'].get('editingFocusRetained') and s['result'].get('editingEventCombinations')==24 for s in r['steps']) for r in clipboard_reports)
 probe_path=PROJECT/'evidence/chatgpt-plan-probe/report.json'
 probe=json.loads(probe_path.read_text(encoding='utf-8')) if probe_path.exists() else {}
@@ -93,11 +93,14 @@ attachments_ok=clipboard_ok and all(any(s.get('name')=='composer-attachments-quo
 report['native_attachments_and_quotes']='passed: isolated first launch and cold restart; real Gecko FileReader/local copies, Ctrl+V handler with synthetic file callback, PDF/image Responses fields and quote/comment with LaTeX; synthetic inference, system clipboard untouched' if attachments_ok else 'not passed or not run'
 scroll_ok=clipboard_ok and all(any(s.get('name')=='answer-reading-position' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['startsAtAnswer','manualPositionRetained','streamDoesNotStealPosition','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports)
 report['native_answer_reading_position']='passed: isolated Gecko first launch and cold restart; completed long answer starts at its heading; manual reading position survives streaming and final Markdown rendering; synthetic inference only' if scroll_ok else 'not passed or not run'
-vision_ok=clipboard_ok and all(any(s.get('name')=='mixed-pdf-page-vision' and s.get('ok') and s.get('result',{}).get('pageImageCount')==2 and all(s.get('result',{}).get(key) for key in ['textLayerOmitsRasterFormula','textAndImages','autoSourcesPersisted','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports)
-report['native_mixed_pdf_vision']='passed: isolated first launch and cold restart; selectable prose and raster-only equations, real renderer page PNG inspected, actual text plus two current-turn page images submitted; automatic source markers persisted; inference mocked, online equation recognition accuracy unverified' if vision_ok else 'not passed or not run'
+vision_ok=clipboard_ok and all(any(s.get('name')=='mixed-pdf-page-vision' and s.get('ok') and s.get('result',{}).get('pageImageCount')==2 and all(s.get('result',{}).get(key) for key in ['textLayerOmitsRasterFormula','textAndImages','coverageRecorded','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports)
+report['native_mixed_pdf_vision']='passed: isolated first launch and cold restart; mixed raster/text fixture has two rendered page images; ChatGPT submits whole PDF and records coverage instead of partial page images; inference mocked, online equation recognition accuracy unverified' if vision_ok else 'not passed or not run'
 find_ok=clipboard_ok and all(any(s.get('name')=='pdf-search-with-assistant' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['nativeFindPopup','searchClickable','pdfWidthReserved','resizedVisible','closedWidthRestored','reopenedQueryRetained']) for s in r['steps']) for r in clipboard_reports)
 report['native_pdf_search']='passed: real class-based Zotero split view and Ctrl F popup; input hit testing and focus, dock resize, close restores PDF width and reopen keeps search query; first launch and cold restart' if find_ok else 'not passed or not run'
 stale_ok=clipboard_ok and all(any(s.get('name')=='stale-sources-do-not-block-chat' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['actualMovedAnnotation','strictValidationRetained','chatContinues','originalHistoryPreserved','omittedSourceNotSubstituted','warningPersisted','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports)
 report['native_stale_sources']='passed: real annotation moved in isolated Zotero; strict stale detection retained, historical and current stale material omitted with explicit disk-persisted warning, original history preserved and synthetic chat continues; first launch and cold restart' if stale_ok else 'not passed or not run'
+whole_ok=clipboard_ok and all(any(s.get('name')=='automatic-full-pdf-after-reopen' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['wholePdfEveryTurn','originalBytesVerified','reopenKeepsHistory','reopenReattachesPDF','cacheClearedBetweenTurns','coverageRecorded','noFileBodyInHistory','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports)
+whole_sample=next((s['result'] for s in (clipboard_reports[0] or {}).get('steps',[]) if s.get('name')=='automatic-full-pdf-after-reopen' and s.get('ok')), {})
+report['native_automatic_whole_pdf']=f"passed: {whole_sample.get('pages')}-page {whole_sample.get('fileBytes')}-byte paper copied into isolated fixture; every byte verified against input_file file_data before and after closing/reopening and clearing caches; chat history and safe coverage metadata retained, no file body in sidecar; first launch and cold restart, inference mocked" if whole_ok else 'not passed or not run'
 (PROJECT/'dist/verification-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(report))

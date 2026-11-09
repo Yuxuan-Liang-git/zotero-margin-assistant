@@ -21,7 +21,7 @@
         encrypt:key=>Z.OSKeyStore.encrypt(key),decrypt:value=>Z.OSKeyStore.decrypt(value)
       }):null;
       this.directory=P.join(Z.DataDirectory.dir,'margin-comments-assistant');this.historyPanes=new Map();
-      this.documents=new Map();this.toolbarObservers=new Map();this.unwrap=unwrap;
+      this.documents=new Map();this.pdfFiles=new Map();this.toolbarObservers=new Map();this.unwrap=unwrap;
       this.cloneInto=cloneInto;
       this.chooseChatFiles=chooseChatFiles;this.readClipboardAssets=readClipboardAssets;this.attachmentManager=Attachments?new Attachments.AttachmentManager(this):null;this.chooseImage=chooseImage;this.imageManager=Images?new Images.ImageManager(this):null;
       this.store=new C.LocalStore({exists:async p=>{const sidecar=await this.pdfStatePath(p);if(await IO.exists(sidecar))return true;
@@ -116,8 +116,8 @@
       else{const pdf=adapter.pdfWindow?.PDFViewerApplication?.pdfDocument;if(!pdf)throw new Error('PDF 页面尚未加载');result=await R.captureRegion(pdf,source,adapter.document(),{unwrap:this.unwrap});}
       if(this.cache.size>=16)this.cache.delete(this.cache.keys().next().value);this.cache.set(key,result);return result;
     }
-    /** @param {any} reader @param {string} question @param {{budget?:number,imageLimit?:number,imageBudget?:number,signal?:AbortSignal,onProgress?:(n:number,total:number)=>void}} options */
-    async documentContext(reader,question,{budget=48000,imageLimit=3,imageBudget=4*1024*1024,signal,onProgress}={}){
+    /** @param {any} reader @param {string} question @param {{budget?:number,imageLimit?:number,imageBudget?:number,preferPDFFile?:boolean,signal?:AbortSignal,onProgress?:(n:number,total:number)=>void}} options */
+    async documentContext(reader,question,{budget=48000,imageLimit=3,imageBudget=4*1024*1024,preferPDFFile=false,signal,onProgress}={}){
       const fingerprint=await this.fingerprint(reader),scope=this.scope(reader),key=C.scopeKey(scope)+':'+fingerprint;
       const session=await this.addon.controller.ensureSession(reader);if(!session)throw new Error('当前 PDF 阅读器尚未就绪');
       const adapter=session.adapter,pdf=adapter.pdfWindow?.PDFViewerApplication?.pdfDocument;
@@ -127,11 +127,21 @@
       const context=Doc.choose(index,question,adapter.currentPageIndex(),budget),attachment=this.Z.Items.get(Number(reader.itemID));
       context.title=String(attachment.getField?.('title')||'当前 PDF');
       context.materials=[];context.imageWarning='';let bytes=0;const warnings=new Set(),limit=Math.max(0,Math.min(3,Math.floor(imageLimit)));
+      if(preferPDFFile){
+        if(index.totalPages>20)warnings.add('超过自动整份 PDF 的 20 页范围，改用文字及页面图片');
+        else if(limit<1)warnings.add('材料数量已达上限，完整 PDF 未加入');
+        else try{
+          let file=this.pdfFiles.get(key);if(!file){file=await this.attachmentManager.currentPDF(reader,{maxDataBytes:imageBudget});if(signal?.aborted)throw new Error('文档读取已停止');if(await this.fingerprint(reader)!==fingerprint)throw new Error('PDF 文件在读取时改变，请重试');if(this.pdfFiles.size>=3)this.pdfFiles.delete(this.pdfFiles.keys().next().value);this.pdfFiles.set(key,file);}
+          if(signal?.aborted)throw new Error('文档读取已停止');
+          if(String(file.dataURL).length+1000<=imageBudget)return {...context,mode:'full-pdf',file,text:'',pages:Array.from({length:index.totalPages},(_,i)=>i+1)};
+          warnings.add('本轮空间不足，完整 PDF 未加入，改用文字及页面图片');
+        }catch(e){if(signal?.aborted)throw new Error('文档读取已停止');warnings.add('完整 PDF 读取受限，改用文字及页面图片');}
+      }
       for(const page of context.imagePages){
         if(signal?.aborted)throw new Error('文档读取已停止');
         if(context.materials.length>=limit){warnings.add('材料数量已达上限，部分页面图片未加入');break;}
         try{
-          const source=await this.currentPage(reader,page-1),material={...await this.capture(reader,{...source,automaticPage:true}),text:''};
+          const source=await this.currentPage(reader,page-1);let material={...await this.capture(reader,{...source,automaticPage:true}),text:''};if(material.dataURL?.length>=256000)material=await R.compactAutomaticPage(material,adapter.document());
           if(signal?.aborted)throw new Error('文档读取已停止');
           const size=JSON.stringify(material).length;
           if(bytes+size>imageBudget){warnings.add('请求大小受限，部分页面图片未加入');continue;}
@@ -332,7 +342,7 @@
       for(const win of [...this.historyPanes.keys()])this.unbindHistoryPane(win);
       for(const {observer}of this.toolbarObservers.values())observer.disconnect();this.toolbarObservers.clear();
       await Promise.allSettled(this.pending.values());await Promise.allSettled([...this.panels.values()].map(p=>p.destroy()));this.panels.clear();
-      for(const entry of this.cleanups.values())entry.dispose();this.cleanups.clear();this.cache.clear();this.documents.clear();
+      for(const entry of this.cleanups.values())entry.dispose();this.cleanups.clear();this.cache.clear();this.documents.clear();this.pdfFiles.clear();
       this.states.clear();this.activeRequests.clear();
       for(const win of this.settingsWindows)win.close();this.settingsWindows.clear();
       for(const reader of this.Z.Reader._readers||[])reader._iframeWindow?.document.querySelectorAll('.zma-toolbar,#zma-styles,#zma-math-styles').forEach(n=>n.remove());

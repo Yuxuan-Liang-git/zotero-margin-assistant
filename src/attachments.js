@@ -31,7 +31,14 @@
    const record=C.pickAttachment(value),h=this.host,path=h.P.join(await this.directory(reader),record.fileName);
    if(h.IO.stat&&(await h.IO.stat(path)).size!==record.size)throw new Error('附件副本大小已改变，请重新添加');
    const bytes=await h.IO.read(path);if(bytes.length!==record.size||format(bytes).mime!==record.mime)throw new Error('附件副本已改变，请重新添加');
-   const win=h.runtimeWindow(),blob=new win.Blob([bytes],{type:record.mime});const dataURL=await new Promise((resolve,reject)=>{const reader=new win.FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('附件读取失败'));reader.readAsDataURL(blob);});return {...record,dataURL};
+   return {...record,dataURL:await this.dataURL(bytes,record.mime)};
+  }
+  async dataURL(bytes,mime){const win=this.host.runtimeWindow(),blob=new win.Blob([bytes],{type:mime});return new Promise((resolve,reject)=>{const reader=new win.FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('附件读取失败'));reader.readAsDataURL(blob);});}
+  async currentPDF(reader,{maxDataBytes=4*1024*1024}={}){
+   const h=this.host,path=await h.Z.Items.get(Number(reader.itemID))?.getFilePathAsync();if(!path)throw new Error('当前 PDF 文件缺失');
+   const stat=await h.IO.stat(path);if(stat.size<1||stat.size>MAX_BYTES||Math.ceil(stat.size/3)*4+64>maxDataBytes)throw new Error('当前 PDF 大小超出本轮材料空间');
+   const bytes=await h.IO.read(path);if(bytes.length!==stat.size||format(bytes).mime!=='application/pdf')throw new Error('当前 PDF 文件读取失败或已改变');
+   return {name:path.split(/[\\/]/).pop()||'document.pdf',mime:'application/pdf',size:bytes.length,dataURL:await this.dataURL(bytes,'application/pdf')};
   }
  }
  const api={AttachmentManager,format,MAX_BYTES};root.ZMAAttachments=api;if(typeof module!=='undefined')module.exports=api;

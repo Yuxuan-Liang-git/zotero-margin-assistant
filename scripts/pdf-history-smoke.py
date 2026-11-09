@@ -61,7 +61,7 @@ async function run(){
       await IOUtils.makeDirectory(host.directory,{ignoreExisting:true});await IOUtils.writeUTF8(path,JSON.stringify(legacy));
       await IOUtils.writeUTF8(seedFile,JSON.stringify(seed));
     }
-    const reader=await Zotero.Reader.open(seed.attachmentID);await reader._initPromise;
+    let reader=await Zotero.Reader.open(seed.attachmentID);for(let i=0;i<200&&!reader;i++){await new Promise(r=>setTimeout(r,50));reader=Zotero.Reader._readers.find(r=>r.itemID===seed.attachmentID);}if(!reader)throw new Error('QA reader was not restored');await reader._initPromise;
     const panel=await host.panel(reader);panel.open();
     await check('v1-migration-and-conversation-switch',async()=>{
       if(seed.launch===1){
