@@ -91,3 +91,11 @@ No Git commit steps: this workspace is not a repository; preserve evidence in a 
 - QuoteBubbles 扩展 PDF 覆盖层、原文/截图预览、坐标换算和缩放/滚动监听，保留当前字体、剪贴板和原生输入。
 - PDF 来源与对话批注共用待发送列表及本地持久化，原文/截图与评论合并发送，旧草稿兼容；失效来源遵循既有明确省略策略。
 - 先失败后通过的菜单/快照/跨 frame UI 集成，完整回归和实际 Gecko 首启/冷重启验收，证据见 acceptance.md。
+
+
+## 0.12.8 定位错误修复
+
+- 复现用户截图同类错误：PDF page 尚未渲染、编号隐藏时，logical AND 的 false 被当作元素调用边界方法。
+- 改为显式 null 和元素/可视区域两条定位路径；保持来源、草稿和发送行为。
+- 新回归先复现 TypeError，再验证隐藏锚点下气泡打开、编辑、重开、范围正确。
+- 全套164项与checkJs通过；隔离原生无页面锚点测试和冷重启结果记录在 acceptance.md。

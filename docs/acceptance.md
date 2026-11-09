@@ -1,6 +1,16 @@
 # 验收记录
 
-日期：2026-10-19。交付版本：0.12.7。目标 Zotero：10.0.x。下方旧版本记录保留为历史验收证据。
+日期：2026-10-19。交付版本：0.12.8。目标 Zotero：10.0.x。下方旧版本记录保留为历史验收证据。
+
+## 0.12.8：修复隐藏/未渲染 PDF 锚点报错
+
+用户截图显示 anchor.getBoundingClientRect is not a function。已在浏览器中复现：PDF 页面尚未渲染时 source 编号隐藏，选取回退锚点的 logical AND 表达式返回 false。可选链仅处理 null/undefined，因而仍调用 false 上不存在的方法。该边界是0.12.7验收遗漏，修复为显式 null 表示缺少元素，使用条件选择 DOM 边界或既有 PDF viewport 回退区域；不通过全局异常捕获掩盖问题。
+
+新测试先得到同一 TypeError（QuoteBubbles.position），修复后在 adapter.page 返回 undefined、编号隐藏情况下，验证新增气泡、输入批注、收起、重开后保留内容及矩形位于 viewport 内。164/164完整回归通过，96.3秒，evidence/ui-0128/tests.txt；完整checkJs通过。
+
+隔离 Zotero10.0.6 首次启动及冷重启各14/14通过：evidence/zotero-0128-anchor-fallback-v1/report-1.json、report-2.json。原生PDF测试临时置空 page lookup，明确执行无页面锚点的定位分支，再恢复；unrenderedPageFallback=true，气泡无报错且仍在PDF可视区域内。文字/截图批注联合提交、本地草稿冷恢复及前13项原生验收继续通过。未操作真实用户文献库/配置，推理使用合成响应，未提交论文或消耗账户额度。
+
+最终XPI SHA-256：80e08665c7a4055e6e83f6976bd65d076749bdfacb90fa07a857992e77d04c2d，1117414字节。原始0.9.5 XPI与baseline保留。
 
 ## 0.12.7：PDF 原文/区域气泡批注提问
 

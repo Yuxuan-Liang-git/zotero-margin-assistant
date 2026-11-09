@@ -167,3 +167,10 @@ send() 在原问题前后拼接全部有内容的引用批注，复用当前 PDF
 在真实 PDF iframe 创建独立的透明、pointer-events:none 覆盖层，只有编号和气泡接收事件，不更改页面宽度或注入源文字。source.rects 通过当前 page.viewport 换算，结合页面实际 DOM 尺寸处理缩放/旋转，监听滚动、resize、PDF.js page/scale/rotation 事件重定位；页面不可见时隐藏编号，输入框入口仍可重开并跳页。Zotero 跨窗口转换采用数值逐点传递，避免 PDF 窗口读取特权脚本数组的权限错误。PDF 覆盖层安装自己的 MathML 样式和剪贴板行为；销毁时移除覆盖层、所有监听与资源。
 
 PDF 文字/区域可与对话批注混用：发送前重新 capture 每个有内容的 PDF 批注，按来源去重，原文和截图进入既有材料管线，页码和对应编号进入合并问题；history.materials 保留来源，草稿 JSON 不保存图像编码。总材料数仍为8，批注总数20；成功清空待发送批注，失败/取消保留。气泡位于 PDF 子文档，关闭助手或切换非聊天视图隐藏覆盖层，重开恢复编号。
+
+
+## 0.12.8 无可见锚点时的定位修复
+
+0.12.7 的 PDF 分支在找不到可见编号时，用 logical AND 跳过聊天托盘查找，得到 boolean false。可选链只跳过 null/undefined，因此随后 anchor?.getBoundingClientRect() 仍尝试调用 false 上不存在的方法。改为显式 null 表示不存在的元素，并用条件表达式选择元素边界或已有 PDF 可视区域回退几何。来源、气泡内容、草稿格式和发送流程不变。
+
+回归覆盖尚未渲染的 page（adapter.page 返回 undefined）、隐藏编号、重新打开并编辑已有内容，确保气泡仍在 PDF 可视区域内；实际 Gecko 验收也暂时将 page lookup 置为空再恢复，验证同一回退分支。
