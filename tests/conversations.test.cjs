@@ -72,3 +72,5 @@ test('one oversized completed turn can be summarized instead of blocking the nex
   chat.history[1].incomplete=true;
   assert.equal(C.compactionTarget(chat),0);
 });
+test('many short turns do not cause compaction solely because of message count',()=>{const chat=C.activeConversation(C.emptyState());for(let i=0;i<40;i++)chat.history.push({role:i%2?'assistant':'user',content:'简短问答'.repeat(20),materials:[]});assert.equal(C.compactionTarget(chat),0);});
+test('compaction leaves enough headroom for several following turns',()=>{const chat=C.activeConversation(C.emptyState());for(let i=0;i<20;i++)chat.history.push({role:i%2?'assistant':'user',content:'字'.repeat(1700),materials:[]});const through=C.compactionTarget(chat);assert.ok(through>0);chat.compactedThrough=through;chat.summary='已有摘要';for(let i=0;i<8;i++)chat.history.push({role:i%2?'assistant':'user',content:'继续'.repeat(300),materials:[]});assert.equal(C.compactionTarget(chat),through);});

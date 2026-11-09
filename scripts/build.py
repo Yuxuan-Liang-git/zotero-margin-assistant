@@ -74,7 +74,7 @@ def build():
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
   Services.scriptloader.loadSubScript(rootURI + "content/vendor/marked/marked.umd.js", context);
-  for (const name of ["core", "capture", "document", "references", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "streaming", "clipboard", "panel", "margin-references", "images", "host"]) {
+  for (const name of ["core", "capture", "document", "references", "attachments", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "streaming", "clipboard", "panel", "margin-references", "images", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();
@@ -86,6 +86,18 @@ def build():
     },
     unwrap: value => Components.utils.waiveXrays(value),
     cloneInto: (value, target) => Components.utils.cloneInto(value, Components.utils.getGlobalForObject(target)),
+    chooseChatFiles: async win => {
+      const { FilePicker } = ChromeUtils.importESModule('chrome://zotero/content/modules/filePicker.mjs');
+      const picker = new FilePicker();picker.init(win, '添加对话附件', picker.modeOpenMultiple);
+      picker.appendFilter('PDF / 图片', '*.pdf; *.png; *.jpg; *.jpeg; *.webp');
+      return await picker.show() === picker.returnOK ? picker.files : [];
+    },
+    readClipboardAssets: () => {
+      const read = flavor => {const transfer=Components.classes['@mozilla.org/widget/transferable;1'].createInstance(Components.interfaces.nsITransferable);transfer.init(null);transfer.addDataFlavor(flavor);Services.clipboard.getData(transfer,Services.clipboard.kGlobalClipboard);const value={};transfer.getTransferData(flavor,value);return value.value;};
+      try {const file=read('application/x-moz-file').QueryInterface(Components.interfaces.nsIFile);if(file.isFile())return [{path:file.path}];} catch {}
+      try {const stream=read('image/png').QueryInterface(Components.interfaces.nsIInputStream);const size=stream.available();if(size>6*1024*1024)throw new Error('剪贴板图片超过 6 MiB，请缩小图片');const binary=Components.classes['@mozilla.org/binaryinputstream;1'].createInstance(Components.interfaces.nsIBinaryInputStream);binary.setInputStream(stream);try{return [{name:'粘贴图片.png',bytes:new Uint8Array(binary.readByteArray(size))}];}finally{binary.close();}} catch(error) {if(error.message?.includes('6 MiB'))throw error;}
+      return [];
+    },
     chooseImage: async win => {
       const { FilePicker } = ChromeUtils.importESModule('chrome://zotero/content/modules/filePicker.mjs');
       const picker = new FilePicker();picker.init(win, '插入页边批注图片', picker.modeOpen);

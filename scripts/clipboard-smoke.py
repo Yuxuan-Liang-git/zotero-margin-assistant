@@ -21,8 +21,8 @@ insertion = r'''
       const panel=await host.panel(reader);panel.showChat();
       if(typeof panel.disposeClipboard!=='function')throw new Error('Clipboard integration missing');
       const win=reader._iframeWindow,doc=panel.doc,chat=panel.conversation();
-      const originalDraft=chat.draft,copy=host.copy,read=host.readClipboard,writes=[];
-      host.copy=value=>writes.push(value);host.readClipboard=()=>String.raw`\(x^2\)`;
+      const originalDraft=chat.draft,copy=host.copy,read=host.readClipboard,readAssets=host.readAttachmentClipboard,writes=[];
+      host.readAttachmentClipboard=()=>[];host.copy=value=>writes.push(value);host.readClipboard=()=>String.raw`\(x^2\)`;
       try{
         const latex=String.raw`\[a=b \\ c=d\]`;
         chat.history.push({role:'user',content:'Clipboard QA',materials:[]},{role:'assistant',content:'前文 '+latex+' 后文',materials:[],incomplete:false});panel.renderMessages();
@@ -50,7 +50,7 @@ insertion = r'''
         if(writes.at(-1)!==latex)throw new Error('Context menu formula copy failed');
         if(win.getComputedStyle(answer).userSelect!=='text')throw new Error('Text selection still disabled');
         return {readerEventOverride:true,partialFormulaToFullLatex:true,multilineSource:true,ctrlCopy:true,ctrlPaste:true,draftUpdated:true,contextMenu:true,editingKeysNotCancelled:true,editingFocusRetained:true,editingEventCombinations:24,coldRestart:seed.launch>1,systemClipboard:'mocked to preserve user clipboard'};
-      }finally{host.copy=copy;host.readClipboard=read;chat.draft=originalDraft;panel.question.value=originalDraft;}
+      }finally{host.copy=copy;host.readClipboard=read;host.readAttachmentClipboard=readAssets;chat.draft=originalDraft;panel.question.value=originalDraft;}
     });
 '''
 point = '    await host.store.flush();'

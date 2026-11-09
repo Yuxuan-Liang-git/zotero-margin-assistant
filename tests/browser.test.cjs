@@ -97,7 +97,7 @@ test('long PDF chat compacts older turns without losing raw history and streams 
     for(const name of ['core','deepseek','panel'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});
     const result=await page.evaluate(async()=>{
       const state=ZMACore.emptyState(),chat=ZMACore.activeConversation(state);
-      for(let i=0;i<10;i++){chat.history.push({role:'user',content:`问题 ${i} `+'甲'.repeat(800),materials:[]},{role:'assistant',content:`回答 ${i} `+'乙'.repeat(800),materials:[],incomplete:false});}
+      for(let i=0;i<10;i++){chat.history.push({role:'user',content:`问题 ${i} `+'甲'.repeat(1700),materials:[]},{role:'assistant',content:`回答 ${i} `+'乙'.repeat(1700),materials:[],incomplete:false});}
       let summaries=0,sent,renderCalls=0,saved;
       const host={addon:{bridge:{renderMathPreview:(node,text)=>node.textContent=text}},load:async()=>state,save:async(_r,s)=>{saved=structuredClone(s);},capture:async()=>{throw new Error('no selected materials')},client:{summarize:async(previous,messages)=>{summaries++;return `摘要 ${summaries}：${messages.length} 条消息，前文定义 A。`;},generate:async(messages,{onDelta})=>{sent=messages;for(let i=0;i<120;i++)onDelta('x');return 'x'.repeat(120);}},newAbortController:()=>new AbortController()};
       const panel=new ZMAPanel.Panel(host,{itemID:1},document);await panel.init();const original=panel.renderAnswer.bind(panel);panel.renderAnswer=(...args)=>{renderCalls++;return original(...args);};

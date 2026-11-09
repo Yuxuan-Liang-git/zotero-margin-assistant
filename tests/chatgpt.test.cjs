@@ -67,3 +67,8 @@ test('SSE speed rejection preserves partial answer and exposes the same actionab
  const f=fixture([event({type:'response.output_text.delta',delta:'partial'}),event({type:'response.failed',response:{error:{code:'invalid_request_error',param:'service_tier',message:'service_tier is not allowed'}}})]);
  await assert.rejects(f.client.generate([{role:'user',content:'q'}]),e=>e.speedRejected===true&&e.partial==='partial'&&e.incomplete===true);
 });
+test('PDF attachment content maps to Responses input_file and DeepSeek rejects PDFs before network',async()=>{
+ const D=require('../src/deepseek.js'),record={name:'notes.pdf',mime:'application/pdf',dataURL:'data:application/pdf;base64,JVBERi0xLjc='};
+ const messages=D.buildMessages([],'解释附件',[],undefined,'',[record]);const body=api().requestBody(messages,'gpt-6.1-sol');assert.equal(body.input[0].content.find(p=>p.type==='input_file').filename,'notes.pdf');assert.equal(body.input[0].content.find(p=>p.type==='input_file').file_data,record.dataURL);
+ let calls=0;const client=new D.DeepSeekClient({getKey:()=> 'key',fetch:async()=>{calls++;throw Error();}});await assert.rejects(client.generate(messages),/PDF.*ChatGPT/);assert.equal(calls,0);
+});

@@ -32,7 +32,7 @@
     }
     return parts.join('\n');
   }
-  function install(container,{copy,read,onError=(_error)=>{}}){
+  function install(container,{copy,read,readFiles=()=>[],onFiles=null,onQuote=null,onError=(_error)=>{}}){
     const doc=container.ownerDocument,listeners=[];let menu;
     const listen=(node,type,handler)=>{node.addEventListener(type,handler);listeners.push(()=>node.removeEventListener(type,handler));};
     const closeMenu=()=>{menu?.remove();menu=null;};
@@ -46,7 +46,8 @@
       if(!field||field.disabled||field.readOnly||typeof text!=='string'||!text)return false;
       field.focus();field.setRangeText(text,field.selectionStart,field.selectionEnd,'end');field.dispatchEvent(new doc.defaultView.Event('input',{bubbles:true}));return true;
     };
-    const paste=field=>{try{return insert(field,read?.());}catch(error){onError(error);return false;}};
+    const attach=(field,files)=>{if(!onFiles||field?.dataset.zma!=='question'||field.disabled||field.readOnly||!files?.length)return false;try{Promise.resolve(onFiles(Array.from(files))).catch(onError);}catch(error){onError(error);}return true;};
+    const paste=field=>{try{if(field?.dataset.zma==='question'&&onFiles&&attach(field,readFiles()))return true;return insert(field,read?.());}catch(error){onError(error);return false;}};
     const selectAll=target=>{
       const field=control(target);if(field){field.focus();field.select();return;}
       const answer=(target?.nodeType===1?target:target?.parentElement)?.closest('.zma-answer')||container.querySelector('.zma-messages')||container;
@@ -54,7 +55,7 @@
     };
     listen(doc,'copy',event=>{if(container.hidden||!container.isConnected)return;const text=selectionText(container,event.target);if(!text&&!container.contains(event.target))return;event.stopPropagation();write(text,event);});
     listen(container,'cut',event=>{event.stopPropagation();const field=control(event.target);if(field&&!field.readOnly&&!field.disabled&&write(selectionText(container,field),event)){field.setRangeText('',field.selectionStart,field.selectionEnd,'end');field.dispatchEvent(new doc.defaultView.Event('input',{bubbles:true}));}});
-    listen(container,'paste',event=>{event.stopPropagation();const field=control(event.target),text=event.clipboardData?.getData('text/plain');if(insert(field,text))event.preventDefault();});
+    listen(container,'paste',event=>{event.stopPropagation();const field=control(event.target);if(attach(field,event.clipboardData?.files)){event.preventDefault();return;}const text=event.clipboardData?.getData('text/plain');if(insert(field,text))event.preventDefault();});
     listen(container,'keydown',event=>{
       if(event.isComposing)return;const key=event.key.toLowerCase(),modifier=(event.ctrlKey||event.metaKey)&&!event.altKey;
       if(!modifier||!['a','c','x','v'].includes(key))return;
@@ -71,6 +72,7 @@
       menu=doc.createElementNS('http://www.w3.org/1999/xhtml','div');menu.className='zma-clipboard-menu';menu.setAttribute('role','group');menu.setAttribute('aria-label','文档助手编辑菜单');
       Object.assign(menu.style,{position:'fixed',zIndex:'10010',background:'Canvas',color:'CanvasText',border:'1px solid #999',padding:'5px',borderRadius:'5px',left:`${Math.max(0,Math.min(event.clientX,doc.defaultView.innerWidth-180))}px`,top:`${Math.max(0,Math.min(event.clientY,doc.defaultView.innerHeight-170))}px`});
       const add=(label,action,disabled=false)=>{const b=doc.createElementNS('http://www.w3.org/1999/xhtml','button');b.type='button';b.textContent=label;b.disabled=disabled;b.style.display='block';b.style.width='100%';b.addEventListener('mousedown',e=>e.preventDefault());b.addEventListener('click',()=>{closeMenu();action();});menu.append(b);};
+      if(onQuote&&!field&&selected&&event.target.closest?.('.zma-message'))add('引用并批注提问',()=>{try{onQuote(selected);}catch(error){onError(error);}});
       if(math)add('复制公式 LaTeX',()=>write(formulaText(math)),!formulaText(math));
       add('复制',()=>write(selected),!selected);
       if(field){add('剪切',()=>{if(!field.readOnly&&!field.disabled&&write(selected)){field.setRangeText('',field.selectionStart,field.selectionEnd,'end');field.dispatchEvent(new doc.defaultView.Event('input',{bubbles:true}));}},field.readOnly||field.disabled||!selected);add('粘贴',()=>paste(field),field.readOnly||field.disabled);}

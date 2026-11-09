@@ -8,11 +8,12 @@
   const Auth=root.ZMAChatGPTAuth||(typeof require!=='undefined'?require('./chatgpt-auth.js'):null);
   const GPT=root.ZMAChatGPT||(typeof require!=='undefined'?require('./chatgpt.js'):null);
   const Images=root.ZMAImages||(typeof require!=='undefined'?require('./images.js'):null);
+  const Attachments=root.ZMAAttachments||(typeof require!=='undefined'?require('./attachments.js'):null);
   const ID='margin-comments-assistant@local.zotero';
   class Host{
     /** @type {string|undefined} */
     styleText;
-    constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null,chatgptListen=null}){
+    constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null,chatgptListen=null,chooseChatFiles=null,readClipboardAssets=null}){
       this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
       this.credentialError='';
       this.credentials=Z.Prefs&&Z.OSKeyStore&&Credentials?new Credentials.CredentialStore({
@@ -22,7 +23,7 @@
       this.directory=P.join(Z.DataDirectory.dir,'margin-comments-assistant');this.historyPanes=new Map();
       this.documents=new Map();this.toolbarObservers=new Map();this.unwrap=unwrap;
       this.cloneInto=cloneInto;
-      this.chooseImage=chooseImage;this.imageManager=Images?new Images.ImageManager(this):null;
+      this.chooseChatFiles=chooseChatFiles;this.readClipboardAssets=readClipboardAssets;this.attachmentManager=Attachments?new Attachments.AttachmentManager(this):null;this.chooseImage=chooseImage;this.imageManager=Images?new Images.ImageManager(this):null;
       this.store=new C.LocalStore({exists:async p=>{const sidecar=await this.pdfStatePath(p);if(await IO.exists(sidecar))return true;
         if(p.endsWith('.json')){const old=P.join(this.directory,p);if(await IO.exists(old)){const raw=await IO.readUTF8(old);await IO.writeUTF8(sidecar,raw,{tmpPath:sidecar+'.tmp'});return true;}}return false;},
         read:async p=>IO.readUTF8(await this.pdfStatePath(p)),writeAtomic:async(p,value)=>{const path=await this.pdfStatePath(p);await IO.writeUTF8(path,value,{tmpPath:path+'.tmp'});}});
@@ -230,6 +231,10 @@
     }
     jump(reader,source){const location={pageIndex:source.pageIndex,annotationID:source.fullPage?undefined:source.annotationKey};reader._internalReader?.navigate?.(location);}
     copy(text){this.Z.Utilities.Internal.copyTextToClipboard(text);}
+    importAttachment(reader,input){if(!this.attachmentManager)throw new Error('附件模块不可用，请重启 Zotero');return this.attachmentManager.import(reader,input);}
+    loadAttachment(reader,record){return this.attachmentManager.load(reader,record);}
+    readAttachmentClipboard(){return this.readClipboardAssets?.()||[];}
+    async chooseAttachments(){return (await this.chooseChatFiles?.(this.runtimeWindow())||[]).map(path=>({path}));}
     readClipboard(){return this.Z.Utilities.Internal.getClipboard('text/plain');}
     notify(message){const win=this.Z.getMainWindow?.()||this.win;if(win&&!win.closed)win.alert?.(message);else this.Z.logError?.(new Error(message));}
     guard(action){Promise.resolve().then(action).catch(e=>this.notify(e.message));}

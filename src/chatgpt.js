@@ -34,6 +34,7 @@
       if(!['user','assistant','developer'].includes(m.role))throw failure(400,'');
       const content=(Array.isArray(m.content)?m.content:[{type:'text',text:m.content}]).map(part=>{
         if(part.type==='text')return {type:m.role==='assistant'?'output_text':'input_text',text:part.text};
+        if(part.type==='file'&&m.role==='user')return {type:'input_file',filename:part.file.filename,file_data:part.file.file_data};
         if(part.type==='image_url'&&m.role==='user')return {type:'input_image',image_url:part.image_url.url};throw failure(400,'');
       });return {role:m.role,content};
     });

@@ -74,24 +74,29 @@
     if(!record||typeof record.id!=='string'||!/^[a-f0-9]{32}$/.test(record.id)||!keyPattern.test(record.annotationKey)||!keyPattern.test(record.noteKey)||!keyPattern.test(record.noteImageKey)||record.fileName!==`margin-comment-${record.id}.${mimeExtensions[record.mime]}`||!mimeExtensions[record.mime])throw new Error('图片记录数据损坏');
     return {id:record.id,annotationKey:record.annotationKey,fileName:record.fileName,mime:record.mime,noteKey:record.noteKey,noteImageKey:record.noteImageKey};
   }
+  function pickAttachment(record){
+    const extensions={'application/pdf':'pdf','image/png':'png','image/jpeg':'jpg','image/webp':'webp'};
+    if(!record||!/^[a-f0-9]{32}$/.test(record.id)||!extensions[record.mime]||record.fileName!==`chat-${record.id}.${extensions[record.mime]}`||typeof record.name!=='string'||!record.name.trim()||record.name.length>240||/[\\/\x00-\x1f]/.test(record.name)||!Number.isSafeInteger(record.size)||record.size<1||record.size>6*1024*1024)throw new Error('附件记录无效');
+    return {id:record.id,name:record.name,mime:record.mime,fileName:record.fileName,size:record.size};
+  }
   function cleanMessage(m){
     if(!['user','assistant'].includes(m?.role)||typeof m.content!=='string'||m.materials!==undefined&&!Array.isArray(m.materials))throw new Error('对话数据损坏');
-    return {role:m.role,content:m.content,incomplete:!!m.incomplete,materials:(m.materials||[]).map(s=>({...pickSource(s),type:s.type,number:s.number,description:s.description})),...(['deepseek','chatgpt'].includes(m.provider)?{provider:m.provider,...(typeof m.model==='string'&&/^[a-z0-9._-]{1,128}$/i.test(m.model)?{model:m.model}:{})}:{})};
+    return {role:m.role,content:m.content,incomplete:!!m.incomplete,...(m.attachments?.length?{attachments:m.attachments.map(pickAttachment)}:{}),materials:(m.materials||[]).map(s=>({...pickSource(s),type:s.type,number:s.number,description:s.description})),...(['deepseek','chatgpt'].includes(m.provider)?{provider:m.provider,...(typeof m.model==='string'&&/^[a-z0-9._-]{1,128}$/i.test(m.model)?{model:m.model}:{})}:{})};
   }
   function cleanConversation(c){
     if(!c||!conversationID.test(c.id)||typeof c.title!=='string'||c.title.length>120||!Number.isSafeInteger(c.createdAt)||c.createdAt<0||!Number.isSafeInteger(c.updatedAt)||c.updatedAt<0||!Array.isArray(c.history)||typeof c.draft!=='string')throw new Error('对话数据损坏');
     const summary=c.summary??'',compactedThrough=c.compactedThrough??0;
     if(typeof summary!=='string'||summary.length>20000||!Number.isSafeInteger(compactedThrough)||compactedThrough<0||compactedThrough>c.history.length||compactedThrough%2||compactedThrough>0&&!summary.trim())throw new Error('对话摘要索引损坏');
-    return {id:c.id,title:c.title,createdAt:c.createdAt,updatedAt:c.updatedAt,history:c.history.map(cleanMessage),draft:c.draft,summary,compactedThrough};
+    return {id:c.id,title:c.title,createdAt:c.createdAt,updatedAt:c.updatedAt,history:c.history.map(cleanMessage),draft:c.draft,...(c.draftAttachments?.length?{draftAttachments:c.draftAttachments.map(pickAttachment)}:{}),summary,compactedThrough};
   }
   function compactionTarget(conversation){
     const history=conversation.history,from=conversation.compactedThrough||0,pending=history.slice(from);
     const size=pending.reduce((n,m)=>n+m.content.length+(m.materials||[]).reduce((total,s)=>total+(s.text?.length||0),0),0);
-    if(pending.length<=12&&size<=16000)return from;
+    if(size<=30000)return from;
     const starts=[];for(let i=from;i<history.length;i++)if(history[i].role==='user')starts.push(i);
     if(starts.length<=1)return size>40000&&history.at(-1)?.role==='assistant'&&!history.at(-1).incomplete?history.length:from;
     let keep=Math.max(0,starts.length-4);
-    while(keep<starts.length-1&&history.slice(starts[keep]).reduce((n,m)=>n+m.content.length,0)>12000)keep++;
+    while(keep<starts.length-1&&history.slice(starts[keep]).reduce((n,m)=>n+m.content.length,0)>14000)keep++;
     const target=Math.max(from,starts[keep]);
     return history.slice(target).reduce((n,m)=>n+m.content.length,0)>40000&&history.at(-1)?.role==='assistant'&&!history.at(-1).incomplete?history.length:target;
   }
@@ -134,6 +139,6 @@
     }
     async flush(){await Promise.all(this.queues.values());}
   }
-  const api={TYPES,scopeKey,normalizeNumber,validateSource,pickSource,ReferenceIndex,sourceLink,parseSourceLink,storedLink,escapeHTML,emptyState,activeConversation,selectConversation,createConversation,touchConversation,compactionTarget,cleanState,LocalStore};
+  const api={TYPES,scopeKey,pickAttachment,normalizeNumber,validateSource,pickSource,ReferenceIndex,sourceLink,parseSourceLink,storedLink,escapeHTML,emptyState,activeConversation,selectConversation,createConversation,touchConversation,compactionTarget,cleanState,LocalStore};
   root.ZMACore=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof _globalThis!=='undefined'?_globalThis:globalThis);

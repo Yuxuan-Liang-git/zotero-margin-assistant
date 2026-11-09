@@ -1,6 +1,20 @@
 # 验收记录
 
-日期：2026-10-18。交付版本：0.11.3。目标 Zotero：10.0.x。下方旧版本记录保留为历史验收证据。
+日期：2026-10-19。交付版本：0.12.0。目标 Zotero：10.0.x。下方旧版本记录保留为历史验收证据。
+
+## 0.12.0：压缩节流、对话附件与引用批注
+
+定位到旧 compactionTarget 在超过 12 条消息（约 6 轮）或 16000 字符时触发，短问答也会持续触发。改为尚未压缩内容量超过 30000 字符才触发；最近原文通常保留在约 14000 字符内，批次上限由 8 条/18000 字符调为 24 条/24000 字符，减少分散的小摘要请求。极大单条完整回答仍可压缩，未完成回答继续保护；完整历史与已压缩位置继续保存。新增短对话不按轮数压缩、压缩后多轮空间回归。
+
+输入框支持粘贴图片与 PDF、拖放及原生多文件选择。复制文件/截图的 Ctrl+V 支持注入的原生剪贴板读取路径，浏览器粘贴事件读取 FileList；只对提问框启用附件处理，预览编辑框保留原文字粘贴。附件魔数验证、单文件 6 MiB、生成文件名路径限制和每轮合计 8 个材料；完整请求继续受 12 MiB/60000 字符预检约束。副本位于当前 PDF 同目录 margin-comments-chat-files，历史与草稿只记录受校验的元数据，省去 JSON 内的大块 Base64。ChatGPT 使用 input_file/file_data 接收 PDF，图片使用 input_image；DeepSeek 图片兼容，PDF 在发送前明确提示改用 ChatGPT。不使用 Files API，不在粘贴时联网，明确发送才提交。原文件与移除待发送项后的副本均保留。
+
+对话选区右键新增“引用并批注提问”。先用既有公式复制逻辑把 MathML 选区恢复完整 LaTeX，再预览并填写注释，点击“加入问题”追加到原草稿；取消不发送，切换会话后拒绝把旧表单写入错误会话。保留既有 Enter、IME、复制/粘贴和流式 Markdown 行为。
+
+测试先复现缺少附件存储/请求字段/粘贴入口、短对话过度压缩及右键动作缺失，再逐项修复。Gecko 原生测试发现合成 ClipboardEvent 会清掉传入 FileList（源列表 2、事件列表 0），因此原生验收通过 Ctrl+V 处理器注入合成文件回调；浏览器测试另行验证 ClipboardEvent/FileList 分支。原生 File.arrayBuffer() 跨窗口 Promise 仍产生 constructor 权限错误，改为主窗口原生 FileReader 读取 Blob，保留非原生适配器的 unwrap 路径，并增加先失败后通过的回归。
+
+最终完整 135/135 项回归通过（66.4 秒），完整 checkJs 通过。最终包 SHA-256：`9088db5c80ea546eb33cd8fa4ae3d689093c3dc20f98db3db898514f5288582e`，1106439 字节。隔离 Zotero 10.0.6 首次启动与冷重启各 6/6 通过，见 evidence/zotero-0120-attachments-v7/report-1.json、report-2.json。新增原生步骤验证真实 FileReader、磁盘副本、待发送草稿、重启后附件随追问恢复、PDF/图片请求字段、公式 LaTeX 与注释进入问题；OAuth/推理响应及文件剪贴板来源采用合成数据，未改动系统剪贴板、正式配置或用户资料库。Windows 实际剪贴板格式与真实在线 PDF 模型推理仍由用户安装后验收，不将模拟响应等同于真实账号验收。
+
+接口依据：[文件输入](https://developers.openai.com/api/docs/guides/file-inputs)、[SIWC 预览限制](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)。
 
 ## 0.11.3：加速拒绝与标准模式恢复
 

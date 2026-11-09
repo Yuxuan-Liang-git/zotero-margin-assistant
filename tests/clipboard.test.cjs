@@ -47,3 +47,6 @@ test('native MathML renderer retains the exact original LaTeX delimiters and lin
     assert.equal(r.raw,r.source);assert.equal(r.copied,r.source);
   }finally{await browser.close();}
 });
+test('pasted files attach to the composer instead of inserting their text paths, and Ctrl V supports native file clipboard',async()=>{
+ const {browser,page}=await setup();try{const result=await page.evaluate(()=>{dispose();input.dataset.zma='question';globalThis.attached=[];ZMAClipboard.install(panel,{copy:()=>{},read:()=> 'file:///private.pdf',readFiles:()=>[{name:'native.pdf',bytes:new Uint8Array([1])}],onFiles:files=>attached.push(files.map(f=>f.name))});const data=new DataTransfer();data.items.add(new File(['%PDF-1.7'],'pasted.pdf',{type:'application/pdf'}));data.setData('text/plain','file:///pasted.pdf');const event=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data});input.dispatchEvent(event);input.dispatchEvent(new KeyboardEvent('keydown',{key:'v',ctrlKey:true,bubbles:true,cancelable:true}));return {attached,text:input.value,prevented:event.defaultPrevented};});assert.deepEqual(result.attached,[['pasted.pdf'],['native.pdf']]);assert.equal(result.text,'old text');assert.ok(result.prevented);}finally{await browser.close();}
+});
