@@ -57,3 +57,25 @@ test('composer allows sub-default heights and default restore follows font size 
     await handle.dblclick();assert.ok((await field.boundingBox()).height>=86);assert.equal(await page.evaluate(()=>panel.conversation().history.length),0);assert.match(await field.inputValue(),/原始草稿/);
   }finally{await browser.close();}
 });
+
+test('composer uses one native text editor while Zotero focus navigation still exempts it',async()=>{
+  const {browser,page}=await setup();try{
+    const field=page.locator('textarea[data-zma="question"]');
+    assert.equal(await field.evaluate(n=>n.isContentEditable),false,'textarea must not also become a contenteditable editing host');
+    assert.equal(await field.getAttribute('contenteditable'),'false','keep the presence marker needed by the installed Zotero focus manager');
+    await page.evaluate(()=>{window.addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)&&!event.target.closest('[contenteditable], input[type="text"], .preview-popup'))event.preventDefault();},true);});
+    await field.fill('abc中文123');await field.evaluate(n=>n.setSelectionRange(3,3));await field.press('ArrowRight');assert.equal(await field.evaluate(n=>n.selectionStart),4);await field.press('ArrowLeft');assert.equal(await field.evaluate(n=>n.selectionStart),3);
+    await field.press('Shift+ArrowLeft');assert.deepEqual(await field.evaluate(n=>[n.selectionStart,n.selectionEnd]),[2,3]);assert.equal(await field.inputValue(),'abc中文123');
+  }finally{await browser.close();}
+});
+
+test('caret stays within native multiline scrolling after shrinking and collapse restore',async()=>{
+  const {browser,page}=await setup();try{
+    const field=page.locator('textarea[data-zma="question"]'),handle=page.getByRole('separator',{name:'调整输入框高度'});
+    assert.equal(await field.evaluate(n=>n.isContentEditable),false);
+    const value=Array.from({length:24},(_,i)=>`第${i}行：abcdef 变量 \\(x_${i}\\)`).join('\n');await field.fill(value);await drag(page,35);await field.focus();await field.press('Control+End');
+    assert.equal(await field.evaluate(n=>n.selectionStart),value.length);assert.ok(await field.evaluate(n=>n.scrollTop)>0);await field.press('Control+Home');assert.equal(await field.evaluate(n=>n.selectionStart),0);assert.ok(await field.evaluate(n=>n.scrollTop<=parseFloat(getComputedStyle(n).lineHeight)),'Home must reveal the first line; native editors may scroll its padding');
+    await handle.focus();await handle.press('Home');await handle.dblclick();await field.press('Control+End');await field.press('ArrowLeft');assert.equal(await field.evaluate(n=>n.selectionStart),value.length-1);assert.ok(await field.evaluate(n=>n.scrollTop)>0);assert.equal(await field.inputValue(),value);
+    const style=await field.evaluate(n=>({caret:getComputedStyle(n).caretColor,color:getComputedStyle(n).color}));assert.equal(style.caret,style.color);assert.notEqual(style.caret,'rgba(0, 0, 0, 0)');
+  }finally{await browser.close();}
+});

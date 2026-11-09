@@ -2,10 +2,10 @@
   'use strict';
   const C=root.ZMACore,D=root.ZMADeepSeek;
   function el(doc,tag,text,className){const node=doc.createElementNS('http://www.w3.org/1999/xhtml',tag);if(text!==undefined)node.textContent=text;if(className)node.setAttribute('class',className);
-    // Zotero 10's window-capture focus/shortcut handlers omit textarea but
-    // recognize this marker. Keep native textarea editing, including Unicode,
-    // selection, word navigation and IME, instead of emulating caret movement.
-    if(tag==='textarea')node.setAttribute('contenteditable','true');return node;}
+    // Zotero 10's focus manager exempts [contenteditable] by attribute presence.
+    // Keep that marker false: the textarea owns editing and caret painting,
+    // without also creating an outer contenteditable editing host in Gecko.
+    if(tag==='textarea')node.setAttribute('contenteditable','false');return node;}
   function button(doc,label,action){const b=el(doc,'button',label);b.type='button';b.addEventListener('click',()=>Promise.resolve().then(action).catch(e=>doc.defaultView?.alert?.(e.message)));return b;}
   function iconButton(doc,label,kind,action){
     const b=button(doc,label,action),svg=doc.createElementNS('http://www.w3.org/2000/svg','svg'),path=doc.createElementNS('http://www.w3.org/2000/svg','path'),icons={new:'M8 3v10M3 8h10',history:'M2 7a6 6 0 1 1 1 4M2 3v4h4M8 4v4l3 2',reference:'M2 3h4a3 3 0 0 1 2 1 3 3 0 0 1 2-1h4v10h-4a3 3 0 0 0-2 1 3 3 0 0 0-2-1H2zM8 4v10',settings:'M6 2h4l.5 2 2 .5 1.5 3-1.5 1.5.5 2-3 2L8 12l-2 1-3-2 .5-2L2 7.5l1.5-3 2-.5zM10 7.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0',close:'M4 4l8 8M12 4l-8 8',attach:'M5 9l5-5a2 2 0 0 1 3 3l-6 6a3.5 3.5 0 0 1-5-5l6-6',page:'M4 2h5l3 3v9H4zM9 2v4h3M6 9h4M6 11h4',send:'M8 13V3M3.5 7.5L8 3l4.5 4.5',stop:'M4 4h8v8H4z',copy:'M6 2h7v9h-3M3 5h7v9H3z',note:'M3 2h10v9l-3 3H3zM10 14v-3h3M5 5h6M5 8h5',comment:'M2 2h12v9H7l-4 3v-3H2zM5 5h6M5 8h4'};
@@ -325,6 +325,12 @@
       }catch(e){
         if(answer){answer.content=e.partial??answer.content;answer.incomplete=true;}
         conversation.draft=this.question.value;C.touchConversation(conversation);this.error(e);
+        if(e.diagnosticText&&answerCard&&!this.destroyed){const details=e.diagnosticText;const copyButton=button(this.doc,'复制错误诊断',()=>{this.host.copy(details);this.status.textContent='错误诊断已复制（仅错误编号、字段和请求配置，不含正文、附件字节或登录凭据）。';});copyButton.className='zma-error-diagnostic';answerCard.append(copyButton);}
+        if(e.reasoningRejected&&answerCard&&!this.destroyed){const retryButton=button(this.doc,'使用默认思考强度重试',async()=>{
+          if(this.busy)return;await this.host.setChatGPTReasoning('default');this.refreshProvider();
+          if(this.conversation()!==conversation||this.quotes.question(this.question.value.trim())!==question){this.status.textContent='已切换为模型默认思考强度，请发送当前问题。';return;}
+          await this.send();
+        });retryButton.className='zma-retry-reasoning';answerCard.append(retryButton);}
         if(e.webRejected&&answerCard&&!this.destroyed){const retryButton=button(this.doc,'关闭联网搜索并重试',async()=>{if(this.busy)return;await this.host.setWebMode('off');if(this.conversation()!==conversation||this.quotes.question(this.question.value.trim())!==question){this.status.textContent='联网搜索已关闭，请发送当前问题。';return;}await this.send();});retryButton.className='zma-retry-web';answerCard.append(retryButton);}
         if(e.speedRejected&&answerCard&&!this.destroyed){const retryButton=button(this.doc,'以标准模式重试',async()=>{
           if(this.busy)return;await this.host.setChatGPTSpeed('default');this.refreshProvider();

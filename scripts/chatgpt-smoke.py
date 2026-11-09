@@ -25,7 +25,7 @@ insertion = r'''
       const crypto=win.crypto,encoder=new win.TextEncoder(),keys=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
       const jwk=await crypto.subtle.exportKey('jwk',keys.publicKey);jwk.kid='native-qa';await phase('keys-ready');
       const encode=value=>auth.base64(encoder.encode(JSON.stringify(value)));
-      let nonce='',tokenCalls=0,requestBody,loopback=false,liveMathBeforeCompletion=false,rejectFast=false,responseCalls=0;
+      let nonce='',tokenCalls=0,requestBody,loopback=false,liveMathBeforeCompletion=false,rejectFast=false,rejectReasoning=false,rejectInput=false,responseCalls=0;
       const fakeFetch=async(url,options={})=>{
         const json=value=>new win.Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
         if(url.endsWith('openid-configuration'))return json({issuer:'https://auth.openai.com',authorization_endpoint:'https://auth.openai.com/api/accounts/authorize',token_endpoint:'https://auth.openai.com/api/accounts/oauth/token',jwks_uri:'https://auth.openai.com/.well-known/jwks.json',revocation_endpoint:'https://auth.openai.com/oauth/revoke'});
@@ -40,6 +40,8 @@ insertion = r'''
           responseCalls++;
           requestBody=JSON.parse(options.body);if(requestBody.store!==false||requestBody.stream!==true||'max_output_tokens' in requestBody||!JSON.stringify(requestBody.input).includes('当前打开的 PDF'))throw new Error('Responses request lost automatic PDF context or SIWC constraints');
           if(rejectFast&&requestBody.service_tier==='priority')return new win.Response(JSON.stringify({error:{code:null,param:'service_tier',message:'service_tier is not allowed; never-leak'}}),{status:400,headers:{'Content-Type':'application/json'}});
+          if(rejectReasoning&&requestBody.reasoning)return new win.Response(JSON.stringify({detail:"Unsupported parameter: 'reasoning.effort'. never-leak"}),{status:400,headers:{'Content-Type':'application/json','x-request-id':'req_native_reasoning'}});
+          if(rejectInput)return new win.Response(JSON.stringify({detail:[{loc:['body','input',0,'content',1,'file_data'],msg:'never-leak',input:'never-leak'}]}),{status:400,headers:{'Content-Type':'application/json','x-request-id':'req_native_input'}});
           const text='## Native QA\n\n答案：\\(x=1\\)。';
           return new win.Response(new win.ReadableStream({start(controller){
             controller.enqueue(encoder.encode('data: '+JSON.stringify({type:'response.output_text.delta',delta:text})+'\n\n'));
@@ -70,9 +72,18 @@ insertion = r'''
         if(!retry||responseCalls!==beforeReject+1||!panel.status.textContent.includes('service_tier')||panel.status.textContent.includes('never-leak'))throw new Error('Speed rejection diagnostics or explicit retry missing');
         retry.click();for(let n=0;n<200;n++){await new Promise(r=>setTimeout(r,50));if(!panel.busy&&responseCalls===beforeReject+2)break;}
         if(panel.conversation().history.at(-1).incomplete||responseCalls!==beforeReject+2||requestBody.service_tier!=='default'||!panel.status.textContent.includes('本轮档位：标准'))throw new Error('Native Standard retry failed');
-        await host.setChatGPTSpeed('fast');
+        rejectReasoning=true;panel.question.value='Retry default effort (offline QA)';const beforeReasoning=responseCalls;await panel.send();
+        const reasoningRetry=panel.messages.lastElementChild.querySelector('.zma-retry-reasoning');if(!reasoningRetry||responseCalls!==beforeReasoning+1||!panel.status.textContent.includes('reasoning.effort'))throw new Error('Reasoning rejection or explicit retry missing');
+        reasoningRetry.click();for(let n=0;n<200;n++){await new Promise(r=>setTimeout(r,50));if(!panel.busy&&responseCalls===beforeReasoning+2)break;}
+        if(panel.conversation().history.at(-1).incomplete||requestBody.reasoning||auth.active().reasoningEffort!=='default')throw new Error('Native default reasoning retry failed');
+        rejectReasoning=false;rejectInput=true;panel.question.value='Keep this rejected document question (offline QA)';const beforeInput=responseCalls;await panel.send();
+        const diagnosticButton=panel.messages.lastElementChild.querySelector('.zma-error-diagnostic');if(!diagnosticButton||responseCalls!==beforeInput+1||!panel.question.value.includes('Keep this')||!panel.status.textContent.includes('file_data'))throw new Error('Native input rejection lost draft or diagnostics');
+        let copied='';const originalCopy=host.copy;try{host.copy=value=>{copied=value;};diagnosticButton.click();for(let n=0;n<20&&!copied;n++)await new Promise(r=>setTimeout(r,25));}finally{host.copy=originalCopy;}
+        const diagnostic=JSON.parse(copied);if(diagnostic.requestID!=='req_native_input'||diagnostic.responseShape!=='validation-list'||diagnostic.param!=='input[0].content[1].file_data'||diagnostic.request.model!=='native-qa-model'||copied.includes('never-leak')||copied.includes('Keep this'))throw new Error('Native safe diagnostic copy failed');
+        rejectInput=false;rejectFast=false;panel.question.value='Recover the QA answer fixture';await panel.send();if(panel.conversation().history.at(-1).incomplete||!panel.messages.lastElementChild.querySelector('math'))throw new Error('Post-rejection fixture recovery failed');
+        await host.setChatGPTReasoning('xhigh');await host.setChatGPTSpeed('fast');
         if(!loopback)throw new Error('Actual native callback not used');
-        return {liveMathBeforeCompletion,selectedReasoningEffort:true,selectedFastTier:true,confirmedFastTier:true,speedRejectedRetry:true,reasoningRestored:seed.launch>1,speedRestored:seed.launch>1,officialFlowMocked:true,realLoopbackHttpServer:true,stateRejected:true,webcryptoSignatureValidated:true,encryptedOSKeyStore:true,serializedRefresh:true,accountModelPicker:true,automaticPdfContext:true,markdownAndMath:true,restoredAfterRestart:restored,coldRestart:seed.launch>1,noExternalApiCalls:true};
+        return {http400Diagnostics:true,reasoningRejectedRetry:true,validationInputRejection:true,draftPreservedOnRejection:true,safeDiagnosticCopy:true,liveMathBeforeCompletion,selectedReasoningEffort:true,selectedFastTier:true,confirmedFastTier:true,speedRejectedRetry:true,reasoningRestored:seed.launch>1,speedRestored:seed.launch>1,officialFlowMocked:true,realLoopbackHttpServer:true,stateRejected:true,webcryptoSignatureValidated:true,encryptedOSKeyStore:true,serializedRefresh:true,accountModelPicker:true,automaticPdfContext:true,markdownAndMath:true,restoredAfterRestart:restored,coldRestart:seed.launch>1,noExternalApiCalls:true};
       }finally{auth.fetch=originalFetch;client.fetch=originalClientFetch;auth.openBrowser=originalOpen;if(panelForQA){panelForQA.conversation().draft=originalDraft;panelForQA.question.value=originalDraft;await panelForQA.persist();}}
     });
 '''

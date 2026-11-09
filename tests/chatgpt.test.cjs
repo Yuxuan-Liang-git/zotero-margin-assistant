@@ -80,3 +80,23 @@ test('PDF attachment content maps to Responses input_file and DeepSeek rejects P
  const messages=D.buildMessages([],'解释附件',[],undefined,'',[record]);const body=api().requestBody(messages,'gpt-6.1-sol');assert.equal(body.input[0].content.find(p=>p.type==='input_file').filename,'notes.pdf');assert.equal(body.input[0].content.find(p=>p.type==='input_file').file_data,record.dataURL);
  let calls=0;const client=new D.DeepSeekClient({getKey:()=> 'key',fetch:async()=>{calls++;throw Error();}});await assert.rejects(client.generate(messages),/PDF.*ChatGPT/);assert.equal(calls,0);
 });
+
+test('subscription capability errors retain indexed input diagnostics without exposing payloads',async()=>{
+ const f=fixture([]);f.client.fetch=async()=>Response.json({error:{code:'subscription_sharing_unsupported_capability',param:'input[0].content[1].file_data',message:'PRIVATE PDF bytes subscription-secret'}},{status:400,headers:{'x-request-id':'req_qa400'}});
+ await assert.rejects(f.client.generate([{role:'user',content:'PRIVATE question'}]),e=>{assert.match(e.message,/PDF|文件/);assert.equal(e.param,'input[0].content[1].file_data');assert.equal(e.code,'subscription_sharing_unsupported_capability');const diagnostic=JSON.parse(e.diagnosticText);assert.equal(diagnostic.status,400);assert.equal(diagnostic.requestID,'req_qa400');assert.equal(diagnostic.responseShape,'error-object');assert.equal(diagnostic.request.model,'available-model');assert.doesNotMatch(e.diagnosticText,/PRIVATE|subscription-secret|Bearer/);return true;});
+});
+test('admission detail and string errors classify rejected reasoning and image inputs',()=>{
+ const A=api(),reasoning=A.failure(400,{detail:"Unsupported parameter: 'reasoning.effort'. PRIVATE"});assert.equal(reasoning.reasoningRejected,true);assert.equal(reasoning.param,'reasoning.effort');assert.match(reasoning.message,/默认/);
+ const image=A.failure(400,{error:"Invalid value for 'input[2].content[1].image_url': PRIVATE"});assert.equal(image.param,'input[2].content[1].image_url');assert.match(image.message,/图片/);assert.doesNotMatch(image.diagnosticText,/PRIVATE/);
+});
+test('validation locations classify fields without echoing validation values or arbitrary locations',()=>{
+ const A=api(),e=A.failure(400,{detail:[{loc:['body','input',0,'content',2,'file_data'],msg:'PRIVATE',input:'secret'},{loc:['body','PRIVATE'],msg:'secret'}]});assert.equal(e.param,'input[0].content[2].file_data');assert.equal(JSON.parse(e.diagnosticText).responseShape,'validation-list');assert.doesNotMatch(e.diagnosticText,/PRIVATE|secret/);
+ const unknown=A.failure(400,{detail:'PRIVATE unrecognized reason',param:'secret/path'});assert.equal(unknown.param,'');assert.equal(unknown.reasoningRejected,false);assert.equal(unknown.speedRejected,false);assert.equal(unknown.webRejected,false);assert.match(unknown.message,/诊断/);assert.doesNotMatch(unknown.diagnosticText,/PRIVATE|secret/);
+});
+test('diagnostics describe request features as counts only and never repeat an invalid request',async()=>{
+ const f=fixture([]);f.client.getWebOptions=()=>({mode:'auto',images:true});let calls=0;f.client.fetch=async()=>{calls++;return new Response('PRIVATE not JSON',{status:400,headers:{'x-request-id':'PRIVATE unsafe request id'}});};
+ await assert.rejects(f.client.generate([{role:'user',content:[{type:'text',text:'PRIVATE QUESTION'},{type:'image_url',image_url:{url:'data:image/png;base64,U0VDUkVU'}},{type:'file',file:{filename:'PRIVATE.pdf',file_data:'data:application/pdf;base64,U0VDUkVU'}}]}]),e=>{const d=JSON.parse(e.diagnosticText);assert.equal(d.responseShape,'non-json');assert.equal(d.requestID,'');assert.equal(d.request.images,1);assert.equal(d.request.files,1);assert.equal(d.request.webSearch,true);assert.doesNotMatch(e.diagnosticText,/PRIVATE|U0VDUkVU|base64|file_data/);return true;});assert.equal(calls,1);
+});
+test('SSE capability failures keep partial text and structured diagnostics',async()=>{
+ const f=fixture([event({type:'response.output_text.delta',delta:'部分回答'}),event({type:'response.failed',response:{error:{code:'subscription_sharing_unsupported_capability',param:'reasoning.effort',message:'PRIVATE'}}})]);await assert.rejects(f.client.generate([{role:'user',content:'q'}]),e=>{assert.equal(e.reasoningRejected,true);assert.equal(e.partial,'部分回答');assert.equal(JSON.parse(e.diagnosticText).request.model,'available-model');return true;});
+});
