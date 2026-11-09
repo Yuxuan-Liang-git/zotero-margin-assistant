@@ -34,6 +34,7 @@ def build():
     script = out / 'content/scripts/margincomments.js'
     text = script.read_text(encoding='utf-8')
     text = replace_once(text, 'const markup = katex.renderToString(expression, {', 'const markup = katex.renderToString(_globalThis.ZMAMath?.normalizeDisplay(expression, delimiter.display) ?? expression, {')
+    text = replace_once(text, '              fragment.append(doc.createTextNode(text2.slice(start, cursor)), template.content);', '              const renderedMath = template.content.querySelector("math");\n              if (renderedMath) renderedMath.setAttribute("data-zma-latex", text2.slice(cursor, next));\n              fragment.append(doc.createTextNode(text2.slice(start, cursor)), template.content);')
     text = replace_once(text, 'const allowed = [...SUPPORTED_FORMATS, "br", "div"];', 'const allowed = [...SUPPORTED_FORMATS, "br", "div"];\n        if (_globalThis.ZMAReferences.isAllowedAnchor(element)) allowed.push("a");')
     text = replace_once(text, '''        while (element.attributes.length) {
           element.removeAttribute(element.attributes[0].name);
@@ -73,7 +74,7 @@ def build():
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
   Services.scriptloader.loadSubScript(rootURI + "content/vendor/marked/marked.umd.js", context);
-  for (const name of ["core", "capture", "document", "references", "deepseek", "credentials", "settings", "math", "markdown", "panel", "margin-references", "images", "host"]) {
+  for (const name of ["core", "capture", "document", "references", "deepseek", "credentials", "settings", "math", "markdown", "clipboard", "panel", "margin-references", "images", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();

@@ -1,5 +1,6 @@
 .zma-panel{position:fixed;right:10px;top:52px;bottom:12px;width:min(440px,calc(100vw - 24px));z-index:10000;background:Canvas;color:CanvasText;border:1px solid #999;border-radius:10px;box-shadow:0 4px 24px #0003;padding:12px;overflow:auto;font:14px/1.55 system-ui,sans-serif;box-sizing:border-box;text-align:left}
 .zma-panel[hidden],.zma-panel [hidden]{display:none!important}
+.zma-panel,.zma-panel .zma-answer,.zma-panel textarea,.zma-panel input{-moz-user-select:text!important;user-select:text!important}.zma-panel button{-moz-user-select:none!important;user-select:none!important}
 .zma-panel header,.zma-panel nav,.zma-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
 .zma-panel header strong{flex:1}.zma-panel button,.zma-insert-reference,.zma-toolbar{font:inherit;cursor:pointer;padding:5px 9px;border:1px solid #aaa;border-radius:5px;background:ButtonFace;color:ButtonText}
 .zma-panel button:disabled{opacity:.5;cursor:default}.zma-panel textarea,.zma-panel input,.zma-panel select{box-sizing:border-box;font:inherit;background:Field;color:FieldText;border:1px solid #999;border-radius:5px;padding:7px;max-width:100%}

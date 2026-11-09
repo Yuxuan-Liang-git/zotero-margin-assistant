@@ -6,6 +6,8 @@
   class Panel{
     /** @type {(()=>void)|undefined} */
     disposeMath;
+    /** @type {(()=>void)|undefined} */
+    disposeClipboard;
     constructor(host,reader,doc){this.host=host;this.reader=reader;this.doc=doc;this.materials=[];this.pendingMaterials=new Set();this.destroyed=false;this.busy=false;this.relinkID=null;}
     async init(){
       this.state=await this.host.load(this.reader);this.conversationId=this.state.activeConversationId;const d=this.doc;
@@ -29,6 +31,7 @@
       this.previewArea=el(d,'section',undefined,'zma-previews');
       this.node.append(header,this.tabs,this.previewArea,this.chat,this.conversationList,this.directory,this.status);d.body.append(this.node);
       this.directory.className='zma-directory';this.installResizeHandle();
+      this.disposeClipboard=root.ZMAClipboard?.install(this.node,{copy:text=>this.host.copy(text),read:()=>this.host.readClipboard?.(),onError:error=>this.error(error)});
       this.renderMaterials();this.renderMessages();this.renderConversationList();return this;
     }
     installResizeHandle(){
@@ -97,7 +100,7 @@
     }
     messageCard(m,i){
       const card=el(this.doc,'article',undefined,`zma-message zma-${m.role}`);card.append(el(this.doc,'strong',m.role==='user'?'问题':m.incomplete?'回答（未完成）':'回答'));
-      const text=el(this.doc,'div',undefined,'zma-answer');if(m.role==='assistant'){if(m.content)this.renderAnswer(text,m.content);}else text.textContent=m.content;
+      const text=el(this.doc,'div',undefined,'zma-answer');text.tabIndex=0;if(m.role==='assistant'){if(m.content)this.renderAnswer(text,m.content);}else text.textContent=m.content;
       card.append(text);if(m.role==='assistant'&&m.content)this.addAnswerActions(card,m,i);return card;
     }
     addAnswerActions(card,m,i){
@@ -227,7 +230,7 @@
       query.addEventListener('input',refresh);type.addEventListener('change',refresh);this.directory.append(query,type,list);refresh();query.focus();
     }
     async preview(source){await this.host.previewReference(this.reader,source,this.insertTarget);}
-    async destroy(){this.destroyed=true;this.close();clearTimeout(this.draftTimer);this.controller?.abort();this.disposeMath?.();await this.host.save(this.reader,this.state).catch(()=>{});this.node.remove();}
+    async destroy(){this.destroyed=true;this.close();clearTimeout(this.draftTimer);this.controller?.abort();this.disposeMath?.();this.disposeClipboard?.();await this.host.save(this.reader,this.state).catch(()=>{});this.node.remove();}
   }
   root.ZMAPanel={Panel,el,button};if(typeof module!=='undefined')module.exports=root.ZMAPanel;
 })(typeof _globalThis!=='undefined'?_globalThis:globalThis);

@@ -207,6 +207,7 @@
     }
     jump(reader,source){const location={pageIndex:source.pageIndex,annotationID:source.fullPage?undefined:source.annotationKey};reader._internalReader?.navigate?.(location);}
     copy(text){this.Z.Utilities.Internal.copyTextToClipboard(text);}
+    readClipboard(){return this.Z.Utilities.Internal.getClipboard('text/plain');}
     notify(message){const win=this.Z.getMainWindow?.()||this.win;if(win&&!win.closed)win.alert?.(message);else this.Z.logError?.(new Error(message));}
     guard(action){Promise.resolve().then(action).catch(e=>this.notify(e.message));}
     settingsAPI(){return {model:this.model,hasKey:!!this.key,error:this.credentialError,apply:async(key,model)=>{
