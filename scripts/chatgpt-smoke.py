@@ -20,7 +20,7 @@ insertion = r'''
       const auth=host.auth,client=host.chatgpt,win=Zotero.getMainWindow();
       if(!auth||!client)throw new Error('ChatGPT provider not installed');
       const restored=!!auth.active()?.accessToken;
-      if(seed.launch>1&&auth.active()?.reasoningEffort!=='high')throw new Error('Reasoning effort not restored');
+      if(seed.launch>1&&(auth.active()?.reasoningEffort!=='xhigh'||auth.active()?.speed!=='fast'))throw new Error('Reasoning effort/speed not restored');
       if(seed.launch>1&&(!restored||host.provider!=='chatgpt'))throw new Error('ChatGPT account/provider not restored after cold restart');
       const crypto=win.crypto,encoder=new win.TextEncoder(),keys=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
       const jwk=await crypto.subtle.exportKey('jwk',keys.publicKey);jwk.kid='native-qa';await phase('keys-ready');
@@ -35,13 +35,13 @@ insertion = r'''
           const signature=await crypto.subtle.sign('RSASSA-PKCS1-v1_5',keys.privateKey,encoder.encode(unsigned));
           return json({access_token:'synthetic-access-'+tokenCalls,refresh_token:'synthetic-refresh-'+tokenCalls,id_token:unsigned+'.'+auth.base64(signature),token_type:'Bearer',expires_in:3600,scope:'openid profile email offline_access resource.invoke chatgpt.tokens.use.direct'});
         }
-        if(url.endsWith('/models'))return json({models:[{slug:'native-qa-model',display_name:'Native QA Model',visibility:'list',supported_reasoning_levels:[{effort:'low'},{effort:'medium'},{effort:'high'}]}]});
+        if(url.endsWith('/models'))return json({models:[{slug:'native-qa-model',display_name:'Native QA Model',visibility:'list',supported_reasoning_levels:[{effort:'low'},{effort:'medium'},{effort:'high'},{effort:'xhigh'},{effort:'max'},{effort:'ultra'}],service_tiers:[{id:'priority'},{id:'ultrafast'}]}]});
         if(url.endsWith('/responses')){
           requestBody=JSON.parse(options.body);if(requestBody.store!==false||requestBody.stream!==true||'max_output_tokens' in requestBody||!JSON.stringify(requestBody.input).includes('当前打开的 PDF'))throw new Error('Responses request lost automatic PDF context or SIWC constraints');
           const text='## Native QA\n\n答案：\\(x=1\\)。';
           return new win.Response(new win.ReadableStream({start(controller){
             controller.enqueue(encoder.encode('data: '+JSON.stringify({type:'response.output_text.delta',delta:text})+'\n\n'));
-            setTimeout(()=>{liveMathBeforeCompletion=!!panelForQA?.busy&&!!panelForQA.messages.lastElementChild?.querySelector('math');controller.enqueue(encoder.encode('data: '+JSON.stringify({type:'response.completed'})+'\n\n'));controller.close();},700);
+            setTimeout(()=>{liveMathBeforeCompletion=!!panelForQA?.busy&&!!panelForQA.messages.lastElementChild?.querySelector('math');controller.enqueue(encoder.encode('data: '+JSON.stringify({type:'response.completed',response:{service_tier:'fast'}})+'\n\n'));controller.close();},700);
           }}));
         }
         throw new Error('Unexpected synthetic endpoint');
@@ -56,15 +56,15 @@ insertion = r'''
           const bad=await win.fetch(redirect+'?state=invalid&code=ignored');if(bad.status!==400)throw new Error('Invalid state accepted');await bad.text();await phase('bad-state-rejected');
           const result=await win.fetch(redirect+'?'+new win.URLSearchParams({state:url.searchParams.get('state'),code:'synthetic-code',client_id:'oaiapp_nativeqa'}));loopback=result.status===200;await result.text();
         };
-        await phase('sign-in');const timeout=setTimeout(()=>auth.cancelSignIn(),45000);try{await auth.signIn();}finally{clearTimeout(timeout);}await phase('signed-in');await host.setProvider('chatgpt');await client.models();await host.setChatGPTReasoning('high');
+        await phase('sign-in');const timeout=setTimeout(()=>auth.cancelSignIn(),45000);try{await auth.signIn();}finally{clearTimeout(timeout);}await phase('signed-in');await host.setProvider('chatgpt');await client.models();await host.setChatGPTReasoning('xhigh');await host.setChatGPTSpeed('fast');
         const cipher=Zotero.Prefs.get('margincomments.chatgptCredentials');if(!cipher?.startsWith('oskv1:')||cipher.includes('synthetic-access'))throw new Error('Credentials not encrypted');
         auth.active().expiresAt=0;const before=tokenCalls;await Promise.all([auth.accessToken(),auth.accessToken()]);if(tokenCalls!==before+1)throw new Error('Refresh not serialized');
-        const panel=await host.panel(reader);panelForQA=panel;originalDraft=panel.conversation().draft;panel.showChat();if(panel.providerSelect.value!=='chatgpt'||panel.modelSelect.value!=='native-qa-model')throw new Error('Native provider/model picker not refreshed');
+        const panel=await host.panel(reader);panelForQA=panel;originalDraft=panel.conversation().draft;panel.showChat();if(panel.providerSelect.value!=='chatgpt'||panel.modelSelect.value!=='native-qa-model'||panel.reasoningSelect.value!=='xhigh'||panel.speedSelect.value!=='fast'||!Array.from(panel.reasoningSelect.options).some(o=>o.value==='max')||Array.from(panel.reasoningSelect.options).some(o=>o.value==='ultra'))throw new Error('Native provider/model picker not refreshed');
         panel.question.value='Summarize the current PDF (offline QA)';await phase('pdf-turn');await panel.send();await phase('pdf-turn-finished');
         const answer=panel.conversation().history.at(-1);if(answer.incomplete||answer.provider!=='chatgpt'||!requestBody||!panel.messages.lastElementChild.querySelector('math'))throw new Error('Native ChatGPT PDF turn or math rendering failed: '+panel.status.textContent);
-        if(!liveMathBeforeCompletion||requestBody.reasoning?.effort!=='high')throw new Error('Live math or selected effort not applied');
+        if(!liveMathBeforeCompletion||requestBody.reasoning?.effort!=='xhigh'||requestBody.service_tier!=='fast'||!panel.status.textContent.includes('本轮档位：快速 Fast'))throw new Error('Live math or selected effort not applied');
         if(!loopback)throw new Error('Actual native callback not used');
-        return {liveMathBeforeCompletion,selectedReasoningEffort:true,reasoningRestored:seed.launch>1,officialFlowMocked:true,realLoopbackHttpServer:true,stateRejected:true,webcryptoSignatureValidated:true,encryptedOSKeyStore:true,serializedRefresh:true,accountModelPicker:true,automaticPdfContext:true,markdownAndMath:true,restoredAfterRestart:restored,coldRestart:seed.launch>1,noExternalApiCalls:true};
+        return {liveMathBeforeCompletion,selectedReasoningEffort:true,selectedFastTier:true,confirmedFastTier:true,reasoningRestored:seed.launch>1,speedRestored:seed.launch>1,officialFlowMocked:true,realLoopbackHttpServer:true,stateRejected:true,webcryptoSignatureValidated:true,encryptedOSKeyStore:true,serializedRefresh:true,accountModelPicker:true,automaticPdfContext:true,markdownAndMath:true,restoredAfterRestart:restored,coldRestart:seed.launch>1,noExternalApiCalls:true};
       }finally{auth.fetch=originalFetch;client.fetch=originalClientFetch;auth.openBrowser=originalOpen;if(panelForQA){panelForQA.conversation().draft=originalDraft;panelForQA.question.value=originalDraft;await panelForQA.persist();}}
     });
 '''

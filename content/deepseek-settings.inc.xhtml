@@ -11,6 +11,10 @@
       <html:select id="zma-chatgpt-model"></html:select>
       <html:label for="zma-chatgpt-reasoning">思考强度（越高通常越慢、用量越多）</html:label>
       <html:select id="zma-chatgpt-reasoning"></html:select>
+      <html:p>Light 对应 low；Extra High、Max 按模型支持显示。Codex 的 Ultra 包含多智能体调度，本助手暂不提供。</html:p>
+      <html:label for="zma-chatgpt-speed">生成速度（与思考强度分别设置）</html:label>
+      <html:select id="zma-chatgpt-speed"></html:select>
+      <html:p>快速、极速会加快额度消耗；极速需符合订阅与工作区资格。目录未提供速度信息时，按官方支持的模型提供尝试选项，实际权限由服务端判定。回答完成后显示确认的档位；不支持时请切回标准。</html:p>
       <html:div style="display:flex;gap:6px;flex-wrap:wrap">
         <html:button id="zma-chatgpt-login" type="button">Continue with ChatGPT</html:button>
         <html:button id="zma-chatgpt-add" type="button">添加其他账户</html:button>

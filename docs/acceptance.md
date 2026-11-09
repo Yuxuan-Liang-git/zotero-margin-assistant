@@ -1,6 +1,16 @@
 # 验收记录
 
-日期：2026-10-18。交付版本：0.11.1。目标 Zotero：10.0.x。下方旧版本记录保留为历史验收证据。
+日期：2026-10-18。交付版本：0.11.2。目标 Zotero：10.0.x。下方旧版本记录保留为历史验收证据。
+
+## 0.11.2：对齐思考档位、快速与极速
+
+官方模型文档确认 Light 对应 low、Extra High 对应 xhigh，Max 为单任务更深推理，Ultra 包含多智能体调度；后者不作为普通 reasoning 参数提供。0.11.1 的缺省三档缓存会对当前 GPT-6/GPT-5.6 家族补齐至 Max；新的目录元数据有优先权并带版本标记，避免以后把服务端明确限制误认为旧缓存。
+
+ChatGPT 增加独立速度选择：标准 default、快速 fast、极速 ultrafast；保持所选思考强度。账户目录明确列出的速度优先，缺省时按官方模型支持提供尝试选项，Ultrafast 仅限 GPT-6 Astra/GPT-6.1 Sol 且仍需账户及工作区资格。默认明确请求标准，摘要使用标准及低强度；模型切换/目录刷新清理不支持的已选控制项。参数与凭据共同加密保存，退出保留控制项；请求不自动重发以规避速度拒绝。response.completed 回传的实际 service_tier 用于显示确认结果，priority 正规化为 Fast，降档与未确认均明确提示。
+
+新增回归先复现三档缺失、速度未传递/未持久化、设置页无速度选择和模型切换残留控制项，再修复。完整回归 121/121 通过（70.9 秒），完整 checkJs 通过。最终 XPI SHA-256：`bd55f3bdbde03dc658f73238f2092bf9e1179b1e35663a9624551544e56a88e3`，1101496 字节。Zotero 10.0.6 隔离配置首次启动和冷重启各 5/5 通过，见 `evidence/zotero-0112-speed-v2/report-1.json` 与 `report-2.json`：xhigh/Fast 请求独立生效、Max 选项存在、Ultra 参数排除、确认档位显示、冷启动保存设置，流式数学与复制/编辑继续通过。在线 OAuth/模型/推理均使用合成响应，本次不消耗真实额度；不据此声称当前账户具备 Ultrafast 权限或已经测得在线加速。正式 Zotero 配置和资料库未改动。
+
+依据：[官方模型控制](https://learn.chatgpt.com/docs/models)、[Codex/Work 速度](https://learn.chatgpt.com/docs/agent-configuration/speed)、[SIWC 模型与推理](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)、[订阅接入限制](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)、[Ultrafast API](https://developers.openai.com/api/docs/guides/ultrafast-mode)。额外只读核对了本机当日 Codex 模型缓存的档位结构；插件没有导入该缓存或凭据，也不依赖 Codex 安装。
 
 ## 0.11.1：思考强度与流式公式
 

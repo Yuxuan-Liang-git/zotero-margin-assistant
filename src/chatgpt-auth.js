@@ -26,7 +26,7 @@
       });this.writeQueue=operation.catch(()=>{});return operation;
     }
     active(){return this.state.accounts.find(a=>a.id===this.state.activeID);}
-    accounts(){return this.state.accounts.map((a,i)=>({id:a.id,subject:a.subject,label:`${a.email||a.name||'ChatGPT 账户'} · ${i+1}`,signedIn:!!a.accessToken,model:a.model||'',models:a.models||[],reasoningEffort:a.reasoningEffort||'default'}));}
+    accounts(){return this.state.accounts.map((a,i)=>({id:a.id,subject:a.subject,label:`${a.email||a.name||'ChatGPT 账户'} · ${i+1}`,signedIn:!!a.accessToken,model:a.model||'',models:a.models||[],reasoningEffort:a.reasoningEffort||'default',speed:a.speed||'default'}));}
     async select(id){if(this.signingOut||this.stopping)throw safe('ChatGPT 正在退出或关闭，请稍后重试。');if(!this.state.accounts.some(a=>a.id===id))throw safe('ChatGPT 账户不存在');this.cancelSignIn();await this.update(s=>({...s,activeID:id}));}
     async json(url,options={}){
       const Abort=this.platform.AbortController||globalThis.AbortController,controller=new Abort(),parent=options.signal,abort=()=>controller.abort();parent?.addEventListener('abort',abort,{once:true});if(parent?.aborted)controller.abort();
@@ -109,9 +109,11 @@
         await this.update(s=>({...s,accounts:s.accounts.map(a=>a.id===id?{...a,...fields}:a)}),valid);return fields.accessToken;
       })();this.refreshes.set(id,task);try{return await task;}finally{if(this.refreshes.get(id)===task)this.refreshes.delete(id);}
     }
-    async setModels(id,models){await this.update(s=>({...s,accounts:s.accounts.map(a=>a.id===id?{...a,models,model:models.some(m=>m.slug===a.model)?a.model:models[0]?.slug||''}:a)}));}
-    async setModel(model){const account=this.active();if(!account?.models?.some(m=>m.slug===model))throw safe('此模型不在当前 ChatGPT 账户列表中，请刷新列表。');await this.update(s=>({...s,accounts:s.accounts.map(a=>a.id===account.id?{...a,model}:a)}));}
+    modelControls(account,model){return {reasoningEffort:!model?.reasoningEfforts||model.reasoningEfforts.includes(account.reasoningEffort)?account.reasoningEffort||'default':'default',speed:!model?.speedTiers||model.speedTiers.includes(account.speed)?account.speed||'default':'default'};}
+    async setModels(id,models){await this.update(s=>({...s,accounts:s.accounts.map(a=>{if(a.id!==id)return a;const model=models.find(m=>m.slug===a.model)||models[0];return {...a,models,model:model?.slug||'',...this.modelControls(a,model)};})}));}
+    async setModel(slug){const account=this.active(),model=account?.models?.find(m=>m.slug===slug);if(!model)throw safe('此模型不在当前 ChatGPT 账户列表中，请刷新列表。');await this.update(s=>({...s,accounts:s.accounts.map(a=>a.id===account.id?{...a,model:slug,...this.modelControls(a,model)}:a)}));}
     async setReasoning(value){const account=this.active(),model=account?.models?.find(m=>m.slug===account.model);if(!account||value!=='default'&&!model?.reasoningEfforts?.includes(value))throw safe('当前模型不支持此思考强度，请刷新模型列表。');await this.update(s=>({...s,accounts:s.accounts.map(a=>a.id===account.id?{...a,reasoningEffort:value}:a)}));}
+    async setSpeed(value){const account=this.active(),model=account?.models?.find(m=>m.slug===account.model);if(!account||!['default',...(model?.speedTiers||[])].includes(value))throw safe('当前模型不支持此速度档位，请刷新模型列表。');await this.update(s=>({...s,accounts:s.accounts.map(a=>a.id===account.id?{...a,speed:value}:a)}));}
     async signOut(){
       this.cancelSignIn();if(this.signingOut)throw safe('ChatGPT 正在退出。');this.signingOut=true;
       try{const id=this.state.activeID,refresh=this.refreshes.get(id);if(refresh)await refresh.catch(()=>{});const account=this.state.accounts.find(a=>a.id===id);if(!account)return '';
@@ -121,7 +123,7 @@
             try{const config=await this.discovery();if(!config.revocation_endpoint)throw Error();const response=await this.fetch(config.revocation_endpoint,{method:'POST',redirect:'error',signal:controller.signal,headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new this.platform.URLSearchParams({token:account.refreshToken,token_type_hint:'refresh_token',client_id:account.clientID}).toString()});revoked=response.ok;await response.body?.cancel();}catch{}finally{clearTimeout(timer);}if(!revoked&&attempt===0)await new Promise(resolve=>setTimeout(resolve,500));
           }if(!revoked)warning='已在本机退出；未能确认远程撤销，可到 ChatGPT 设置断开此应用。';
         }
-        await this.update(s=>({...s,accounts:s.accounts.map(a=>a.id===account.id?{id:a.id,clientID:a.clientID,subject:a.subject,email:a.email,name:a.name,model:a.model,models:a.models}:a)}));return warning;
+        await this.update(s=>({...s,accounts:s.accounts.map(a=>a.id===account.id?{id:a.id,clientID:a.clientID,subject:a.subject,email:a.email,name:a.name,model:a.model,models:a.models,reasoningEffort:a.reasoningEffort,speed:a.speed}:a)}));return warning;
       }finally{this.signingOut=false;}
     }
     async stop(){this.stopping=true;this.cancelSignIn();await Promise.allSettled(this.refreshes.values());await this.writeQueue;this.revision++;}

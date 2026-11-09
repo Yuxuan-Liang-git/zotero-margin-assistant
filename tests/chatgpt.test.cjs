@@ -17,7 +17,7 @@ test('DONE alone and interrupted/incomplete SSE never masquerade as completed an
   }
 });
 test('model choices preserve server order and display labels and exclude non-list entries',async()=>{
-  const f=fixture([]);f.client.fetch=async()=>Response.json({models:[{slug:'a',display_name:'Model A',visibility:'list'},{slug:'hidden',visibility:'hide'},{slug:'b',display_name:'Model B',visibility:'list'}]});assert.deepEqual(await f.client.models(),[{slug:'a',displayName:'Model A'},{slug:'b',displayName:'Model B'}]);
+  const f=fixture([]);f.client.fetch=async()=>Response.json({models:[{slug:'a',display_name:'Model A',visibility:'list'},{slug:'hidden',visibility:'hide'},{slug:'b',display_name:'Model B',visibility:'list'}]});assert.deepEqual(await f.client.models(),[{slug:'a',displayName:'Model A',speedTiers:['default'],capabilitiesVersion:2},{slug:'b',displayName:'Model B',speedTiers:['default'],capabilitiesVersion:2}]);
 });
 test('401 retries only once after refreshing this registration, never after partial output',async()=>{
   const f=fixture([]),tokens=[];let count=0;f.auth.accessToken=async(id,force)=>{tokens.push({id,force});return 'secret';};f.client.fetch=async()=>++count===1?new Response('{}',{status:401}):new Response(event({type:'response.completed'}));await f.client.generate([{role:'user',content:'q'}]);assert.equal(count,2);assert.deepEqual(tokens.map(t=>!!t.force),[false,true]);assert.ok(tokens.every(t=>t.id==='account'));
@@ -32,4 +32,25 @@ test('refusal streams display their text once instead of returning an empty succ
 test('selected reasoning effort reaches Responses and account model capabilities filter unsupported levels',async()=>{
   const f=fixture([event({type:'response.completed'})]);f.auth.active=()=>({id:'account',model:'gpt-6.1-sol',reasoningEffort:'high',models:[{slug:'gpt-6.1-sol',reasoningEfforts:['low','medium','high']}]});await f.client.generate([{role:'user',content:'derive'}]);assert.deepEqual(JSON.parse(f.calls[0].options.body).reasoning,{effort:'high'});
   f.client.fetch=async()=>Response.json({models:[{slug:'gpt-6.1-sol',display_name:'Sol',visibility:'list',supported_reasoning_levels:[{effort:'low'},{effort:'high'},{effort:'unknown'}]}]});assert.deepEqual((await f.client.models())[0].reasoningEfforts,['low','high']);
+});
+const common=['low','medium','high','xhigh','max'];
+test('current Sol capabilities include Extra High and Max while Ultra orchestration is not sent as reasoning',()=>{
+ const A=api();assert.deepEqual(A.reasoningEfforts({slug:'gpt-6.1-sol'}),common);
+ assert.deepEqual(A.reasoningEfforts({slug:'gpt-6.1-sol',reasoningEfforts:['low','medium','high']}),common);
+ assert.deepEqual(A.reasoningEfforts({slug:'gpt-6.1-sol',supported_reasoning_levels:[{effort:'high'},{effort:'max'},{effort:'ultra'}]}),['high','max']);
+ assert.deepEqual(A.reasoningEfforts({slug:'gpt-6.1-sol',capabilitiesVersion:2,reasoningEfforts:['low','high']}),['low','high']);
+});
+test('speed requests are independent of reasoning and report the confirmed tier including downgrade',async()=>{
+ for(const speed of ['default','fast','ultrafast']){
+  const f=fixture([event({type:'response.completed',response:{service_tier:'default'}})]),confirmed=[];
+  f.auth.active=()=>({id:'account',model:'gpt-6.1-sol',reasoningEffort:'max',speed,models:[{slug:'gpt-6.1-sol'}]});
+  await f.client.generate([{role:'user',content:'q'}],{onServiceTier:info=>confirmed.push(info)});
+  const body=JSON.parse(f.calls[0].options.body);assert.equal(body.reasoning.effort,'max');assert.equal(body.service_tier,speed);assert.deepEqual(confirmed,[{requested:speed,actual:'default'}]);
+ }
+});
+test('account catalog speed restrictions are respected and unsupported selected tiers do not trigger inference',async()=>{
+ const f=fixture([event({type:'response.completed'})]);f.auth.active=()=>({id:'account',model:'custom',speed:'ultrafast',models:[{slug:'custom',speedTiers:['default','fast']}]});
+ await assert.rejects(f.client.generate([{role:'user',content:'q'}]),/速度|档位/);assert.equal(f.calls.length,0);
+ f.client.fetch=async()=>Response.json({models:[{slug:'gpt-6.1-sol',visibility:'list',service_tiers:[{id:'priority'},{id:'ultrafast'}],supported_reasoning_levels:[{effort:'max'},{effort:'ultra'}]}]});
+ const model=(await f.client.models())[0];assert.deepEqual(model.speedTiers,['default','fast','ultrafast']);assert.deepEqual(model.reasoningEfforts,['max']);
 });

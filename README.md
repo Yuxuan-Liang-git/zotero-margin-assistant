@@ -1,10 +1,10 @@
-# Margin Comments + DeepSeek + ChatGPT 0.11.1
+# Margin Comments + DeepSeek + ChatGPT 0.11.2
 
 面向 Zotero 10.0.x，在用户提供的 LaTeX custom 0.9.5 上增加 DeepSeek API / ChatGPT 订阅文档提问和手动编号引用。保留页边批注、自动保存、原公式预览、类型筛选及便签图标设置。
 
 ## 安装与使用
 
-1. Zotero → 工具 → 插件 → 右上角齿轮 → 从文件安装插件，选择 `dist/margin-comments-deepseek-0.11.1.xpi`，随后重启 Zotero。这是同一插件的升级包，会替换已安装的定制版；原始 XPI 保留，卸载本版后可以重新安装原包。此功能无需安装 Edge Zotero Connector。
+1. Zotero → 工具 → 插件 → 右上角齿轮 → 从文件安装插件，选择 `dist/margin-comments-deepseek-0.11.2.xpi`，随后重启 Zotero。这是同一插件的升级包，会替换已安装的定制版；原始 XPI 保留，卸载本版后可以重新安装原包。此功能无需安装 Edge Zotero Connector。
 2. Zotero → 设置 → 页边批注 → **DeepSeek 区域提问**。填写 API Key，点击“应用设置”；模型默认 `deepseek-flash`。阅读器工具栏“DeepSeek / ChatGPT”打开右侧文档助手，其“设置”按钮也打开这页。密钥经 Zotero 的系统密钥库加密后保存在本机，重启后自动恢复；设置页留空并应用只调整模型，点击“清除密钥”会删除已保存密钥。连接测试只获取模型列表，不发送 PDF。
 3. 打开 PDF 后点击工具栏“DeepSeek / ChatGPT”，直接输入问题即可：每轮自动读取当前 PDF 的文字层；较短文档提供全文，长文档按问题选取相关片段，面板显示本轮范围。纯扫描件自动加入当前页截图，不必手动传入。也可框选区域或选中文字，右键“向 DeepSeek 提问”补充指定内容。Enter 发送，Shift+Enter 换行；中文输入法选字时 Enter 不发送。材料读取期间禁用发送，读取失败在侧栏中提示。回答支持 Markdown、LaTeX，可连续追问、停止、重试、复制，或预览编辑后明确保存为笔记/追加到批注。点击“新会话”另开一段独立聊天，点击“对话记录”切换本 PDF 的历史聊天及草稿；每份 PDF 有自己的列表。文献条目下会生成“DeepSeek 对话历史”笔记子项，双击可直接打开对应 PDF 的侧栏对话列表。拖动侧栏左边缘调整宽度，关闭后恢复 PDF 空间，点击工具栏“DeepSeek / ChatGPT”可重开。重启后恢复阅读器按钮与当前 PDF 的聊天列表。
 4. 在前文框选公式及说明，右键“标记为引用来源”，输入类型“公式”和编号 `6.30`。段落、图、表也可编号。文字可直接选中后右键“标记选中文字为引用来源”，也可对已有高亮或下划线右键标记。
@@ -19,7 +19,8 @@
 
 12. 使用 ChatGPT：设置 → 页边批注 → **文档助手 · DeepSeek / ChatGPT**，点击 **Continue with ChatGPT**，在系统浏览器的 OpenAI 官方页面登录并授权。无需 OpenAI API Key。返回 Zotero 后会显示账户及可用模型；侧栏选择“ChatGPT 订阅”即可直接针对 PDF 交互。可添加/切换账户或工作区、刷新模型、退出当前账户；同一注册重新授权复用原 client ID。登录凭据加密保存在本机并自动刷新，重启后恢复。首次授权会提示使用订阅；“管理用量”打开 ChatGPT 用量设置。此官方接入使用 Codex / ChatGPT Work 的共享订阅额度，会与 Codex 使用竞争同一额度，不是独立的普通网页聊天额度；详情见 [Sign in with ChatGPT 官方说明](https://learn.chatgpt.com/docs/sign-in-with-chatgpt)。此功能不读取 ChatGPT 网页历史，插件里的对话仍由本地按 PDF 保存。切换服务会继续使用当前对话，若希望独立上下文请新建会话。
 
-13. ChatGPT 侧栏和设置页均可选择“思考强度”，默认跟随模型；支持的模型提供低/中/高等选项，额外档位仅在账户模型目录明确列出时提供。设置加密保存到当前账户，重启后恢复；不支持的档位不会发送。高强度通常增加等待时间与额度消耗。DeepSeek 保留原思考模式。
+13. ChatGPT 侧栏和设置页均可选择“思考强度”：轻量 Light（low）、中等 Medium、高 High、超高 Extra High（xhigh）、最大 Max，按模型支持显示。模型目录的明确限制优先；当前 GPT-6 / GPT-5.6 家族在缺少目录档位时按官方模型资料补齐，旧版三档缓存可升级。Codex 的 Ultra 包含多智能体调度，本助手没有该调度器，不把 Ultra 伪装成普通推理参数。设置加密保存，重启恢复。DeepSeek 保留原思考模式。
+14. 独立的“生成速度”提供标准 Standard、快速 Fast、极速 Ultrafast。快速/极速保持所选思考强度，会加快共享额度消耗。目录明确给出速度档位时遵从目录；目录缺少信息时，已知支持模型提供尝试选项。Ultrafast 仅对 GPT-6 Astra / GPT-6.1 Sol 提供，仍需符合账户与工作区资格。权限或参数被拒绝时保留错误提示，请切回标准；不自动重复付费请求。回答完成后显示服务端回传的实际档位，降档明确提示，未回传则显示未确认。摘要使用标准速度与低强度以减少额外用量。切换模型会将其不支持的已选档位恢复为默认/标准。参见 [官方速度与额度说明](https://learn.chatgpt.com/docs/agent-configuration/speed)及 [模型档位说明](https://learn.chatgpt.com/docs/models)。
 
 PDF 实际页码与书内页码分别保存。未装插件时，批注仍包含可读编号和 Zotero 原文链接。
 

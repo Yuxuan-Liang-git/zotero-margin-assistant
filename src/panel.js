@@ -21,11 +21,13 @@
       for(const [value,label]of [['deepseek','DeepSeek API'],['chatgpt','ChatGPT 订阅']]){const option=el(d,'option',label);option.value=value;this.providerSelect.append(option);}
       this.modelSelect=el(d,'select');this.modelSelect.setAttribute('aria-label','ChatGPT 模型');
       this.reasoningSelect=el(d,'select');this.reasoningSelect.setAttribute('aria-label','思考强度');this.reasoningSelect.title='思考强度越高，通常耗时和用量越多';
+      this.speedSelect=el(d,'select');this.speedSelect.setAttribute('aria-label','生成速度');this.speedSelect.title='快速和极速会消耗更多共享额度；极速需账户资格';
       this.providerInfo=el(d,'small',undefined,'zma-provider-info');this.usageButton=button(d,'管理用量',()=>this.host.chatGPTAPI?.().usage());
-      this.providerBar.append(this.providerSelect,this.modelSelect,this.reasoningSelect,button(d,'登录 / 账户',()=>this.host.settings()),this.usageButton,this.providerInfo);
+      this.providerBar.append(this.providerSelect,this.modelSelect,this.reasoningSelect,this.speedSelect,button(d,'登录 / 账户',()=>this.host.settings()),this.usageButton,this.providerInfo);
       this.providerSelect.addEventListener('change',()=>void Promise.resolve(this.host.setProvider?.(this.providerSelect.value)).catch(e=>this.error(e)).finally(()=>this.refreshProvider()));
       this.modelSelect.addEventListener('change',()=>void Promise.resolve(this.host.setChatGPTModel?.(this.modelSelect.value)).catch(e=>this.error(e)).finally(()=>this.refreshProvider()));
       this.reasoningSelect.addEventListener('change',()=>void Promise.resolve(this.host.setChatGPTReasoning?.(this.reasoningSelect.value)).catch(e=>this.error(e)).finally(()=>this.refreshProvider()));
+      this.speedSelect.addEventListener('change',()=>void Promise.resolve(this.host.setChatGPTSpeed?.(this.speedSelect.value)).catch(e=>this.error(e)).finally(()=>this.refreshProvider()));
       this.tabs=el(d,'nav');this.chat=el(d,'section');this.directory=el(d,'section');this.directory.hidden=true;this.conversationList=el(d,'section',undefined,'zma-conversations');this.conversationList.hidden=true;
       this.tabs.append(button(d,'提问',()=>this.showChat()),button(d,'对话记录',()=>this.showConversations()),button(d,'引用目录',()=>this.showDirectory()));
       const info=el(d,'p','自动读取当前 PDF，发送时提供文档背景；可附加框选材料。','zma-info');
@@ -50,8 +52,9 @@
     refreshProvider(){
       const state=this.host.providerState?.()||{provider:'deepseek',model:this.host.model||''};this.providerSelect.value=state.provider;this.modelSelect.hidden=state.provider!=='chatgpt';this.usageButton.hidden=state.provider!=='chatgpt';
       this.modelSelect.replaceChildren();for(const model of state.models||[]){const option=el(this.doc,'option',model.displayName);option.value=model.slug;this.modelSelect.append(option);}this.modelSelect.value=state.model||'';
-      this.reasoningSelect.hidden=state.provider!=='chatgpt';this.reasoningSelect.replaceChildren();const labels={default:'思考：模型默认',none:'思考：关闭',minimal:'思考：最少',low:'思考：低',medium:'思考：中',high:'思考：高',xhigh:'思考：极高',max:'思考：最高'};
+      this.reasoningSelect.hidden=state.provider!=='chatgpt';this.reasoningSelect.replaceChildren();const labels={default:'思考：模型默认',none:'思考：关闭',minimal:'思考：最少',low:'轻量 Light',medium:'中等 Medium',high:'高 High',xhigh:'超高 Extra High',max:'最大 Max'};
       for(const value of ['default',...(state.reasoningEfforts||[])]){const option=el(this.doc,'option',labels[value]||value);option.value=value;this.reasoningSelect.append(option);}this.reasoningSelect.value=(state.reasoningEfforts||[]).includes(state.reasoningEffort)?state.reasoningEffort:'default';this.reasoningSelect.disabled=this.busy||!state.signedIn;
+      this.speedSelect.hidden=state.provider!=='chatgpt';this.speedSelect.replaceChildren();const speeds=state.speedTiers||['default'],speedLabels={default:'标准 Standard',fast:'快速 Fast（更多用量）',ultrafast:'极速 Ultrafast（需资格）'};for(const value of speeds){const option=el(this.doc,'option',speedLabels[value]||value);option.value=value;this.speedSelect.append(option);}this.speedSelect.value=speeds.includes(state.speed)?state.speed:'default';this.speedSelect.disabled=this.busy||!state.signedIn;
       this.providerSelect.disabled=this.busy;this.modelSelect.disabled=this.busy||!state.signedIn;this.providerInfo.textContent=state.provider==='chatgpt'?(state.signedIn?`使用 Codex / ChatGPT Work 共享额度 · ${state.accountLabel||''}`:'请在设置中 Continue with ChatGPT 登录'):`使用 DeepSeek API · ${state.model||''}`;
     }
     installResizeHandle(){
@@ -177,10 +180,11 @@
         const streamText=this.messages.lastElementChild?.querySelector('.zma-answer');
         const streamNode=this.doc.createTextNode('');streamText?.append(streamNode);let lastScroll=0;
         this.liveRenderer=root.ZMAStreaming&&streamText?new root.ZMAStreaming.LiveRenderer(streamText,(node,value)=>this.renderAnswer(node,value),{before:()=>this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80,after:follow=>{if(follow&&!this.destroyed)this.messages.scrollTop=this.messages.scrollHeight;}}):null;
-        answer.content=await client.generate(messages,{signal:this.controller.signal,onDelta:delta=>{
+        /** @type {any} */
+        let serviceTier;answer.content=await client.generate(messages,{signal:this.controller.signal,onServiceTier:info=>{serviceTier=info;},onDelta:delta=>{
           answer.content+=delta;if(!this.destroyed){if(this.liveRenderer)this.liveRenderer.append(delta);else{const follow=this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80;streamNode.appendData(delta);const now=Date.now();if(follow&&now-lastScroll>=100){this.messages.scrollTop=this.messages.scrollHeight;lastScroll=now;}}}
         }});
-        answer.incomplete=false;if(this.question.value.trim()===question)this.question.value='';conversation.draft=this.question.value;C.touchConversation(conversation);this.status.textContent='回答完成，可追问或保存。';
+        answer.incomplete=false;if(this.question.value.trim()===question)this.question.value='';conversation.draft=this.question.value;C.touchConversation(conversation);this.status.textContent='回答完成，可追问或保存。'+(serviceTier?(serviceTier.actual?` 本轮档位：${{default:'标准',fast:'快速 Fast',ultrafast:'极速 Ultrafast'}[serviceTier.actual]}${serviceTier.requested!==serviceTier.actual?'（与请求档位不同）':''}。`:' 已请求速度档位，服务端未确认实际档位。'):'');
       }catch(e){
         if(answer){answer.content=e.partial??answer.content;answer.incomplete=true;}
         conversation.draft=this.question.value;C.touchConversation(conversation);this.error(e);

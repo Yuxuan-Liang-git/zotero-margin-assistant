@@ -11,11 +11,12 @@
     if(api.chatgpt&&container.querySelector('#zma-provider'))bindChatGPT(container,api.chatgpt);
   }
   function bindChatGPT(container,api){
-    const doc=container.ownerDocument,find=id=>container.querySelector('#zma-'+id),provider=find('provider'),account=find('chatgpt-account'),model=find('chatgpt-model'),reasoning=find('chatgpt-reasoning'),status=find('chatgpt-status');let working=false;
+    const doc=container.ownerDocument,find=id=>container.querySelector('#zma-'+id),provider=find('provider'),account=find('chatgpt-account'),model=find('chatgpt-model'),reasoning=find('chatgpt-reasoning'),speed=find('chatgpt-speed'),status=find('chatgpt-status');let working=false;
     const option=(select,value,label)=>{const node=doc.createElementNS('http://www.w3.org/1999/xhtml','option');node.value=value;node.textContent=label;select.append(node);};
     const render=()=>{const state=api.state();provider.value=state.provider;account.replaceChildren();if(!state.accounts.length)option(account,'','尚未登录');for(const a of state.accounts)option(account,a.id,a.label+(a.signedIn?'':'（已退出）'));account.value=state.activeID||'';
       model.replaceChildren();const current=state.accounts.find(a=>a.id===state.activeID);for(const m of current?.models||[])option(model,m.slug,m.displayName);model.value=current?.model||'';
-      if(reasoning){const labels={default:'模型默认',none:'关闭',minimal:'最少',low:'低',medium:'中',high:'高',xhigh:'极高',max:'最高'},levels=state.reasoningEfforts||current?.models?.find(m=>m.slug===current.model)?.reasoningEfforts||[];reasoning.replaceChildren();for(const value of ['default',...levels])option(reasoning,value,labels[value]||value);reasoning.value=levels.includes(current?.reasoningEffort)?current.reasoningEffort:'default';reasoning.disabled=working||!current?.signedIn;}
+      if(reasoning){const labels={default:'模型默认',none:'关闭',minimal:'最少',low:'轻量 Light',medium:'中等 Medium',high:'高 High',xhigh:'超高 Extra High',max:'最大 Max'},levels=state.reasoningEfforts||current?.models?.find(m=>m.slug===current.model)?.reasoningEfforts||[];reasoning.replaceChildren();for(const value of ['default',...levels])option(reasoning,value,labels[value]||value);reasoning.value=levels.includes(current?.reasoningEffort)?current.reasoningEffort:'default';reasoning.disabled=working||!current?.signedIn;}
+      if(speed){const levels=state.speedTiers||current?.models?.find(m=>m.slug===current.model)?.speedTiers||['default'],labels={default:'标准 Standard',fast:'快速 Fast（更多用量）',ultrafast:'极速 Ultrafast（需账户资格）'};speed.replaceChildren();for(const value of levels)option(speed,value,labels[value]||value);speed.value=levels.includes(current?.speed)?current.speed:'default';speed.disabled=working||!current?.signedIn;}
       provider.disabled=working;account.disabled=working||!state.accounts.length;model.disabled=working||!current?.signedIn;
       for(const id of ['login','add','refresh','logout'])find('chatgpt-'+id).disabled=working||(['refresh','logout'].includes(id)&&!current?.signedIn);find('chatgpt-cancel').disabled=!working&&!state.pending;
       if(!working)status.textContent=state.error||(current?.signedIn?'已登录 '+current.label+'。登录信息已加密保存在本机。':'尚未登录 ChatGPT。');
@@ -25,6 +26,7 @@
     account.addEventListener('change',()=>{const value=account.value;void run(()=>api.select(value));});
     model.addEventListener('change',()=>{const value=model.value;void run(()=>api.model(value));});
     reasoning?.addEventListener('change',()=>{const value=reasoning.value;void run(()=>api.reasoning(value));});
+    speed?.addEventListener('change',()=>{const value=speed.value;void run(()=>api.speed(value));});
     find('chatgpt-login').addEventListener('click',()=>void run(()=>api.login(account.value||undefined),'请在浏览器完成 OpenAI 授权；本窗口会自动更新…'));
     find('chatgpt-add').addEventListener('click',()=>void run(()=>api.login(undefined),'请在浏览器选择其他 ChatGPT 账户或工作区…'));
     find('chatgpt-cancel').addEventListener('click',()=>api.cancel());

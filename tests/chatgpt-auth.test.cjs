@@ -68,3 +68,11 @@ test('reasoning effort validates the selected model and survives encrypted resta
   const f=await fixture();await f.login();await f.auth.setModels(f.auth.state.activeID,[{slug:'qa',displayName:'QA',reasoningEfforts:['low','medium','high']}]);assert.equal(typeof f.auth.setReasoning,'function');await f.auth.setReasoning('high');
   const restored=new f.A.AuthManager(f.options);await restored.load();assert.equal(restored.active().reasoningEffort,'high');await assert.rejects(restored.setReasoning('max'),/支持/);await restored.setReasoning('default');assert.equal(restored.active().reasoningEffort,'default');
 });
+test('speed preference validates model support and survives encrypted restart',async()=>{
+ const f=await fixture();await f.login();await f.auth.setModels(f.auth.state.activeID,[{slug:'qa',displayName:'QA',speedTiers:['default','fast']}]);
+ assert.equal(typeof f.auth.setSpeed,'function');await f.auth.setSpeed('fast');const restored=new f.A.AuthManager(f.options);await restored.load();assert.equal(restored.active().speed,'fast');assert.equal(restored.accounts()[0].speed,'fast');await assert.rejects(restored.setSpeed('ultrafast'),/支持/);await restored.setSpeed('default');
+});
+test('changing models clears only unsupported saved speed and reasoning controls',async()=>{
+ const f=await fixture();await f.login();const models=[{slug:'a',reasoningEfforts:['low','max'],speedTiers:['default','fast']},{slug:'b',reasoningEfforts:['low'],speedTiers:['default']}];
+ await f.auth.setModels(f.auth.state.activeID,models);await f.auth.setReasoning('max');await f.auth.setSpeed('fast');await f.auth.setModel('b');assert.equal(f.auth.active().speed,'default');assert.equal(f.auth.active().reasoningEffort,'default');
+});
