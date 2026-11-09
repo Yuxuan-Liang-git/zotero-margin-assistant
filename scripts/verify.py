@@ -15,7 +15,7 @@ parser.add_argument('--native-run',default='zotero-0106-native-final')
 parser.add_argument('--restart-run',default='zotero-0105-final')
 parser.add_argument('--conversation-run',default='zotero-0106-conversation-qa')
 parser.add_argument('--upgrade-run',default='zotero-0106-upgrade')
-parser.add_argument('--clipboard-run',default='zotero-0130-web-v2')
+parser.add_argument('--clipboard-run',default='zotero-0131-rendering-v3')
 args=parser.parse_args()
 version=json.loads((PROJECT/'package.json').read_text(encoding='utf-8'))['version']
 package=PROJECT/f'dist/margin-comments-deepseek-{version}.xpi'
@@ -80,7 +80,7 @@ upgrade_smoke='passed: AddonManager upgraded active 0.10.5 to active 0.10.6 besi
 clipboard_dir=PROJECT/'evidence'/args.clipboard_run
 clipboard_reports=[json.loads((clipboard_dir/f'report-{n}.json').read_text(encoding='utf-8')) if (clipboard_dir/f'report-{n}.json').exists() else None for n in [1,2]]
 clipboard_installed=clipboard_dir/'profile/extensions/margin-comments@local.zotero.xpi'
-clipboard_ok=clipboard_installed.exists() and hashlib.sha256(clipboard_installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r.get('launch')==n and r.get('packageSha256')==package_hash and len(r.get('steps',[])) in [4,5,6,7,8,9,10,11,12,13,14,15] and all(s['ok'] for s in r['steps']) for n,r in enumerate(clipboard_reports,1)) and len({r['process'] for r in clipboard_reports if r})==2
+clipboard_ok=clipboard_installed.exists() and hashlib.sha256(clipboard_installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r.get('launch')==n and r.get('packageSha256')==package_hash and len(r.get('steps',[])) in [4,5,6,7,8,9,10,11,12,13,14,15,16] and all(s['ok'] for s in r['steps']) for n,r in enumerate(clipboard_reports,1)) and len({r['process'] for r in clipboard_reports if r})==2
 editing_keys_ok=clipboard_ok and all(any(s.get('name')=='sidebar-clipboard-and-latex' and s.get('result',{}).get('editingKeysNotCancelled') and s['result'].get('editingFocusRetained') and s['result'].get('editingEventCombinations')==24 for s in r['steps']) for r in clipboard_reports)
 probe_path=PROJECT/'evidence/chatgpt-plan-probe/report.json'
 probe=json.loads(probe_path.read_text(encoding='utf-8')) if probe_path.exists() else {}
@@ -110,5 +110,7 @@ pdf_bubbles_ok=clipboard_ok and all(any(s.get('name')=='pdf-selection-quote-bubb
 report['native_pdf_quote_bubbles']='passed: selected PDF text creates an ephemeral checked source without permanent highlighting, native image region creates a crop preview, popover and numbered anchors live in the actual PDF iframe; a missing or unrendered source anchor uses viewport fallback without error; one request contains both source materials and comments; metadata-only per-conversation drafts survive cold restart; inference mocked' if pdf_bubbles_ok else 'not passed or not run'
 web_ok=clipboard_ok and all(any(s.get('name')=='automatic-web-sources-and-images' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['automaticWebRequest','inlineCitations','sourceNavigation','sourcedImageMetadata','offlineImageNetworkBlocked','localHistoryProvenance','reopenRestores','explicitRetryOnly','noDuplicateQuestion','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports) and any(s.get('name')=='automatic-web-sources-and-images' and s.get('result',{}).get('preferencesAndHistoryColdRestored') for s in (clipboard_reports[1] or {}).get('steps',[]))
 report['native_web_search_and_images']='passed: isolated first launch and cold restart; web/image tool parameters, clickable inline citations, sourced gallery metadata, PDF-local JSON restoration and preference restoration; HTTP400 does not retry until explicit click and keeps one question; inference/search mocked, external image network blocked by QA CSP. Browser regression separately verifies mocked HTTP image pixels. Real account web-search availability remains unverified' if web_ok else 'not passed or not run'
+cjk_ok=clipboard_ok and all(any(s.get('name')=='cjk-markdown-math-rendering' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['chinesePunctuation','boldBeforeProse','codeLiteral','latexPreserved','historyRerender','invalidCommandPreserved','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports)
+report['native_cjk_rendering']='passed: isolated first launch and cold restart; actual sidebar renders CJK punctuation in MathML and bold with closing punctuation before prose; original LaTeX retained, history re-rendered consistently, code and invalid commands stay literal. Browser regression additionally verifies CJK rendering before stream completion and narrow light/dark docks; no external API calls' if cjk_ok else 'not passed or not run'
 (PROJECT/'dist/verification-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(report))

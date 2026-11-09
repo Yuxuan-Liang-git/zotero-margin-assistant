@@ -106,3 +106,9 @@ No Git commit steps: this workspace is not a repository; preserve evidence in a 
 - 新增独立 web.js，收集 Responses 搜索事件、引用及带出处图像；扩展 ChatGPT 参数、文中编号链接、来源列表和独立配图区。
 - 本地保存可选来源元数据，兼容既有 v2 历史；复制、保存和后续历史带可读来源，原回答保留用于引用偏移。
 - 先验证7项新增单元/界面测试失败，再实现并通过；另补充 Host 设置冷恢复及生成互斥测试。完整回归、类型检查、浅深色截图和首启/冷重启验收记录在 acceptance.md。
+
+## 0.13.1 渲染修复
+
+- 只读核对截图对应历史并记录实际 KaTeX strict 诊断，确认合法中文标点公式被整体拒绝，以及 CJK 双星号闭合边界未识别。
+- 3项故障回归先全部失败，再修复 Unicode 字形诊断和助手独立 Marked tokenizer，确认流式/历史一致、源码保留、无效命令/代码/转义不变。
+- 补充真实侧栏浅/深色、320/420px长公式与加粗展示检查。原生 Gecko 与完整回归验收见 acceptance.md。

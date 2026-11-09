@@ -1,5 +1,17 @@
 (function(root){
   'use strict';
+  const parsers=new WeakMap();
+  function markdownParser(parser){
+    if(!parser?.Marked)return parser;if(parsers.has(parser))return parsers.get(parser);
+    // CommonMark's punctuation flanking rejects Chinese **sentences。**正文.
+    // Handle simple CJK spans in the inline lexer, leaving escapes, code, nested
+    // emphasis and HTML with the existing parser and safe DOM construction.
+    const instance=new parser.Marked({extensions:[{name:'zmaCJKStrong',level:'inline',start:src=>src.indexOf('**'),tokenizer(src){
+      const m=/^\*\*([^\s*`\n](?:[^*`\n]*?[^\s*`\n])?)\*\*(?!\*)/.exec(src);
+      if(!m||!/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(m[1]))return;
+      return {type:'strong',raw:m[0],text:m[1],tokens:this.lexer.inlineTokens(m[1])};
+    }}]});parsers.set(parser,instance);return instance;
+  }
   // Construct known Markdown nodes; raw HTML and remote images remain inert text.
   function render(node,value,renderMath){
     const doc=node.ownerDocument,math=[];
@@ -39,8 +51,8 @@
       }
     };
     node.replaceChildren();node.classList.add('zma-markdown');
-    const parser=root.marked||globalThis.marked;
-    if(parser?.lexer)blocks(node,parser.lexer(protectedText,{gfm:true,breaks:true}));else plain(node,value);
+    const parser=markdownParser(root.marked||globalThis.marked);
+    if(parser?.lexer)blocks(node,parser.lexer(protectedText,{...parser.defaults,gfm:true,breaks:true}));else plain(node,value);
   }
   root.ZMAMarkdown={render};
 })(typeof _globalThis!=='undefined'?_globalThis:globalThis);

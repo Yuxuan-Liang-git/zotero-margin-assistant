@@ -37,6 +37,7 @@ def build():
     # Do not duplicate them as margin cards, including explicitly revealed keys.
     text = replace_once(text, 'return forcedKeys.has(annotation.key) || annotation.type === "note" || annotation.comment.trim().length > 0;', 'return annotation.type !== "text" && (forcedKeys.has(annotation.key) || annotation.type === "note" || annotation.comment.trim().length > 0);')
     text = replace_once(text, 'const markup = katex.renderToString(expression, {', 'const markup = katex.renderToString(_globalThis.ZMAMath?.normalizeDisplay(expression, delimiter.display) ?? expression, {')
+    text = replace_once(text, '                strict: "error",', '                strict: _globalThis.ZMAMath?.strict ?? "error",')
     text = replace_once(text, '              fragment.append(doc.createTextNode(text2.slice(start, cursor)), template.content);', '              const renderedMath = template.content.querySelector("math");\n              if (renderedMath) renderedMath.setAttribute("data-zma-latex", text2.slice(cursor, next));\n              fragment.append(doc.createTextNode(text2.slice(start, cursor)), template.content);')
     text = replace_once(text, 'const allowed = [...SUPPORTED_FORMATS, "br", "div"];', 'const allowed = [...SUPPORTED_FORMATS, "br", "div"];\n        if (_globalThis.ZMAReferences.isAllowedAnchor(element)) allowed.push("a");')
     text = replace_once(text, '''        while (element.attributes.length) {

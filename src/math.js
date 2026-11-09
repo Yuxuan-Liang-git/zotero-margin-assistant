@@ -10,5 +10,8 @@
     }
     if(!lineBreak)return expression;const environment=alignment?'aligned':'gathered';return `\\begin{${environment}}${expression}\\end{${environment}}`;
   }
-  root.ZMAMath={normalizeDisplay};if(typeof module!=='undefined')module.exports=root.ZMAMath;
+  // CJK punctuation in otherwise valid math uses a text glyph; retain every
+  // other strict diagnostic and the renderer's untrusted-command restrictions.
+  function strict(code){return code==='unicodeTextInMathMode'?'ignore':'error';}
+  root.ZMAMath={normalizeDisplay,strict};if(typeof module!=='undefined')module.exports=root.ZMAMath;
 })(typeof _globalThis!=='undefined'?_globalThis:globalThis);
