@@ -8,7 +8,7 @@
     if(tag==='textarea')node.setAttribute('contenteditable','false');return node;}
   function button(doc,label,action){const b=el(doc,'button',label);b.type='button';b.addEventListener('click',()=>Promise.resolve().then(action).catch(e=>doc.defaultView?.alert?.(e.message)));return b;}
   function iconButton(doc,label,kind,action){
-    const b=button(doc,label,action),svg=doc.createElementNS('http://www.w3.org/2000/svg','svg'),path=doc.createElementNS('http://www.w3.org/2000/svg','path'),icons={new:'M8 3v10M3 8h10',history:'M2 7a6 6 0 1 1 1 4M2 3v4h4M8 4v4l3 2',reference:'M2 3h4a3 3 0 0 1 2 1 3 3 0 0 1 2-1h4v10h-4a3 3 0 0 0-2 1 3 3 0 0 0-2-1H2zM8 4v10',settings:'M6 2h4l.5 2 2 .5 1.5 3-1.5 1.5.5 2-3 2L8 12l-2 1-3-2 .5-2L2 7.5l1.5-3 2-.5zM10 7.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0',close:'M4 4l8 8M12 4l-8 8',attach:'M5 9l5-5a2 2 0 0 1 3 3l-6 6a3.5 3.5 0 0 1-5-5l6-6',page:'M4 2h5l3 3v9H4zM9 2v4h3M6 9h4M6 11h4',send:'M8 13V3M3.5 7.5L8 3l4.5 4.5',stop:'M4 4h8v8H4z',copy:'M6 2h7v9h-3M3 5h7v9H3z',note:'M3 2h10v9l-3 3H3zM10 14v-3h3M5 5h6M5 8h5',comment:'M2 2h12v9H7l-4 3v-3H2zM5 5h6M5 8h4'};
+    const b=button(doc,label,action),svg=doc.createElementNS('http://www.w3.org/2000/svg','svg'),path=doc.createElementNS('http://www.w3.org/2000/svg','path'),icons={new:'M8 3v10M3 8h10',history:'M2 7a6 6 0 1 1 1 4M2 3v4h4M8 4v4l3 2',reference:'M2 3h4a3 3 0 0 1 2 1 3 3 0 0 1 2-1h4v10h-4a3 3 0 0 0-2 1 3 3 0 0 0-2-1H2zM8 4v10',settings:'M6 2h4l.5 2 2 .5 1.5 3-1.5 1.5.5 2-3 2L8 12l-2 1-3-2 .5-2L2 7.5l1.5-3 2-.5zM10 7.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0',close:'M4 4l8 8M12 4l-8 8',attach:'M5 9l5-5a2 2 0 0 1 3 3l-6 6a3.5 3.5 0 0 1-5-5l6-6',page:'M4 2h5l3 3v9H4zM9 2v4h3M6 9h4M6 11h4',send:'M8 13V3M3.5 7.5L8 3l4.5 4.5',stop:'M4 4h8v8H4z',copy:'M6 2h7v9h-3M3 5h7v9H3z',note:'M3 2h10v9l-3 3H3zM10 14v-3h3M5 5h6M5 8h5',notion:'M3 2h10v12H3zM5 11V5l6 6V5',comment:'M2 2h12v9H7l-4 3v-3H2zM5 5h6M5 8h4'};
     svg.setAttribute('viewBox','0 0 16 16');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.5');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');path.setAttribute('d',icons[kind]||icons.new);svg.append(path);b.replaceChildren(svg);b.classList.add('zma-icon-button');b.setAttribute('aria-label',label);b.title=label;return b;
   }
   class QuoteBubbles{
@@ -99,7 +99,8 @@
       const header=el(d,'header',undefined,'zma-header'),tools=el(d,'nav',undefined,'zma-header-actions');header.append(el(d,'strong','文档助手','zma-heading'),tools);
       this.historyButton=iconButton(d,'对话记录','history',()=>this.conversationList.hidden?this.showConversations():this.showChat());this.referenceButton=iconButton(d,'引用目录','reference',()=>this.directory.hidden?this.showDirectory():this.showChat());
       this.summaryButton=iconButton(d,'阅读摘要','note',()=>this.readingView.hidden?this.showReadingSummary():this.showChat());
-      this.newButton=iconButton(d,'新会话','new',()=>this.newConversation());tools.append(this.newButton,this.historyButton,this.summaryButton,this.referenceButton,iconButton(d,'设置','settings',()=>this.host.settings()),iconButton(d,'关闭','close',()=>this.close()));
+      this.notionButton=iconButton(d,'Notion 笔记','notion',()=>this.notion?.visible?this.showChat():this.showNotion());
+      this.newButton=iconButton(d,'新会话','new',()=>this.newConversation());tools.append(this.newButton,this.historyButton,this.summaryButton,this.referenceButton,this.notionButton,iconButton(d,'设置','settings',()=>this.host.settings()),iconButton(d,'关闭','close',()=>this.close()));
       this.chat=el(d,'section');this.directory=el(d,'section');this.directory.hidden=true;this.conversationList=el(d,'section',undefined,'zma-conversations');this.conversationList.hidden=true;
       this.activeLabel=el(d,'strong',undefined,'zma-active-conversation');
       this.materialList=el(d,'div',undefined,'zma-materials');
@@ -117,7 +118,8 @@
       this.installComposerResize(composer);
       this.previewArea=el(d,'section',undefined,'zma-previews');
       this.readingView=el(d,'section',undefined,'zma-reading-view');this.readingView.hidden=true;
-      this.node.append(header,this.previewArea,this.chat,this.conversationList,this.directory,this.readingView,this.status);d.body.append(this.node);
+      this.notion=root.ZMANotion?new root.ZMANotion.NotionView(this):null;this.notionButton.disabled=!this.notion;
+      this.node.append(header,this.previewArea,this.chat,this.conversationList,this.directory,this.readingView,...(this.notion?[this.notion.node]:[]),this.status);d.body.append(this.node);
       this.node.addEventListener('click',event=>{const href=event.target.closest?.('a')?.getAttribute('href');if(/^https?:\/\//i.test(href||'')&&this.host.openExternal){event.preventDefault();event.stopPropagation();this.host.openExternal(href);}});
       this.quotes=new QuoteBubbles(this,composer);
       this.directory.className='zma-directory';this.installResizeHandle();
@@ -127,7 +129,7 @@
       this.applyAppearance();this.refreshProvider();this.renderMaterials();this.renderMessages();this.renderConversationList();this.host.readingSummary?.schedule(this.reader);return this;
     }
     showReadingSummary(){
-      this.open();this.quotes.collapse();this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=true;this.readingView.hidden=false;this.summaryButton.setAttribute('aria-pressed','true');this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');this.refreshReadingSummary();this.quotes.layout();
+      this.open('summary');this.hideNotion();this.activeView='summary';this.quotes.collapse();this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=true;this.readingView.hidden=false;this.summaryButton.setAttribute('aria-pressed','true');this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');this.refreshReadingSummary();this.quotes.layout();
     }
     refreshReadingSummary(){
       if(!this.readingView||this.readingView.hidden||this.destroyed)return;const record=this.state.readingSummary,manager=this.host.readingSummary,phase=manager?.status(this.reader)||'idle',doc=this.doc;
@@ -163,11 +165,13 @@
       let dragging=false;const resize=e=>{if(!dragging)return;const viewport=this.doc.defaultView.innerWidth,width=Math.max(280,Math.min(viewport*.55,viewport-e.clientX));this.doc.documentElement.style.setProperty('--zma-assistant-user-width',`${width}px`);};
       handle.addEventListener('pointerdown',e=>{dragging=true;handle.setPointerCapture?.(e.pointerId);e.preventDefault();});handle.addEventListener('pointermove',resize);handle.addEventListener('pointerup',e=>{resize(e);dragging=false;handle.releasePointerCapture?.(e.pointerId);});handle.addEventListener('pointercancel',()=>{dragging=false;});
     }
-    open(){const wasHidden=this.node.hidden;this.node.hidden=false;this.doc.body.classList.add('zma-assistant-open');if(wasHidden&&(this.state.readingSummary?.text||this.state.readingSummary?.pendingText))this.showReadingSummary();this.quotes?.layout();}
-    close(){this.quotes?.collapse();this.node.hidden=true;if(this.quotes?.pdfPortal)this.quotes.pdfPortal.hidden=true;this.doc.body.classList.remove('zma-assistant-open');}
+    open(preferred){const wasHidden=this.node.hidden;this.node.hidden=false;this.doc.body.classList.add('zma-assistant-open');if(wasHidden&&!preferred){if(this.activeView==='notion'&&this.notion)void this.showNotion();else if(this.state.readingSummary?.text||this.state.readingSummary?.pendingText)this.showReadingSummary();}this.quotes?.layout();}
+    close(){this.notion?.hide();this.quotes?.collapse();this.node.hidden=true;if(this.quotes?.pdfPortal)this.quotes.pdfPortal.hidden=true;this.doc.body.classList.remove('zma-assistant-open');}
+    hideNotion(){this.notion?.hide();this.notionButton?.setAttribute('aria-pressed','false');this.status.hidden=false;}
+    async showNotion(){if(!this.notion)return;this.open('notion');this.activeView='notion';this.quotes.collapse();this.chat.hidden=this.directory.hidden=this.conversationList.hidden=this.readingView.hidden=true;for(const b of [this.summaryButton,this.historyButton,this.referenceButton])b.setAttribute('aria-pressed','false');this.notionButton.setAttribute('aria-pressed','true');this.status.hidden=true;this.quotes.layout();await this.notion.show();}
     conversation(){return C.activeConversation(this.state,this.conversationId);}
-    showChat(){this.open();this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=false;this.directory.hidden=true;this.conversationList.hidden=true;this.fitComposer?.();this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');}
-    showConversations(){this.quotes.collapse();this.open();this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=true;this.directory.hidden=true;this.conversationList.hidden=false;this.historyButton.setAttribute('aria-pressed','true');this.referenceButton.setAttribute('aria-pressed','false');this.renderConversationList();this.quotes.layout();}
+    showChat(){this.open('chat');this.hideNotion();this.activeView='chat';this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=false;this.directory.hidden=true;this.conversationList.hidden=true;this.fitComposer?.();this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');}
+    showConversations(){this.quotes.collapse();this.open('history');this.hideNotion();this.activeView='history';this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=true;this.directory.hidden=true;this.conversationList.hidden=false;this.historyButton.setAttribute('aria-pressed','true');this.referenceButton.setAttribute('aria-pressed','false');this.renderConversationList();this.quotes.layout();}
     renderConversationList(){
       this.conversationList.replaceChildren(button(this.doc,'新会话',()=>this.newConversation()));
       if(this.transfer)this.conversationList.append(button(this.doc,'导入对话',()=>this.transfer.open()));
@@ -329,7 +333,7 @@
         const streamNode=this.doc.createTextNode('');streamText?.append(streamNode);let lastScroll=0;
         this.liveRenderer=root.ZMAStreaming&&streamText?new root.ZMAStreaming.LiveRenderer(streamText,(node,value)=>this.renderAnswer(node,value),{before:()=>!readerMoved&&this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80,after:follow=>{if(follow&&!readerMoved&&!this.destroyed)this.messages.scrollTop=this.messages.scrollHeight;}}):null;
         /** @type {any} */
-        let serviceTier;answer.content=await client.generate(messages,{signal:this.controller.signal,onServiceTier:info=>{serviceTier=info;},onWebUpdate:info=>{answer.web=root.ZMAWeb?.clean(info)||info;if(!this.destroyed){if(!answer.content)this.status.textContent='正在检索网络资料与配图…';if(!this.webRenderTimer)this.webRenderTimer=setTimeout(()=>{this.webRenderTimer=null;if(!this.destroyed&&answerCard)this.renderWeb(answerCard,answer);},200);}},onDelta:delta=>{
+        let serviceTier;answer.content=await client.generate(this.host.prepareMessages?.(messages)||messages,{signal:this.controller.signal,onServiceTier:info=>{serviceTier=info;},onWebUpdate:info=>{answer.web=root.ZMAWeb?.clean(info)||info;if(!this.destroyed){if(!answer.content)this.status.textContent='正在检索网络资料与配图…';if(!this.webRenderTimer)this.webRenderTimer=setTimeout(()=>{this.webRenderTimer=null;if(!this.destroyed&&answerCard)this.renderWeb(answerCard,answer);},200);}},onDelta:delta=>{
           answer.content+=delta;if(!this.destroyed){if(this.status.textContent==='正在检索网络资料与配图…')this.status.textContent=label+' 正在回答…';if(this.liveRenderer)this.liveRenderer.append(delta);else{const follow=!readerMoved&&this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80;streamNode.appendData(delta);const now=Date.now();if(follow&&now-lastScroll>=100){this.messages.scrollTop=this.messages.scrollHeight;lastScroll=now;}}}
         }});
         answer.incomplete=false;conversation.draftAttachments=[];this.renderMaterials();this.quotes.clear();if(this.question.value.trim()===draftQuestion)this.question.value='';conversation.draft=this.question.value;C.touchConversation(conversation);this.status.textContent='回答完成，可追问或保存。'+(unavailableCount?` ${unavailableCount} 处引用已失效，本轮未发送，原记录保留。`:'')+(serviceTier?(serviceTier.actual?` 本轮档位：${{default:'标准',fast:'快速 Fast',ultrafast:'极速 Ultrafast'}[serviceTier.actual]}${serviceTier.requested!==serviceTier.actual?'（与请求档位不同）':''}。`:' 已请求速度档位，服务端未确认实际档位。'):'');
@@ -384,7 +388,7 @@
       });form.append(save,button(doc,'取消',()=>form.remove()));this.chat.append(form);preview.focus();
     }
     async markSource(source,direct=false){
-      this.open();const doc=this.doc;const form=el(doc,'div',undefined,'zma-source-form');
+      this.showChat();const doc=this.doc;const form=el(doc,'div',undefined,'zma-source-form');
       const number=el(doc,'input');number.placeholder='编号，例如 6.30';number.setAttribute('aria-label','来源编号');
       const type=el(doc,'select');C.TYPES.forEach(t=>type.append(el(doc,'option',t)));
       if(source.kind==='text')type.value='段落';
@@ -405,7 +409,7 @@
     }
     async showDirectory(target){
       this.quotes.collapse();this.quotes.layout();
-      this.open();this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=false;this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','true');this.directory.replaceChildren();this.insertTarget=target;
+      this.open('references');this.hideNotion();this.activeView='references';this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=false;this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','true');this.directory.replaceChildren();this.insertTarget=target;
       const query=el(this.doc,'input');query.placeholder='输入编号，例如 6.30';query.setAttribute('aria-label','查找引用编号');
       const type=el(this.doc,'select');type.append(el(this.doc,'option','全部'));C.TYPES.forEach(t=>type.append(el(this.doc,'option',t)));
       const list=el(this.doc,'div');
@@ -426,7 +430,7 @@
       query.addEventListener('input',refresh);type.addEventListener('change',refresh);this.directory.append(query,type,list);refresh();query.focus();
     }
     async preview(source){await this.host.previewReference(this.reader,source,this.insertTarget);}
-    async destroy(){this.destroyed=true;this.disposeComposerResize?.();await this.importTask?.catch(()=>{});this.transfer?.destroy();clearTimeout(this.webRenderTimer);this.quotes.destroy();this.liveRenderer?.finish();this.close();clearTimeout(this.draftTimer);this.controller?.abort();this.disposeMath?.();this.disposeClipboard?.();await this.host.save(this.reader,this.state).catch(()=>{});this.node.remove();}
+    async destroy(){this.destroyed=true;this.notion?.destroy();this.disposeComposerResize?.();await this.importTask?.catch(()=>{});this.transfer?.destroy();clearTimeout(this.webRenderTimer);this.quotes.destroy();this.liveRenderer?.finish();this.close();clearTimeout(this.draftTimer);this.controller?.abort();this.disposeMath?.();this.disposeClipboard?.();await this.host.save(this.reader,this.state).catch(()=>{});this.node.remove();}
   }
   root.ZMAPanel={Panel,el,button};if(typeof module!=='undefined')module.exports=root.ZMAPanel;
 })(typeof _globalThis!=='undefined'?_globalThis:globalThis);

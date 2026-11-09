@@ -1,4 +1,4 @@
-  <groupbox data-search-strings-raw="DeepSeek,ChatGPT,订阅,登录,API,密钥,区域提问,模型">
+  <groupbox data-search-strings-raw="DeepSeek,ChatGPT,订阅,登录,API,密钥,区域提问,模型,提示词,回答风格,Notion">
     <label><html:h2 class="zmc-prefs-heading">文档助手 · DeepSeek / ChatGPT</html:h2></label>
     <html:div id="zma-api-settings" style="display:grid;gap:8px;max-width:540px">
       <html:h3>阅读外观</html:h3>
@@ -7,6 +7,12 @@
       <html:p id="zma-font-preview" style="margin:0;padding:12px;border:1px solid #aaa;border-radius:8px;line-height:1.65">阅读示例：参数估计、公式推导与文献对话。</html:p>
       <html:p id="zma-appearance-status" role="status" style="margin:0"></html:p>
       <html:p>12–24 px，默认 14 px。即时应用于所有文档助手的文字、公式与输入框，重启后保留；不修改 PDF 页面和 Zotero 主界面字号。</html:p>
+      <html:h3>回答风格与提示词</html:h3>
+      <html:label for="zma-custom-prompt">自定义提示词</html:label>
+      <html:textarea id="zma-custom-prompt" rows="10" style="box-sizing:border-box;width:100%;min-height:180px;resize:vertical;font:inherit;line-height:1.6"></html:textarea>
+      <html:div><html:button id="zma-prompt-save">保存提示词</html:button> <html:button id="zma-prompt-reset">恢复默认</html:button></html:div>
+      <html:p>用于后续聊天回答与阅读摘要，最多12000字符。保存后立即生效，重启后保留；留空可取消附加风格要求。文档证据和笔记任务格式继续生效。</html:p>
+      <html:p id="zma-prompt-status" role="status" style="margin:0"></html:p>
       <html:h3>阅读摘要笔记</html:h3>
       <html:label><html:input id="zma-reading-auto" type="checkbox" />自动检查并更新阅读摘要</html:label>
       <html:p>完整回答后空闲20秒整理新增问答，额外使用当前AI服务的额度。关闭自动更新后仍可在“阅读摘要”中手动更新。笔记与进度保存在本地，已有手动改写会保留。</html:p>

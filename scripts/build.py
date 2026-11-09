@@ -79,12 +79,19 @@ def build():
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
   Services.scriptloader.loadSubScript(rootURI + "content/vendor/marked/marked.umd.js", context);
-  for (const name of ["web", "reading-summary", "core", "transfer", "capture", "document", "references", "attachments", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "streaming", "clipboard", "transfer-ui", "panel", "margin-references", "reference-preview", "text-math", "images", "host"]) {
+  for (const name of ["web", "instructions", "notion", "notion-browser", "reading-summary", "core", "transfer", "capture", "document", "references", "attachments", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "streaming", "clipboard", "transfer-ui", "panel", "margin-references", "reference-preview", "text-math", "images", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();
   const assistant = new context.ZMAHost.Host(Zotero.MarginComments, {
     Zotero, IOUtils, PathUtils, window: Zotero.getMainWindow(),
+    notionBrowser: (reader, anchor, onState) => context.ZMANotionBrowser.create(reader, anchor, onState, {
+      generateQI: names => ChromeUtils.generateQI(names),
+      STATE_STOP: Components.interfaces.nsIWebProgressListener.STATE_STOP,
+      NOTIFY_STATE_NETWORK: Components.interfaces.nsIWebProgress.NOTIFY_STATE_NETWORK,
+      BINDING_ABORTED: Components.results.NS_BINDING_ABORTED,
+      load: (browser, url) => browser.loadURI(Services.io.newURI(url), {triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal()})
+    }),
     chatgptListen: callback => {
       const { HttpServer } = ChromeUtils.importESModule('chrome://remote/content/server/httpd.sys.mjs');
       return context.ZMAChatGPTNative.listen(HttpServer, Zotero.getMainWindow().URL, callback);

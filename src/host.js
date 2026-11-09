@@ -10,13 +10,17 @@
   const Images=root.ZMAImages||(typeof require!=='undefined'?require('./images.js'):null);
   const Attachments=root.ZMAAttachments||(typeof require!=='undefined'?require('./attachments.js'):null);
   const Reading=root.ZMAReadingSummary||(typeof require!=='undefined'?require('./reading-summary.js'):null);
+  const Notion=root.ZMANotion||(typeof require!=='undefined'?require('./notion.js'):null);
+  const Instructions=root.ZMAInstructions||(typeof require!=='undefined'?require('./instructions.js'):null);
   const ID='margin-comments-assistant@local.zotero';
   const referenceStateSignature=state=>JSON.stringify({sources:state?.sources||[],references:state?.references||[],images:state?.images||[]});
   class Host{
     /** @type {string|undefined} */
     styleText;
-    constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null,chatgptListen=null,chooseChatFiles=null,readClipboardAssets=null,chooseConversationFile=null}){
+    constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null,chatgptListen=null,chooseChatFiles=null,readClipboardAssets=null,chooseConversationFile=null,notionBrowser=null}){
       this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.referenceSignatures=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
+      this.customPrompt=Instructions?Instructions.restore(Z.Prefs?.get('margincomments.customPrompt')):'';
+      this.notionBrowser=notionBrowser;
       this.credentialError='';
       this.credentials=Z.Prefs&&Z.OSKeyStore&&Credentials?new Credentials.CredentialStore({
         get:name=>Z.Prefs.get(name),set:(name,value)=>Z.Prefs.set(name,value),clear:name=>Z.Prefs.clear(name),
@@ -41,8 +45,12 @@
         this.chatgpt=new GPT.ChatGPTClient({auth:this.auth,fetch:(...args)=>this.runtimeWindow().fetch(...args),TextDecoder:win?.TextDecoder,getWebOptions:()=>this.webState()});
       }
       this.readingAuto=Z.Prefs?.get('margincomments.readingSummaryAuto')!==false;
-      this.readingSummary=Reading?new Reading.Manager({key:r=>C.scopeKey(this.scope(r)),load:r=>this.load(r),save:(r,s)=>this.save(r,s),publish:(r,text,record,force)=>this.publishReadingSummary(r,text,record,force),context:r=>this.readingSummaryContext(r),client:()=>this.selectedClient(),controller:()=>this.newAbortController(),foreground:()=>this.activeRequests.size>0||this.transferTasks.size>0,enabled:()=>this.running&&this.readingAuto&&(this.provider==='chatgpt'?!!this.auth?.active()?.accessToken:!!this.key),notify:(r)=>{const key=C.scopeKey(this.scope(r));for(const p of this.panels.values())if(C.scopeKey(this.scope(p.reader))===key)p.refreshReadingSummary?.();}}):null;
+      this.readingSummary=Reading?new Reading.Manager({key:r=>C.scopeKey(this.scope(r)),load:r=>this.load(r),save:(r,s)=>this.save(r,s),publish:(r,text,record,force)=>this.publishReadingSummary(r,text,record,force),context:r=>this.readingSummaryContext(r),prepareMessages:messages=>this.prepareMessages(messages),client:()=>this.selectedClient(),controller:()=>this.newAbortController(),foreground:()=>this.activeRequests.size>0||this.transferTasks.size>0,enabled:()=>this.running&&this.readingAuto&&(this.provider==='chatgpt'?!!this.auth?.active()?.accessToken:!!this.key),notify:(r)=>{const key=C.scopeKey(this.scope(r));for(const p of this.panels.values())if(C.scopeKey(this.scope(p.reader))===key)p.refreshReadingSummary?.();}}):null;
     }
+    notionLinks(reader){return Notion?Notion.linksForReader(this.Z,reader):Promise.resolve([]);}
+    createNotionBrowser(reader,anchor,onState){if(!this.notionBrowser)throw new Error('Notion 网页模块不可用，请更新插件并完全重启 Zotero');return this.notionBrowser(reader,anchor,onState);}
+    prepareMessages(messages){return Instructions?Instructions.apply(messages,this.customPrompt):messages;}
+    promptAPI(){return {state:()=>({text:this.customPrompt,defaultText:Instructions?.DEFAULT||''}),save:async text=>{const value=Instructions.clean(text);this.Z.Prefs?.set('margincomments.customPrompt',value);this.customPrompt=value;},reset:async()=>{await this.promptAPI().save(Instructions.DEFAULT);}};}
     readingSummaryAPI(){return {state:()=>({enabled:this.readingAuto}),set:async value=>{this.readingAuto=!!value;this.Z.Prefs?.set('margincomments.readingSummaryAuto',this.readingAuto);if(!this.readingAuto)this.readingSummary?.cancelAutomatic();else for(const p of this.panels.values())this.readingSummary?.schedule(p.reader);}};}
     readingSummaryContext(reader){
       const attachment=this.Z.Items.get(Number(reader.itemID)),parent=attachment?.parentID?this.Z.Items.get(attachment.parentID):attachment;
@@ -342,7 +350,7 @@
       if(!this.credentials)throw new Error('当前 Zotero 不支持安全保存密钥');
       await this.credentials.save(key,model);
       if(key.trim())this.key=key.trim();this.model=model.trim();this.credentialError='';this.providersChanged();
-    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),appearance:this.appearanceAPI(),web:this.webAPI(),readingSummary:this.readingSummaryAPI(),chatgpt:this.chatGPTAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
+    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),appearance:this.appearanceAPI(),web:this.webAPI(),readingSummary:this.readingSummaryAPI(),prompt:this.promptAPI(),chatgpt:this.chatGPTAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
     async restoreCredentials(){
       if(!this.credentials){this.credentialError='当前 Zotero 不支持安全保存密钥';return;}
       try{const saved=await this.credentials.load();this.key=saved.key;this.model=saved.model;this.credentialError='';}

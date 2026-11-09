@@ -57,3 +57,5 @@ body.zma-assistant-open #split-view,body.zma-assistant-open .split-view{right:va
 .zma-reading-view .zma-actions{gap:5px}.zma-reading-view button{font-size:.85em}
 .zma-summary-status{font-size:.85em;color:var(--zma-muted,GrayText);white-space:pre-wrap}
 .zma-reading-note{overflow-wrap:anywhere}.zma-reading-note strong{font-weight:inherit}.zma-reading-note em{font-style:normal}
+
+.zma-notion-view{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;gap:7px}.zma-notion-view h3{margin:5px 0}.zma-notion-view>.zma-actions{display:flex;gap:6px;flex-wrap:wrap;margin:0}.zma-notion-status,.zma-notion-hint{font-size:12px;line-height:1.5;margin:0;color:GrayText}.zma-notion-view select{max-width:100%;min-width:0}.zma-notion-viewport{flex:1;min-height:120px;position:relative;border:1px solid color-mix(in srgb,CanvasText 25%,Canvas);border-radius:4px;overflow:hidden;background:Canvas}

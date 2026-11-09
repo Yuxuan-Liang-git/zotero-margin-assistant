@@ -77,7 +77,7 @@
           if(!entries.length&&migrating&&(record.pendingText||record.text))entries.push({id:'format:2',text:'没有保留的完整问答，请仅依据已有笔记重整，避免推测缺失内容。'});
           if(!entries.length){record.remaining=0;remaining=false;break;}
           const entry=entries[0];if(!migrating&&record.processed.length>=40000)throw new Error('摘要处理进度已达上限，请导出笔记后新建阅读记录');
-          const article=await this.adapter.context?.(job.reader)||{},client=this.adapter.client(),response=await abortable(client.generate(prompt(record.pendingText||record.text,entry,{article,reorganize:migrating}),{signal:job.controller.signal,maxTokens:8192,thinking:{type:'disabled'}}),job.controller.signal);if(!valid())return;
+          const article=await this.adapter.context?.(job.reader)||{},client=this.adapter.client(),response=await abortable(client.generate(this.adapter.prepareMessages?.(prompt(record.pendingText||record.text,entry,{article,reorganize:migrating}))||prompt(record.pendingText||record.text,entry,{article,reorganize:migrating}),{signal:job.controller.signal,maxTokens:8192,thinking:{type:'disabled'}}),job.controller.signal);if(!valid())return;
           const result=parseResult(response);if(migrating&&!result.changed)throw new Error('旧摘要尚未重新整理，已保留原笔记，请重试');
           if(migrating){record.formatVersion=2;record.processed=[];}
           if(result.changed){record.pendingText=result.text;if(!['manual-edit','deleted'].includes(record.pendingReason))record.pendingReason='publish';}

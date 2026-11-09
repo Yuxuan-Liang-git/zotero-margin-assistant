@@ -11,7 +11,14 @@
     if(api.chatgpt&&container.querySelector('#zma-provider'))bindChatGPT(container,api.chatgpt);
     if(container.querySelector('#zma-font-size'))bindAppearance(container,api.appearance);
     if(container.querySelector('#zma-web-mode'))bindWeb(container,api.web);
+    if(container.querySelector('#zma-custom-prompt'))bindPrompt(container,api.prompt);
     const auto=container.querySelector('#zma-reading-auto'),summaryStatus=container.querySelector('#zma-reading-status');if(auto){auto.checked=api.readingSummary?.state().enabled??false;auto.disabled=!api.readingSummary;auto.addEventListener('change',async()=>{auto.disabled=true;try{await api.readingSummary.set(auto.checked);summaryStatus.textContent=auto.checked?'自动摘要已开启，空闲后检查新增问答。':'自动摘要已关闭，可在阅读摘要中手动更新。';}catch(e){summaryStatus.textContent=e.message;}finally{auto.checked=api.readingSummary.state().enabled;auto.disabled=false;}});}
+  }
+  function bindPrompt(container,api){
+    const field=container.querySelector('#zma-custom-prompt'),save=container.querySelector('#zma-prompt-save'),reset=container.querySelector('#zma-prompt-reset'),status=container.querySelector('#zma-prompt-status');
+    field.value=api?.state().text||'';field.disabled=save.disabled=reset.disabled=!api;
+    const run=async action=>{save.disabled=reset.disabled=true;try{await action();field.value=api.state().text;status.textContent='提示词已保存，下一次聊天或摘要更新生效，重启后保留。';}catch(e){status.textContent=e.message;}finally{save.disabled=reset.disabled=!api;}};
+    save.addEventListener('click',()=>void run(()=>api.save(field.value)));reset.addEventListener('click',()=>void run(()=>api.reset()));
   }
   function bindWeb(container,api){
     const mode=container.querySelector('#zma-web-mode'),images=container.querySelector('#zma-web-images'),status=container.querySelector('#zma-web-status');let working=false;
