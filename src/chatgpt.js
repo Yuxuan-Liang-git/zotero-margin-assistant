@@ -22,6 +22,26 @@
     if(['service_tier','reasoning.effort','reasoning','model','input','store','stream','tools','include','tool_choice'].includes(value))return value;
     return /^(?:input(?:\[\d{1,6}\])?(?:\.content(?:\[\d{1,6}\])?)?(?:\.(?:type|text|role|image_url|file_data|filename))?|tools(?:\[\d{1,6}\])?(?:\.(?:type|search_content_types|image_settings))?)$/.test(value)?value:'';
   }
+  function serverDetail(value,body,token){
+    if(typeof value!=='string'||!value.trim())return {};
+    let text=value.slice(0,16000);const inputTruncated=value.length>16000;
+    // Only retain the human-readable rejection, never the whole response body.
+    // Scrub credentials and exact input echoes before shortening the excerpt.
+    const redact=value=>{if(typeof value!=='string'||value.length<6||value.length>16000)return;for(const form of [value,JSON.stringify(value).slice(1,-1)])text=text.split(form).join('[redacted]');};
+    redact(token);
+    try{const request=typeof body==='string'?JSON.parse(body):body;redact(request?.instructions);for(const message of request?.input||[])for(const part of message.content||[]){redact(part.text);redact(part.filename);redact(part.file_data);redact(part.image_url);}}catch{}
+    text=text.replace(/\bBearer\s+[^\s"';,}]+/gi,'Bearer [redacted]')
+      .replace(/\b((?:access_token|refresh_token|id_token|client_secret|api_key|authorization|authorization_code|oauth_code)["']?\s*[=:]\s*["']?)[^\s"';&,}]+/gi,'$1[redacted]')
+      .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,'[redacted token]')
+      .replace(/\b(?:sk-|ac_|rt_)[A-Za-z0-9_.-]{8,}\b/g,'[redacted token]')
+      .replace(/data:[^\s;,]+;base64,[A-Za-z0-9+/=]+/gi,'[redacted attachment]')
+      .replace(/https?:\/\/[^\s"'<>]+/gi,'[redacted URL]')
+      .replace(/\b[A-Z]:[\\/][^\r\n"'<>;]*/gi,'[redacted path]')
+      .replace(/\/(?:Users|home|tmp|private)\/[\w./ -]+/g,'[redacted path]')
+      .replace(/[A-Z0-9._%+-]{1,128}@[A-Z0-9.-]{1,128}\.[A-Z]{2,32}/gi,'[redacted email]')
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').trim();
+    return {serverDetail:text.slice(0,2000),serverDetailTruncated:inputTruncated||text.length>2000};
+  }
   function failure(status,detail,metadata={}){
     const object=detail&&typeof detail==='object'?detail:null;
     const error=object?.error&&typeof object.error==='object'?object.error:object||{code:detail};
@@ -42,8 +62,8 @@
     const requestID=typeof metadata.requestID==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(metadata.requestID)?metadata.requestID:'';
     const diagnostic=[status?'HTTP '+status:'',param?'参数 '+param:'',safeCode?'代码 '+safeCode:''].filter(Boolean).join('；');
     const message=usage?'ChatGPT 订阅额度已用完或暂不可用，请点击“管理用量”检查额度。':code==='context_length_exceeded'?'本轮上下文超过模型限制，原对话已保留；请新建对话或减少附加材料后重试。':webRejected?'当前模型或账户不接受联网搜索/配图参数，请关闭联网搜索后重试，或更换模型。':speedRejected?'当前账户或订阅接入不接受所选速度档位，请以标准模式重试；不需要重建对话。':reasoningRejected?'当前模型或订阅接入不接受所选思考强度，请使用模型默认重试。':inputRejected?/\.(?:file_data|filename)$/.test(param)?'服务端拒绝了 PDF/文件输入，原文件和对话已保留。请复制错误诊断以定位文件或模型兼容问题。':/\.image_url$/.test(param)?'服务端拒绝了图片输入，原选区和对话已保留。请复制错误诊断以定位图片或模型兼容问题。':'服务端拒绝了文档或对话输入，原问题和材料已保留。请复制错误诊断以定位具体字段。':status===401?'ChatGPT 登录已失效，请重新登录。':status===429?'ChatGPT 请求限流，请稍后重试。':status===403?'当前 ChatGPT 账户权限或接入策略拒绝此请求，请复制错误诊断并检查授权。':status===400?'ChatGPT 请求被服务端拒绝，具体原因尚未明确。请复制错误诊断；原问题和材料已保留。':'ChatGPT 响应失败，请稍后重试。';
-    const details={status,param,code:safeCode,requestID,responseShape};
-    return Object.assign(new Error(message+(diagnostic?'（'+diagnostic+'）':'')),{safe:true,status,usageLimit:usage,speedRejected,webRejected,reasoningRejected,param,code:safeCode,diagnostic:details,diagnosticText:JSON.stringify(details,null,2)});
+    const details={status,param,code:safeCode,requestID,responseShape,...(metadata.serverDetail?{serverDetail:metadata.serverDetail,serverDetailTruncated:!!metadata.serverDetailTruncated}:{})};
+    return Object.assign(new Error(message+(diagnostic?'（'+diagnostic+'）':'')),{safe:true,status,usageLimit:usage,speedRejected,webRejected,reasoningRejected,param,code:safeCode,serverDetail:details.serverDetail,diagnostic:details,diagnosticText:JSON.stringify(details,null,2)});
   }
   function requestBody(messages,model){
     const instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');
@@ -64,7 +84,7 @@
       for(let attempt=0;attempt<2;attempt++){
         const token=await this.auth.accessToken(id,attempt===1),response=await this.fetch(ENDPOINT+path,{...options,redirect:'error',headers:{'Content-Type':'application/json',...options.headers,Authorization:'Bearer '+token}});
         if(response.status===401&&attempt===0){try{await response.body?.cancel();}catch{}continue;}
-        if(!response.ok){let detail,responseShape;try{detail=await response.json();}catch{responseShape='non-json';}throw failure(response.status,detail,{requestID:response.headers?.get('x-request-id'),responseShape});}return response;
+        if(!response.ok){let detail,responseShape;try{detail=await response.json();}catch{responseShape='non-json';}const text=typeof detail?.detail==='string'?detail.detail:typeof detail?.error==='string'?detail.error:undefined;throw failure(response.status,detail,{requestID:response.headers?.get('x-request-id'),responseShape,...serverDetail(text,options.body,token)});}return response;
       }
     }
     async models(){

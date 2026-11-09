@@ -100,3 +100,19 @@ test('diagnostics describe request features as counts only and never repeat an i
 test('SSE capability failures keep partial text and structured diagnostics',async()=>{
  const f=fixture([event({type:'response.output_text.delta',delta:'部分回答'}),event({type:'response.failed',response:{error:{code:'subscription_sharing_unsupported_capability',param:'reasoning.effort',message:'PRIVATE'}}})]);await assert.rejects(f.client.generate([{role:'user',content:'q'}]),e=>{assert.equal(e.reasoningRejected,true);assert.equal(e.partial,'部分回答');assert.equal(JSON.parse(e.diagnosticText).request.model,'available-model');return true;});
 });
+test('unclassified admission detail is retained after credential and request-content redaction',async()=>{
+ const f=fixture([]);let calls=0;f.client.fetch=async()=>{calls++;return Response.json({detail:'Route validation failed: input message is not supported. Bearer subscription-secret. access_token=subscription-secret; refresh_token=refresh-secret; private question; private.pdf; data:image/png;base64,U0VDUkVU; user@example.com; C:\\private\\paper.pdf'},{status:400});};
+ await assert.rejects(f.client.generate([{role:'user',content:[{type:'text',text:'private question'},{type:'file',file:{filename:'private.pdf',file_data:'data:application/pdf;base64,U0VDUkVU'}}]}]),e=>{const d=JSON.parse(e.diagnosticText);assert.equal(d.responseShape,'detail-string');assert.match(d.serverDetail,/Route validation failed: input message is not supported/);assert.doesNotMatch(d.serverDetail,/subscription-secret|refresh-secret|private question|private\.pdf|U0VDUkVU|user@example|C:\\private/);assert.equal(e.param,'');return true;});assert.equal(calls,1);
+});
+test('server detail is bounded literal text and encoded request echoes are redacted',async()=>{
+ const f=fixture([]),question='私密原文\n含"引号"';f.client.fetch=async()=>Response.json({detail:'Validation: '+JSON.stringify(question)+'; '+('x'.repeat(9000))},{status:400});
+ await assert.rejects(f.client.generate([{role:'user',content:question}]),e=>{const d=JSON.parse(e.diagnosticText);assert.ok(d.serverDetail.length<=2000);assert.doesNotMatch(d.serverDetail,/私密原文|引号/);assert.equal(d.serverDetailTruncated,true);return true;});
+});
+test('updated account and web settings are used by the next request rather than cached in the client',async()=>{
+ const f=fixture([event({type:'response.completed'})]);let account={id:'account',model:'gpt-6.1-sol',speed:'fast',reasoningEffort:'high'},web={mode:'auto',images:true};f.auth.active=()=>account;f.client.getWebOptions=()=>web;
+ await f.client.generate([{role:'user',content:'q'}]);assert.equal(JSON.parse(f.calls[0].options.body).service_tier,'priority');assert.ok(JSON.parse(f.calls[0].options.body).tools);
+ account={...account,speed:'default',reasoningEffort:'default'};web={mode:'off',images:true};await f.client.generate([{role:'user',content:'q'}]);const body=JSON.parse(f.calls[1].options.body);assert.equal(body.service_tier,'default');assert.equal(body.reasoning,undefined);assert.equal(body.tools,undefined);
+});
+test('quoted credential fields are scrubbed while diagnostic error codes stay readable',async()=>{
+ const f=fixture([]);f.client.fetch=async()=>Response.json({detail:'Admission failed; error code: admission_rejected; "refresh_token":"json-refresh-secret"; oauth_code=oauth-secret'},{status:400});await assert.rejects(f.client.generate([{role:'user',content:'q'}]),e=>{const d=JSON.parse(e.diagnosticText);assert.match(d.serverDetail,/admission_rejected/);assert.doesNotMatch(d.serverDetail,/json-refresh-secret|oauth-secret/);return true;});
+});

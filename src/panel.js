@@ -325,7 +325,14 @@
       }catch(e){
         if(answer){answer.content=e.partial??answer.content;answer.incomplete=true;}
         conversation.draft=this.question.value;C.touchConversation(conversation);this.error(e);
-        if(e.diagnosticText&&answerCard&&!this.destroyed){const details=e.diagnosticText;const copyButton=button(this.doc,'复制错误诊断',()=>{this.host.copy(details);this.status.textContent='错误诊断已复制（仅错误编号、字段和请求配置，不含正文、附件字节或登录凭据）。';});copyButton.className='zma-error-diagnostic';answerCard.append(copyButton);}
+        if(e.serverDetail&&answerCard&&!this.destroyed){const details=el(this.doc,'details',undefined,'zma-error-details');details.append(el(this.doc,'summary','服务端错误说明'),el(this.doc,'pre',e.serverDetail));answerCard.append(details);}
+        if(e.diagnosticText&&answerCard&&!this.destroyed){const details=e.diagnosticText;const copyButton=button(this.doc,'复制错误诊断',()=>{this.host.copy(details);this.status.textContent='错误诊断已复制；如有服务端说明，已脱敏后附上。';});copyButton.className='zma-error-diagnostic';answerCard.append(copyButton);}
+        if(provider==='chatgpt'&&e.status===400&&e.diagnostic?.request&&(e.diagnostic.request.serviceTier!=='default'||e.diagnostic.request.webSearch||e.diagnostic.request.reasoning!=='default')&&answerCard&&!this.destroyed){const retryButton=button(this.doc,'以标准模式关闭联网重试',async()=>{
+          if(this.busy)return;if(this.host.provider!=='chatgpt'){this.status.textContent='当前服务已改变，请发送当前问题。';return;}
+          await this.host.setChatGPTSpeed('default');await this.host.setChatGPTReasoning('default');await this.host.setWebMode('off');this.refreshProvider();
+          if(this.conversation()!==conversation||this.quotes.question(this.question.value.trim())!==question){this.status.textContent='已设为标准速度、默认思考强度并关闭联网，请发送当前问题。';return;}
+          await this.send();
+        });retryButton.className='zma-retry-compatible';answerCard.append(retryButton);}
         if(e.reasoningRejected&&answerCard&&!this.destroyed){const retryButton=button(this.doc,'使用默认思考强度重试',async()=>{
           if(this.busy)return;await this.host.setChatGPTReasoning('default');this.refreshProvider();
           if(this.conversation()!==conversation||this.quotes.question(this.question.value.trim())!==question){this.status.textContent='已切换为模型默认思考强度，请发送当前问题。';return;}
