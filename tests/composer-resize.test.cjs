@@ -5,7 +5,7 @@ async function setup(){
   const page=await browser.newPage({viewport:{width:1280,height:900}});
   await page.setContent('<style>body{margin:0;overflow:hidden}#split-view{position:fixed;inset:40px 0 0;background:#ddd}</style><div id="split-view"></div>');
   await page.addStyleTag({path:path.join(project,'src/assistant.css')});
-  for(const name of ['core','deepseek','clipboard','panel'])await page.addScriptTag({path:path.join(project,'src',name+'.js')});
+  for(const name of ['core','deepseek','clipboard','docks','panel'])await page.addScriptTag({path:path.join(project,'src',name+'.js')});
   await page.evaluate(async()=>{const state=ZMACore.emptyState();globalThis.host={load:async()=>state,save:async()=>{},addon:{bridge:{renderMathPreview:(node,value)=>node.textContent=value}},copy:async()=>{},appearanceState:()=>({fontSize:14})};globalThis.panel=await new ZMAPanel.Panel(host,{itemID:1},document).init();panel.showChat();panel.question.value='原始草稿 \\(y=Hu+e\\)';panel.question.dispatchEvent(new Event('input',{bubbles:true}));panel.question.focus();panel.question.setSelectionRange(3,3);});
   return {browser,page};
 }

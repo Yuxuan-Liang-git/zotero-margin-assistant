@@ -59,3 +59,79 @@ body.zma-assistant-open #split-view,body.zma-assistant-open .split-view{right:va
 .zma-reading-note{overflow-wrap:anywhere}.zma-reading-note strong{font-weight:inherit}.zma-reading-note em{font-style:normal}
 
 .zma-notion-view{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;gap:7px}.zma-notion-view h3{margin:5px 0}.zma-notion-view>.zma-actions{display:flex;gap:6px;flex-wrap:wrap;margin:0}.zma-notion-status,.zma-notion-hint{font-size:12px;line-height:1.5;margin:0;color:GrayText}.zma-notion-view select{max-width:100%;min-width:0}.zma-notion-viewport{flex:1;min-height:120px;position:relative;border:1px solid color-mix(in srgb,CanvasText 25%,Canvas);border-radius:4px;overflow:hidden;background:Canvas}
+
+body.zma-docks-open #split-view,
+body.zma-docks-open .split-view {
+  left: var(--zma-dock-left, 0px) !important;
+  right: var(--zma-dock-right, 0px) !important;
+  width: auto !important;
+}
+.zma-notion-dock {
+  position: fixed;
+  top: 40px;
+  bottom: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  background: Canvas;
+  color: CanvasText;
+  font: 14px/1.55 system-ui, sans-serif;
+}
+.zma-notion-dock[hidden], .zma-notion-dock [hidden] { display: none !important; }
+.zma-notion-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.zma-dock-title { flex: 1; font-size: 14px; white-space: nowrap; }
+.zma-notion-dock button, .zma-notion-toolbar {
+  padding: 5px 9px;
+  border: 1px solid #aaa;
+  border-radius: 5px;
+  background: ButtonFace;
+  color: ButtonText;
+  cursor: pointer;
+  font: inherit;
+}
+.zma-notion-dock button:disabled { opacity: .5; cursor: default; }
+.zma-notion-dock select { padding: 7px; font: inherit; }
+.zma-dock-panel[data-dock-side="left"] { border-left: 0; border-right: 1px solid #aaa; }
+.zma-dock-panel[data-dock-side="right"] { border-right: 0; border-left: 1px solid #aaa; }
+.zma-dock-panel[data-dock-side="left"] > .zma-resizer { left: auto; right: 0; }
+.zma-dock-panel[data-dock-side="right"] > .zma-resizer { left: 0; right: auto; }
+.zma-dock-header { cursor: grab; touch-action: none; user-select: none; }
+.zma-dock-header button { cursor: pointer; }
+.zma-dock-drop-hint {
+  position: fixed;
+  top: 42px;
+  z-index: 10030;
+  padding: 10px 18px;
+  border: 2px dashed #655bd5;
+  border-radius: 6px;
+  background: Canvas;
+  color: CanvasText;
+  pointer-events: none;
+  font: 14px/1.5 system-ui, sans-serif;
+}
+.zma-dock-drop-hint[data-side="left"] { left: 8px; }
+.zma-dock-drop-hint[data-side="right"] { right: 8px; }
+.zma-notion-header { gap: 3px; margin-bottom: 5px; }
+.zma-notion-dock .zma-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.zma-notion-dock .zma-icon-button svg { width: 16px; height: 16px; }
+.zma-notion-command-menu { flex: none; padding: 6px 0 10px; }
+.zma-notion-command-menu .zma-actions { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 8px; }
+.zma-notion-command-menu select { width: 100%; margin-bottom: 8px; }
+.zma-dock-command-menu { flex: none; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 3px; margin-bottom: 8px; }
+.zma-panel .zma-dock-command-menu .zma-icon-button { width: 100%; height: auto; padding: 6px; gap: 7px; justify-content: flex-start; }
+.zma-panel .zma-status:empty { display: none; }
+.zma-reader-dock-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; }
+.zma-reader-dock-button svg { width: 16px; height: 16px; }

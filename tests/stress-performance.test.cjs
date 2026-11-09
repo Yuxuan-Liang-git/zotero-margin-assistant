@@ -17,7 +17,7 @@ async function setup(){
   for(const file of ['core','references','math','markdown'])await page.addScriptTag({path:path.join(ROOT,'src',file+'.js')});
   await page.addScriptTag({path:path.join(ROOT,'content','vendor','marked','marked.umd.js')});
   await page.addScriptTag({path:path.join(ROOT,'build','content','scripts','margincomments.js')});
-  for(const file of ['deepseek','transfer','transfer-ui','panel','streaming'])await page.addScriptTag({path:path.join(ROOT,'src',file+'.js')});
+  for(const file of ['deepseek','transfer','transfer-ui','docks','panel','streaming'])await page.addScriptTag({path:path.join(ROOT,'src',file+'.js')});
   await page.evaluate(async()=>{
     const bridge=Zotero.MarginComments.bridge,render=bridge.renderMathPreview;
     globalThis.mathRenderCalls=0;

@@ -10,6 +10,7 @@
   const Images=root.ZMAImages||(typeof require!=='undefined'?require('./images.js'):null);
   const Attachments=root.ZMAAttachments||(typeof require!=='undefined'?require('./attachments.js'):null);
   const Reading=root.ZMAReadingSummary||(typeof require!=='undefined'?require('./reading-summary.js'):null);
+  const Docks=root.ZMADocks||(typeof require!=='undefined'?require('./docks.js'):null);
   const Notion=root.ZMANotion||(typeof require!=='undefined'?require('./notion.js'):null);
   const Instructions=root.ZMAInstructions||(typeof require!=='undefined'?require('./instructions.js'):null);
   const ID='margin-comments-assistant@local.zotero';
@@ -20,6 +21,7 @@
     constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null,chatgptListen=null,chooseChatFiles=null,readClipboardAssets=null,chooseConversationFile=null,notionBrowser=null}){
       this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.referenceSignatures=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
       this.customPrompt=Instructions?Instructions.restore(Z.Prefs?.get('margincomments.customPrompt')):'';
+      this.dockLayout=Docks?Docks.normalize(Z.Prefs?.get('margincomments.dockLayout')):{};
       this.notionBrowser=notionBrowser;
       this.credentialError='';
       this.credentials=Z.Prefs&&Z.OSKeyStore&&Credentials?new Credentials.CredentialStore({
@@ -46,6 +48,17 @@
       }
       this.readingAuto=Z.Prefs?.get('margincomments.readingSummaryAuto')!==false;
       this.readingSummary=Reading?new Reading.Manager({key:r=>C.scopeKey(this.scope(r)),load:r=>this.load(r),save:(r,s)=>this.save(r,s),publish:(r,text,record,force)=>this.publishReadingSummary(r,text,record,force),context:r=>this.readingSummaryContext(r),prepareMessages:messages=>this.prepareMessages(messages),client:()=>this.selectedClient(),controller:()=>this.newAbortController(),foreground:()=>this.activeRequests.size>0||this.transferTasks.size>0,enabled:()=>this.running&&this.readingAuto&&(this.provider==='chatgpt'?!!this.auth?.active()?.accessToken:!!this.key),notify:(r)=>{const key=C.scopeKey(this.scope(r));for(const p of this.panels.values())if(C.scopeKey(this.scope(p.reader))===key)p.refreshReadingSummary?.();}}):null;
+    }
+    dockLayoutAPI(){
+      return {
+        state:()=>({...this.dockLayout}),
+        save:value=>{
+          const layout=Docks.normalize(value);
+          this.Z.Prefs?.set('margincomments.dockLayout',JSON.stringify(layout));
+          this.dockLayout=layout;
+          for(const panel of this.panels.values())if(!panel.destroyed)panel.docks?.setState(layout);
+        }
+      };
     }
     notionLinks(reader){return Notion?Notion.linksForReader(this.Z,reader):Promise.resolve([]);}
     createNotionBrowser(reader,anchor,onState){if(!this.notionBrowser)throw new Error('Notion 网页模块不可用，请更新插件并完全重启 Zotero');return this.notionBrowser(reader,anchor,onState);}
@@ -244,7 +257,7 @@
     async panel(reader){
       if(!this.running||this.closedReaders.has(reader))throw new Error('阅读助手或窗口已关闭');
       const cached=this.panels.get(reader),docNow=reader._iframeWindow?.document;
-      if(cached&&!cached.destroyed&&cached.doc===docNow){if(!cached.node.isConnected){this.installStyles(docNow);docNow.body.append(cached.node);}return cached;}
+      if(cached&&!cached.destroyed&&cached.doc===docNow){if(!cached.node.isConnected){this.installStyles(docNow);docNow.body.append(cached.node);}if(cached.notion&&!cached.notion.destroyed&&!cached.notion.node.isConnected)docNow.body.append(cached.notion.node);cached.refreshDocks?.();return cached;}
       if(cached){this.panels.delete(reader);await cached.destroy();}
       if(this.pending.has(reader))return this.pending.get(reader);
       const task=(async()=>{
@@ -383,14 +396,33 @@
     };
     onToolbar=event=>{
       if(!this.isPDF(event.reader))return;
-      const reader=event.reader;const b=root.ZMAPanel.button(event.doc,'DeepSeek / ChatGPT',async()=>{const panel=await this.panel(reader);panel.showChat();});b.className='zma-toolbar';b.title='打开 DeepSeek / ChatGPT 文档提问侧边栏';event.append(b);
+      const reader=event.reader;
+      for(const kind of ['assistant','notion'])event.append(this.toolbarButton(reader,event.doc,kind));
       this.watchToolbar(reader,event.doc);
       this.guard(async()=>{const session=await this.addon.controller.ensureSession(reader);if(session&&!this.closedReaders.has(reader)){this.bindReferences(reader,session.adapter.document());this.decorateSession(session);}});
     };
+    toolbarButton(reader,doc,kind){
+      const assistant=kind==='assistant';
+      const button=root.ZMAPanel.iconButton(doc,assistant?'DeepSeek / ChatGPT':'打开 Notion 笔记栏',assistant?'comment':'notion',async()=>{
+        const panel=await this.panel(reader);
+        if(assistant)panel.showChat();
+        else if(panel.notion?.visible)panel.notion.hide();
+        else await panel.showNotion();
+      });
+      button.classList.add(assistant?'zma-toolbar':'zma-notion-toolbar','zma-reader-dock-button');
+      button.title=assistant?'打开文档助手栏':'打开或关闭 Notion 笔记栏';
+      if(!assistant)button.setAttribute('aria-label','打开 Notion 笔记栏');
+      return button;
+    }
     ensureToolbar(reader,doc){
-      if(!this.running||this.closedReaders.has(reader))return;const buttons=[...doc.querySelectorAll('.zma-toolbar')];
-      if(buttons.length){buttons.slice(1).forEach(b=>b.remove());return;}
-      const container=doc.querySelector('.toolbar .end .custom-sections');if(container)this.onToolbar({reader,doc,append:b=>container.append(b)});
+      if(!this.running||this.closedReaders.has(reader))return;
+      const container=doc.querySelector('.toolbar .end .custom-sections');
+      if(!container)return;
+      for(const [kind,selector]of [['assistant','.zma-toolbar'],['notion','.zma-notion-toolbar']]){
+        const buttons=[...doc.querySelectorAll(selector)];
+        buttons.slice(1).forEach(button=>button.remove());
+        if(!buttons.length)container.append(this.toolbarButton(reader,doc,kind));
+      }
     }
     watchToolbar(reader,doc){
       if(!doc.body||!doc.defaultView?.MutationObserver)return;
@@ -409,7 +441,7 @@
         this.toolbarObservers.set(doc,{reader,toolbar:null,discoveryObserver});return;
       }
       const observer=new doc.defaultView.MutationObserver(records=>{
-        if(records.some(record=>record.target?.closest?.('.custom-sections')||record.target?.matches?.('.custom-sections')||[...record.addedNodes,...record.removedNodes].some(node=>relevant(node,'.zma-toolbar,.custom-sections'))))recover();
+        if(records.some(record=>record.target?.closest?.('.custom-sections')||record.target?.matches?.('.custom-sections')||[...record.addedNodes,...record.removedNodes].some(node=>relevant(node,'.zma-toolbar,.zma-notion-toolbar,.custom-sections'))))recover();
       });observer.observe(toolbar,observerOptions({childList:true,subtree:true}));
       const parent=toolbar.parentElement;let parentObserver=null;
       if(parent){parentObserver=new doc.defaultView.MutationObserver(records=>{if(doc.querySelector('.toolbar')!==toolbar&&records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>relevant(node,'.toolbar'))))recover();});parentObserver.observe(parent,observerOptions({childList:true}));}
@@ -461,7 +493,7 @@
       for(const entry of this.cleanups.values())entry.dispose();this.cleanups.clear();this.cache.clear();this.documents.clear();this.pdfFiles.clear();
       this.states.clear();this.referenceSignatures.clear();this.activeRequests.clear();
       for(const win of this.settingsWindows)win.close();this.settingsWindows.clear();
-      for(const reader of this.Z.Reader._readers||[])reader._iframeWindow?.document.querySelectorAll('.zma-toolbar,#zma-styles,#zma-math-styles').forEach(n=>n.remove());
+      for(const reader of this.Z.Reader._readers||[])reader._iframeWindow?.document.querySelectorAll('.zma-toolbar,.zma-notion-toolbar,#zma-styles,#zma-math-styles').forEach(n=>n.remove());
       await this.store.flush();
     }
   }

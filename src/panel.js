@@ -8,7 +8,7 @@
     if(tag==='textarea')node.setAttribute('contenteditable','false');return node;}
   function button(doc,label,action){const b=el(doc,'button',label);b.type='button';b.addEventListener('click',()=>Promise.resolve().then(action).catch(e=>doc.defaultView?.alert?.(e.message)));return b;}
   function iconButton(doc,label,kind,action){
-    const b=button(doc,label,action),svg=doc.createElementNS('http://www.w3.org/2000/svg','svg'),path=doc.createElementNS('http://www.w3.org/2000/svg','path'),icons={new:'M8 3v10M3 8h10',history:'M2 7a6 6 0 1 1 1 4M2 3v4h4M8 4v4l3 2',reference:'M2 3h4a3 3 0 0 1 2 1 3 3 0 0 1 2-1h4v10h-4a3 3 0 0 0-2 1 3 3 0 0 0-2-1H2zM8 4v10',settings:'M6 2h4l.5 2 2 .5 1.5 3-1.5 1.5.5 2-3 2L8 12l-2 1-3-2 .5-2L2 7.5l1.5-3 2-.5zM10 7.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0',close:'M4 4l8 8M12 4l-8 8',attach:'M5 9l5-5a2 2 0 0 1 3 3l-6 6a3.5 3.5 0 0 1-5-5l6-6',page:'M4 2h5l3 3v9H4zM9 2v4h3M6 9h4M6 11h4',send:'M8 13V3M3.5 7.5L8 3l4.5 4.5',stop:'M4 4h8v8H4z',copy:'M6 2h7v9h-3M3 5h7v9H3z',note:'M3 2h10v9l-3 3H3zM10 14v-3h3M5 5h6M5 8h5',notion:'M3 2h10v12H3zM5 11V5l6 6V5',comment:'M2 2h12v9H7l-4 3v-3H2zM5 5h6M5 8h4'};
+    const b=button(doc,label,action),svg=doc.createElementNS('http://www.w3.org/2000/svg','svg'),path=doc.createElementNS('http://www.w3.org/2000/svg','path'),icons={new:'M8 3v10M3 8h10',history:'M2 7a6 6 0 1 1 1 4M2 3v4h4M8 4v4l3 2',reference:'M2 3h4a3 3 0 0 1 2 1 3 3 0 0 1 2-1h4v10h-4a3 3 0 0 0-2 1 3 3 0 0 0-2-1H2zM8 4v10',settings:'M6 2h4l.5 2 2 .5 1.5 3-1.5 1.5.5 2-3 2L8 12l-2 1-3-2 .5-2L2 7.5l1.5-3 2-.5zM10 7.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0',close:'M4 4l8 8M12 4l-8 8',attach:'M5 9l5-5a2 2 0 0 1 3 3l-6 6a3.5 3.5 0 0 1-5-5l6-6',page:'M4 2h5l3 3v9H4zM9 2v4h3M6 9h4M6 11h4',send:'M8 13V3M3.5 7.5L8 3l4.5 4.5',stop:'M4 4h8v8H4z',copy:'M6 2h7v9h-3M3 5h7v9H3z',note:'M3 2h10v9l-3 3H3zM10 14v-3h3M5 5h6M5 8h5',more:'M3 8h.1M8 8h.1M13 8h.1',notion:'M3 2h10v12H3zM5 11V5l6 6V5',comment:'M2 2h12v9H7l-4 3v-3H2zM5 5h6M5 8h4'};
     svg.setAttribute('viewBox','0 0 16 16');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.5');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');path.setAttribute('d',icons[kind]||icons.new);svg.append(path);b.replaceChildren(svg);b.classList.add('zma-icon-button');b.setAttribute('aria-label',label);b.title=label;return b;
   }
   class QuoteBubbles{
@@ -99,8 +99,19 @@
       const header=el(d,'header',undefined,'zma-header'),tools=el(d,'nav',undefined,'zma-header-actions');header.append(el(d,'strong','文档助手','zma-heading'),tools);
       this.historyButton=iconButton(d,'对话记录','history',()=>this.conversationList.hidden?this.showConversations():this.showChat());this.referenceButton=iconButton(d,'引用目录','reference',()=>this.directory.hidden?this.showDirectory():this.showChat());
       this.summaryButton=iconButton(d,'阅读摘要','note',()=>this.readingView.hidden?this.showReadingSummary():this.showChat());
-      this.notionButton=iconButton(d,'Notion 笔记','notion',()=>this.notion?.visible?this.showChat():this.showNotion());
-      this.newButton=iconButton(d,'新会话','new',()=>this.newConversation());tools.append(this.newButton,this.historyButton,this.summaryButton,this.referenceButton,this.notionButton,iconButton(d,'设置','settings',()=>this.host.settings()),iconButton(d,'关闭','close',()=>this.close()));
+      this.notionButton=iconButton(d,'Notion 笔记','notion',()=>this.notion?.visible?this.notion.hide():this.showNotion());
+      this.newButton=iconButton(d,'新会话','new',()=>this.newConversation());
+      this.commandMenu=el(d,'nav',undefined,'zma-dock-command-menu');
+      this.commandMenu.hidden=true;
+      this.commandMenu.setAttribute('aria-label','文档助手菜单');
+      for(const command of [this.newButton,this.historyButton,this.summaryButton,this.referenceButton,this.notionButton,iconButton(d,'设置','settings',()=>this.host.settings())]){
+        command.append(el(d,'span',command.getAttribute('aria-label')));
+        this.commandMenu.append(command);
+      }
+      this.menuButton=iconButton(d,'文档助手操作','more',()=>this.toggleCommandMenu());
+      this.menuButton.setAttribute('aria-expanded','false');
+      tools.append(this.menuButton,iconButton(d,'关闭','close',()=>this.close()));
+      this.commandMenu.addEventListener('click',event=>{if(event.target.closest('button'))this.toggleCommandMenu(false);});
       this.chat=el(d,'section');this.directory=el(d,'section');this.directory.hidden=true;this.conversationList=el(d,'section',undefined,'zma-conversations');this.conversationList.hidden=true;
       this.activeLabel=el(d,'strong',undefined,'zma-active-conversation');
       this.materialList=el(d,'div',undefined,'zma-materials');
@@ -113,23 +124,24 @@
       this.modelBadge=el(d,'span',undefined,'zma-model-badge');const actions=el(d,'div',undefined,'zma-composer-actions');actions.append(iconButton(d,'添加附件','attach',async()=>this.addFiles(await this.host.chooseAttachments())),iconButton(d,'添加当前页','page',()=>this.addMaterial(()=>this.host.currentPage(this.reader))),this.modelBadge,this.sendButton,this.stopButton);
       this.contextInfo=el(d,'p','文档背景：自动使用当前 PDF。','zma-context-info');
       this.contextDetails=el(d,'details',undefined,'zma-context');this.contextSummary=el(d,'summary','当前 PDF · 自动读取');this.contextDetails.append(this.contextSummary,this.contextInfo);
-      this.status=el(d,'p','Enter 发送 · Shift+Enter 换行','zma-status');this.status.setAttribute('role','status');
+      this.status=el(d,'p','','zma-status');this.question.title='Enter 发送，Shift+Enter 换行';this.status.setAttribute('role','status');
       const composer=el(d,'div',undefined,'zma-composer');composer.append(this.question,actions);this.chat.className='zma-chat';this.chat.append(this.activeLabel,this.contextDetails,this.messages,this.materialList,composer);
       this.installComposerResize(composer);
       this.previewArea=el(d,'section',undefined,'zma-previews');
       this.readingView=el(d,'section',undefined,'zma-reading-view');this.readingView.hidden=true;
       this.notion=root.ZMANotion?new root.ZMANotion.NotionView(this):null;this.notionButton.disabled=!this.notion;
-      this.node.append(header,this.previewArea,this.chat,this.conversationList,this.directory,this.readingView,...(this.notion?[this.notion.node]:[]),this.status);d.body.append(this.node);
+      this.node.append(header,this.commandMenu,this.previewArea,this.chat,this.conversationList,this.directory,this.readingView,this.status);d.body.append(this.node);if(this.notion)d.body.append(this.notion.node);
+      this.docks=new root.ZMADocks.DockController(this,header);
       this.node.addEventListener('click',event=>{const href=event.target.closest?.('a')?.getAttribute('href');if(/^https?:\/\//i.test(href||'')&&this.host.openExternal){event.preventDefault();event.stopPropagation();this.host.openExternal(href);}});
       this.quotes=new QuoteBubbles(this,composer);
-      this.directory.className='zma-directory';this.installResizeHandle();
+      this.directory.className='zma-directory';
       this.disposeClipboard=root.ZMAClipboard?.install(this.node,{copy:text=>this.host.copy(text),read:()=>this.host.readClipboard?.(),readFiles:()=>this.host.readAttachmentClipboard?.()||[],onFiles:files=>this.addFiles(files),onQuote:(text,anchor)=>this.quoteSelection(text,anchor),onError:error=>this.error(error)});
       this.question.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files')){event.preventDefault();event.stopPropagation();}});this.question.addEventListener('drop',event=>{if(event.dataTransfer?.files.length){event.preventDefault();event.stopPropagation();void this.addFiles(Array.from(event.dataTransfer.files)).catch(e=>this.error(e));}});
       this.transfer=root.ZMATransferUI?new root.ZMATransferUI.TransferUI(this):null;
       this.applyAppearance();this.refreshProvider();this.renderMaterials();this.renderMessages();this.renderConversationList();this.host.readingSummary?.schedule(this.reader);return this;
     }
     showReadingSummary(){
-      this.open('summary');this.hideNotion();this.activeView='summary';this.quotes.collapse();this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=true;this.readingView.hidden=false;this.summaryButton.setAttribute('aria-pressed','true');this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');this.refreshReadingSummary();this.quotes.layout();
+      this.open('summary');this.activeView='summary';this.quotes.collapse();this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=true;this.readingView.hidden=false;this.summaryButton.setAttribute('aria-pressed','true');this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');this.refreshReadingSummary();this.quotes.layout();
     }
     refreshReadingSummary(){
       if(!this.readingView||this.readingView.hidden||this.destroyed)return;const record=this.state.readingSummary,manager=this.host.readingSummary,phase=manager?.status(this.reader)||'idle',doc=this.doc;
@@ -160,18 +172,39 @@
       win.addEventListener('resize',this.fitComposer);const observer=win.ResizeObserver?new win.ResizeObserver(this.fitComposer):null;observer?.observe(this.chat);
       this.disposeComposerResize=()=>{drag=null;observer?.disconnect();win.removeEventListener('resize',this.fitComposer);};
     }
-    installResizeHandle(){
-      const handle=el(this.doc,'div',undefined,'zma-resizer');handle.setAttribute('role','separator');handle.setAttribute('aria-label','调整文档助手宽度');handle.setAttribute('aria-orientation','vertical');this.node.prepend(handle);
-      let dragging=false;const resize=e=>{if(!dragging)return;const viewport=this.doc.defaultView.innerWidth,width=Math.max(280,Math.min(viewport*.55,viewport-e.clientX));this.doc.documentElement.style.setProperty('--zma-assistant-user-width',`${width}px`);};
-      handle.addEventListener('pointerdown',e=>{dragging=true;handle.setPointerCapture?.(e.pointerId);e.preventDefault();});handle.addEventListener('pointermove',resize);handle.addEventListener('pointerup',e=>{resize(e);dragging=false;handle.releasePointerCapture?.(e.pointerId);});handle.addEventListener('pointercancel',()=>{dragging=false;});
+    toggleCommandMenu(open=this.commandMenu.hidden){
+      this.commandMenu.hidden=open===false;
+      this.menuButton.setAttribute('aria-expanded',String(!this.commandMenu.hidden));
+      this.refreshDocks();
     }
-    open(preferred){const wasHidden=this.node.hidden;this.node.hidden=false;this.doc.body.classList.add('zma-assistant-open');if(wasHidden&&!preferred){if(this.activeView==='notion'&&this.notion)void this.showNotion();else if(this.state.readingSummary?.text||this.state.readingSummary?.pendingText)this.showReadingSummary();}this.quotes?.layout();}
-    close(){this.notion?.hide();this.quotes?.collapse();this.node.hidden=true;if(this.quotes?.pdfPortal)this.quotes.pdfPortal.hidden=true;this.doc.body.classList.remove('zma-assistant-open');}
-    hideNotion(){this.notion?.hide();this.notionButton?.setAttribute('aria-pressed','false');this.status.hidden=false;}
-    async showNotion(){if(!this.notion)return;this.open('notion');this.activeView='notion';this.quotes.collapse();this.chat.hidden=this.directory.hidden=this.conversationList.hidden=this.readingView.hidden=true;for(const b of [this.summaryButton,this.historyButton,this.referenceButton])b.setAttribute('aria-pressed','false');this.notionButton.setAttribute('aria-pressed','true');this.status.hidden=true;this.quotes.layout();await this.notion.show();}
+    open(preferred){
+      const wasHidden=this.node.hidden;
+      this.node.hidden=false;
+      this.refreshDocks();
+      if(wasHidden&&!preferred&&(this.state.readingSummary?.text||this.state.readingSummary?.pendingText))this.showReadingSummary();
+      this.quotes?.layout();
+    }
+    close(){
+      this.toggleCommandMenu(false);
+      this.quotes?.collapse();
+      this.node.hidden=true;
+      if(this.quotes?.pdfPortal)this.quotes.pdfPortal.hidden=true;
+      this.refreshDocks();
+    }
+    refreshDocks(){
+      this.docks?.update();
+      const pressed=String(!!this.notion?.visible);
+      this.notionButton?.setAttribute('aria-pressed',pressed);
+      this.doc.querySelector('.zma-notion-toolbar')?.setAttribute('aria-pressed',pressed);
+    }
+    async showNotion(){
+      if(!this.notion)return;
+      this.quotes?.collapse();
+      await this.notion.show();
+    }
     conversation(){return C.activeConversation(this.state,this.conversationId);}
-    showChat(){this.open('chat');this.hideNotion();this.activeView='chat';this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=false;this.directory.hidden=true;this.conversationList.hidden=true;this.fitComposer?.();this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');}
-    showConversations(){this.quotes.collapse();this.open('history');this.hideNotion();this.activeView='history';this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=true;this.directory.hidden=true;this.conversationList.hidden=false;this.historyButton.setAttribute('aria-pressed','true');this.referenceButton.setAttribute('aria-pressed','false');this.renderConversationList();this.quotes.layout();}
+    showChat(){this.open('chat');this.activeView='chat';this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=false;this.directory.hidden=true;this.conversationList.hidden=true;this.fitComposer?.();this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','false');}
+    showConversations(){this.quotes.collapse();this.open('history');this.activeView='history';this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=true;this.directory.hidden=true;this.conversationList.hidden=false;this.historyButton.setAttribute('aria-pressed','true');this.referenceButton.setAttribute('aria-pressed','false');this.renderConversationList();this.quotes.layout();}
     renderConversationList(){
       this.conversationList.replaceChildren(button(this.doc,'新会话',()=>this.newConversation()));
       if(this.transfer)this.conversationList.append(button(this.doc,'导入对话',()=>this.transfer.open()));
@@ -409,7 +442,7 @@
     }
     async showDirectory(target){
       this.quotes.collapse();this.quotes.layout();
-      this.open('references');this.hideNotion();this.activeView='references';this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=false;this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','true');this.directory.replaceChildren();this.insertTarget=target;
+      this.open('references');this.activeView='references';this.readingView.hidden=true;this.summaryButton.setAttribute('aria-pressed','false');this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=false;this.historyButton.setAttribute('aria-pressed','false');this.referenceButton.setAttribute('aria-pressed','true');this.directory.replaceChildren();this.insertTarget=target;
       const query=el(this.doc,'input');query.placeholder='输入编号，例如 6.30';query.setAttribute('aria-label','查找引用编号');
       const type=el(this.doc,'select');type.append(el(this.doc,'option','全部'));C.TYPES.forEach(t=>type.append(el(this.doc,'option',t)));
       const list=el(this.doc,'div');
@@ -430,7 +463,7 @@
       query.addEventListener('input',refresh);type.addEventListener('change',refresh);this.directory.append(query,type,list);refresh();query.focus();
     }
     async preview(source){await this.host.previewReference(this.reader,source,this.insertTarget);}
-    async destroy(){this.destroyed=true;this.notion?.destroy();this.disposeComposerResize?.();await this.importTask?.catch(()=>{});this.transfer?.destroy();clearTimeout(this.webRenderTimer);this.quotes.destroy();this.liveRenderer?.finish();this.close();clearTimeout(this.draftTimer);this.controller?.abort();this.disposeMath?.();this.disposeClipboard?.();await this.host.save(this.reader,this.state).catch(()=>{});this.node.remove();}
+    async destroy(){this.destroyed=true;this.notion?.destroy();this.disposeComposerResize?.();await this.importTask?.catch(()=>{});this.transfer?.destroy();clearTimeout(this.webRenderTimer);this.quotes.destroy();this.liveRenderer?.finish();this.close();clearTimeout(this.draftTimer);this.controller?.abort();this.disposeMath?.();this.disposeClipboard?.();await this.host.save(this.reader,this.state).catch(()=>{});this.docks?.destroy();this.node.remove();}
   }
-  root.ZMAPanel={Panel,el,button};if(typeof module!=='undefined')module.exports=root.ZMAPanel;
+  root.ZMAPanel={Panel,el,button,iconButton};if(typeof module!=='undefined')module.exports=root.ZMAPanel;
 })(typeof _globalThis!=='undefined'?_globalThis:globalThis);

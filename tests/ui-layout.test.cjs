@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 async function setup(){
   const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true}),page=await browser.newPage({viewport:{width:1440,height:960}});
   await page.setContent('<style>body{margin:0;overflow:hidden}#split-view{position:fixed;left:0;right:0;top:40px;bottom:0;background:#eee}.zmc-card{position:absolute;right:10px;top:100px;width:264px;background:white;padding:8px;box-sizing:border-box}</style><div id="split-view"><article class="zmc-card" data-annotation-key="CURRENT2"><div class="zmc-card-preview"></div><footer></footer></article></div>');
-  for(const name of ['web','instructions','notion','reading-summary','core','capture','references','deepseek','settings','attachments','clipboard','panel','margin-references','reference-preview','host']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(fs.existsSync(file))await page.addScriptTag({path:file});}
+  for(const name of ['web','instructions','notion','reading-summary','core','capture','references','deepseek','settings','attachments','clipboard','docks','panel','margin-references','reference-preview','host']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(fs.existsSync(file))await page.addScriptTag({path:file});}
   await page.evaluate(css=>{
     const source={libraryID:1,attachmentKey:'ABCD1234',annotationKey:'FORM0630',id:'source1',type:'公式',number:'6.30',pageIndex:60,pageLabel:'60',rects:[[10,20,90,50]],fingerprint:'v1'};
     const state=ZMACore.emptyState();state.sources=[source];const link=ZMACore.sourceLink(source);state.references=[{annotationKey:'CURRENT2',sourceID:source.id,link}];
@@ -20,6 +20,11 @@ async function setup(){
   return {browser,page};
 }
 
+async function dockCommand(page,name,notion=false){
+ const command=page.getByRole('button',{name,exact:true});
+ if(!await command.isVisible())await page.getByRole('button',{name:notion?'Notion 栏操作':'文档助手操作',exact:true}).click();
+ await command.click();
+}
 async function enableSummaryRendering(page){
  await page.evaluate(()=>{globalThis._globalThis=globalThis;globalThis.Zotero={};});
  for(const file of ['src/math.js','src/markdown.js','content/vendor/marked/marked.umd.js','build/content/scripts/margincomments.js'])await page.addScriptTag({path:path.resolve(__dirname,'../'+file)});
@@ -29,7 +34,7 @@ test('reading summary opens a saved local note without inference and preserves t
  const {browser,page}=await setup();try{await enableSummaryRendering(page);await page.evaluate(async()=>{fixture.state.readingSummary=ZMAReadingSummary.clean({text:'### 正则性的作用\n\n这里解释公式 \\(x=1\\) 的条件。',updatedAt:1700000000000,noteKey:'NOTE0001'});globalThis.summaryPanel=await fixture.host.panel(fixture.reader);summaryPanel.open();summaryPanel.question.value='保留我的问题';globalThis.summaryCalls=0;fixture.host.selectedClient=()=>({generate:async()=>{summaryCalls++;throw Error('不应调用');}});});assert.ok(await page.locator('.zma-reading-view').isVisible());assert.match(await page.locator('.zma-reading-view').innerText(),/正则性的作用/);assert.equal(await page.evaluate(()=>summaryCalls),0);assert.equal(await page.locator('.zma-reading-note h3').count(),1);assert.equal(await page.locator('.zma-reading-view math').count(),1);await page.getByRole('button',{name:'返回对话',exact:true}).click();assert.equal(await page.locator('.zma-reading-view').isVisible(),false);assert.equal(await page.getByRole('textbox',{name:'问题',exact:true}).inputValue(),'保留我的问题');await page.evaluate(()=>{summaryPanel.close();summaryPanel.showChat();});assert.equal(await page.locator('.zma-reading-view').isVisible(),false);await page.evaluate(()=>{summaryPanel.close();summaryPanel.open();});assert.ok(await page.locator('.zma-reading-view').isVisible());assert.equal(await page.evaluate(()=>summaryCalls),0);}finally{await browser.close();}
 });
 test('reading summary can manually update and expose a protected pending version without losing the old note',async()=>{
- const {browser,page}=await setup();try{await enableSummaryRendering(page);await page.evaluate(async()=>{const {host,reader}=fixture;globalThis.summaryPanel=await host.panel(reader);summaryPanel.showChat();summaryPanel.conversation().history=[{role:'user',content:'解释难点',materials:[]},{role:'assistant',content:'回答已经澄清了需要验证的条件。',materials:[],incomplete:false}];globalThis.summaryPublishes=0;host.publishReadingSummary=async()=>({conflict:'manual-edit'});host.selectedClient=()=>({generate:async()=>['# 文章内容','研究参数估计。','# 关键公式解释','新的解释需要原文条件。','# 补充讨论','条件仍需核实。'].join('\n\n')});});await page.getByRole('button',{name:'阅读摘要',exact:true}).click();await page.getByRole('button',{name:'更新摘要',exact:true}).click();await page.waitForFunction(()=>summaryPanel.state.readingSummary?.pendingReason==='manual-edit');assert.match(await page.locator('.zma-reading-view').innerText(),/新的解释/);assert.ok(await page.getByRole('button',{name:'保存摘要新版本',exact:true}).isVisible());assert.equal(await page.evaluate(()=>summaryPanel.state.readingSummary.text),'');
+ const {browser,page}=await setup();try{await enableSummaryRendering(page);await page.evaluate(async()=>{const {host,reader}=fixture;globalThis.summaryPanel=await host.panel(reader);summaryPanel.showChat();summaryPanel.conversation().history=[{role:'user',content:'解释难点',materials:[]},{role:'assistant',content:'回答已经澄清了需要验证的条件。',materials:[],incomplete:false}];globalThis.summaryPublishes=0;host.publishReadingSummary=async()=>({conflict:'manual-edit'});host.selectedClient=()=>({generate:async()=>['# 文章内容','研究参数估计。','# 关键公式解释','新的解释需要原文条件。','# 补充讨论','条件仍需核实。'].join('\n\n')});});await dockCommand(page,'阅读摘要');await page.getByRole('button',{name:'更新摘要',exact:true}).click();await page.waitForFunction(()=>summaryPanel.state.readingSummary?.pendingReason==='manual-edit');assert.match(await page.locator('.zma-reading-view').innerText(),/新的解释/);assert.ok(await page.getByRole('button',{name:'保存摘要新版本',exact:true}).isVisible());assert.equal(await page.evaluate(()=>summaryPanel.state.readingSummary.text),'');
  const evidence=path.resolve(__dirname,'../evidence/ui-0141');fs.mkdirSync(evidence,{recursive:true});for(const scheme of ['light','dark']){await page.emulateMedia({colorScheme:scheme});await page.evaluate(s=>document.documentElement.style.colorScheme=s,scheme);await page.locator('.zma-panel').screenshot({path:path.join(evidence,'reading-summary-'+scheme+'.png')});}
  }finally{await browser.close();}
 });
@@ -47,9 +52,9 @@ test('an already processed old summary offers reorganization and becomes a stand
 test('Notion sidebar reuses the paper association and preserves its page across chat, close and reopen',async()=>{
  const {browser,page}=await setup();try{
   await page.evaluate(async()=>{const {host,reader}=fixture;globalThis.notionLoads=[];globalThis.notionVisibility=[];globalThis.notionDestroyed=0;host.notionLinks=async()=>[{id:5,title:'Notion',url:'https://www.notion.so/Paper-0123456789abcdef0123456789abcdef'}];host.createNotionBrowser=(_reader,anchor,onState)=>{const field=document.createElement('textarea');field.setAttribute('aria-label','模拟Notion正文');field.value='论文笔记';anchor.append(field);return {load:async url=>{notionLoads.push(url);onState({loading:false});},setVisible:v=>notionVisibility.push(v),destroy:()=>notionDestroyed++};};globalThis.notionPanel=await host.panel(reader);notionPanel.showChat();notionPanel.question.value='保留聊天草稿';});
-  await page.getByRole('button',{name:'Notion 笔记',exact:true}).click({timeout:1500});await page.getByRole('textbox',{name:'模拟Notion正文'}).fill('未丢失的网页输入');assert.equal(await page.locator('.zma-notion-view').isVisible(),true);assert.equal(await page.evaluate(()=>notionLoads.length),1);
-  await page.getByRole('button',{name:'返回对话',exact:true}).click();assert.equal(await page.getByRole('textbox',{name:'问题',exact:true}).inputValue(),'保留聊天草稿');assert.equal(await page.evaluate(()=>notionVisibility.at(-1)),false);
-  await page.getByRole('button',{name:'Notion 笔记',exact:true}).click();await page.evaluate(()=>{notionPanel.close();notionPanel.open();});await page.getByRole('textbox',{name:'模拟Notion正文'}).waitFor();assert.equal(await page.evaluate(()=>notionLoads.length),1);assert.equal(await page.getByRole('textbox',{name:'模拟Notion正文'}).inputValue(),'未丢失的网页输入');
+  await dockCommand(page,'Notion 笔记');await page.getByRole('textbox',{name:'模拟Notion正文'}).fill('未丢失的网页输入');assert.equal(await page.locator('.zma-notion-view').isVisible(),true);assert.equal(await page.evaluate(()=>notionLoads.length),1);
+  await dockCommand(page,'打开助手',true);assert.equal(await page.getByRole('textbox',{name:'问题',exact:true}).inputValue(),'保留聊天草稿');assert.equal(await page.evaluate(()=>notionVisibility.at(-1)),true);
+  await page.evaluate(()=>{notionPanel.close();notionPanel.open();});await page.getByRole('textbox',{name:'模拟Notion正文'}).waitFor();assert.equal(await page.evaluate(()=>notionLoads.length),1);assert.equal(await page.getByRole('textbox',{name:'模拟Notion正文'}).inputValue(),'未丢失的网页输入');
   const evidence=path.resolve(__dirname,'../evidence/ui-0150');fs.mkdirSync(evidence,{recursive:true});await page.locator('.zma-panel').screenshot({path:path.join(evidence,'notion-sidebar.png')});
   await page.evaluate(async()=>notionPanel.destroy());assert.equal(await page.evaluate(()=>notionDestroyed),1);
  }finally{await browser.close();}
@@ -57,15 +62,15 @@ test('Notion sidebar reuses the paper association and preserves its page across 
 
 test('a late Notion lookup cannot reopen a hidden pane and missing associations keep chat available',async()=>{
  const {browser,page}=await setup();try{
-  await page.evaluate(async()=>{const {host,reader}=fixture;host.notionLinks=()=>new Promise(resolve=>globalThis.finishNotion=resolve);globalThis.nativeCreated=0;host.createNotionBrowser=()=>{nativeCreated++;throw Error('should not create');};globalThis.notionPanel=await host.panel(reader);notionPanel.showChat();void notionPanel.showNotion();});await page.waitForFunction(()=>!!globalThis.finishNotion,{timeout:1500});await page.evaluate(()=>{notionPanel.showChat();finishNotion([{id:5,title:'Notion',url:'https://www.notion.so/0123456789abcdef0123456789abcdef'}]);});await page.waitForTimeout(30);assert.equal(await page.evaluate(()=>nativeCreated),0);assert.equal(await page.locator('.zma-chat').isVisible(),true);
-  await page.evaluate(async()=>{fixture.host.notionLinks=async()=>[];await notionPanel.showNotion();});assert.match(await page.locator('.zma-notion-view').innerText(),/没有找到 Notion 链接/);assert.equal(await page.getByRole('button',{name:'在浏览器打开',exact:true}).isDisabled(),true);
+  await page.evaluate(async()=>{const {host,reader}=fixture;host.notionLinks=()=>new Promise(resolve=>globalThis.finishNotion=resolve);globalThis.nativeCreated=0;host.createNotionBrowser=()=>{nativeCreated++;throw Error('should not create');};globalThis.notionPanel=await host.panel(reader);notionPanel.showChat();void notionPanel.showNotion();});await page.waitForFunction(()=>!!globalThis.finishNotion,{timeout:1500});await page.evaluate(()=>{notionPanel.notion.hide();notionPanel.showChat();finishNotion([{id:5,title:'Notion',url:'https://www.notion.so/0123456789abcdef0123456789abcdef'}]);});await page.waitForTimeout(30);assert.equal(await page.evaluate(()=>nativeCreated),0);assert.equal(await page.locator('.zma-chat').isVisible(),true);
+  await page.evaluate(async()=>{fixture.host.notionLinks=async()=>[];await notionPanel.showNotion();});assert.match(await page.locator('.zma-notion-view').innerText(),/没有找到 Notion 链接/);await page.getByRole('button',{name:'Notion 栏操作',exact:true}).click();assert.equal(await page.getByRole('button',{name:'在浏览器打开',exact:true}).isDisabled(),true);
  }finally{await browser.close();}
 });
 
 test('Notion page selection, explicit refresh and external opening use validated associated URLs',async()=>{
  const {browser,page}=await setup();try{
   await page.evaluate(async()=>{const {host,reader}=fixture;globalThis.notionLoads=[];globalThis.externalURL='';host.notionLinks=async()=>[{id:5,title:'Notion甲',url:'https://www.notion.so/0123456789abcdef0123456789abcdef'},{id:6,title:'Notion乙',url:'https://app.notion.com/fedcba9876543210fedcba9876543210'}];host.openExternal=url=>externalURL=url;host.createNotionBrowser=()=>({load:url=>notionLoads.push(url),setVisible:()=>{},destroy:()=>{}});globalThis.notionPanel=await host.panel(reader);await notionPanel.showNotion();});
-  await page.getByRole('combobox',{name:'关联的 Notion 页面'}).selectOption('6');await page.waitForFunction(()=>notionLoads.length===2);await page.getByRole('button',{name:'在浏览器打开',exact:true}).click();assert.match(await page.evaluate(()=>externalURL),/fedcba/);await page.getByRole('button',{name:'重新检测 / 刷新',exact:true}).click();await page.waitForFunction(()=>notionLoads.length===3);
+  await page.getByRole('button',{name:'Notion 栏操作',exact:true}).click();await page.getByRole('combobox',{name:'关联的 Notion 页面'}).selectOption('6');await page.waitForFunction(()=>notionLoads.length===2);await dockCommand(page,'在浏览器打开',true);assert.match(await page.evaluate(()=>externalURL),/fedcba/);await dockCommand(page,'重新检测 / 刷新',true);await page.waitForFunction(()=>notionLoads.length===3);
   await page.evaluate(async()=>{fixture.host.notionLinks=async()=>[{id:7,title:'错误链接',url:'javascript:alert(1)'}];await notionPanel.notion.show(true);});assert.equal(await page.evaluate(()=>notionLoads.length),3);assert.match(await page.locator('.zma-notion-status').innerText(),/有效的 Notion/);
  }finally{await browser.close();}
 });
@@ -187,7 +192,7 @@ test('reader focus navigation leaves composer caret, selection, multiline editin
 });
 
 test('chat keeps model/account/reasoning/speed configuration in settings and font changes preserve the draft caret',async()=>{
- const {browser,page}=await setup();try{const before=await page.evaluate(async()=>{globalThis.cleanPanel=await fixture.host.panel(fixture.reader);cleanPanel.showChat();cleanPanel.question.value='保留这段草稿';cleanPanel.question.focus();cleanPanel.question.setSelectionRange(2,4);return {selects:cleanPanel.node.querySelectorAll('.zma-chat select,.zma-provider-bar select').length,loginButtons:[...cleanPanel.node.querySelectorAll('button')].filter(b=>/登录|用量/.test(b.textContent)).length};});assert.equal(before.selects,0);assert.equal(before.loginButtons,0);await page.evaluate(()=>fixture.host.setFontSize(20));const after=await page.evaluate(()=>({font:getComputedStyle(cleanPanel.question).fontSize,messages:getComputedStyle(cleanPanel.messages).fontSize,text:cleanPanel.question.value,start:cleanPanel.question.selectionStart,end:cleanPanel.question.selectionEnd}));assert.equal(after.font,'20px');assert.equal(after.messages,'20px');assert.equal(after.text,'保留这段草稿');assert.equal(after.start,2);assert.equal(after.end,4);assert.equal(await page.getByRole('button',{name:'设置',exact:true}).count(),1);assert.equal(await page.getByRole('button',{name:'对话记录',exact:true}).count(),1);}finally{await browser.close();}
+ const {browser,page}=await setup();try{const before=await page.evaluate(async()=>{globalThis.cleanPanel=await fixture.host.panel(fixture.reader);cleanPanel.showChat();cleanPanel.question.value='保留这段草稿';cleanPanel.question.focus();cleanPanel.question.setSelectionRange(2,4);return {selects:cleanPanel.node.querySelectorAll('.zma-chat select,.zma-provider-bar select').length,loginButtons:[...cleanPanel.node.querySelectorAll('button')].filter(b=>/登录|用量/.test(b.textContent)).length};});assert.equal(before.selects,0);assert.equal(before.loginButtons,0);await page.evaluate(()=>fixture.host.setFontSize(20));const after=await page.evaluate(()=>({font:getComputedStyle(cleanPanel.question).fontSize,messages:getComputedStyle(cleanPanel.messages).fontSize,text:cleanPanel.question.value,start:cleanPanel.question.selectionStart,end:cleanPanel.question.selectionEnd}));assert.equal(after.font,'20px');assert.equal(after.messages,'20px');assert.equal(after.text,'保留这段草稿');assert.equal(after.start,2);assert.equal(after.end,4);await page.getByRole('button',{name:'文档助手操作',exact:true}).click();assert.equal(await page.getByRole('button',{name:'设置',exact:true}).count(),1);assert.equal(await page.getByRole('button',{name:'对话记录',exact:true}).count(),1);}finally{await browser.close();}
 });
 test('provider changes through settings refresh the model badge and route document context to the selected client',async()=>{
   const {browser,page}=await setup();try{
@@ -235,10 +240,42 @@ test('native class-based split view keeps Ctrl F search visible during assistant
 test('docked sidebar can resize while maintaining a visible document viewport',async()=>{
   const {browser,page}=await setup();try{
     await page.evaluate(async()=>{const panel=await fixture.host.panel(fixture.reader);panel.showChat();});
-    assert.equal(await page.locator('.zma-resizer').count(),1);
-    const box=await page.locator('.zma-resizer').boundingBox();await page.mouse.move(box.x+2,box.y+50);await page.mouse.down();await page.mouse.move(box.x-120,box.y+50);await page.mouse.up();
+    const handle=page.getByRole('separator',{name:'调整文档助手宽度',exact:true});
+    assert.equal(await handle.count(),1);
+    const box=await handle.boundingBox();await page.mouse.move(box.x+2,box.y+50);await page.mouse.down();await page.mouse.move(box.x-120,box.y+50);await page.mouse.up();
     const geometry=await page.evaluate(()=>({side:document.querySelector('.zma-panel').getBoundingClientRect().width,view:document.querySelector('#split-view').getBoundingClientRect().width}));assert.ok(geometry.side>=500);assert.ok(geometry.view>=400);
   }finally{await browser.close();}
+});
+
+test('disabling and re-enabling the plugin replaces both reader toolbar callbacks', async () => {
+  const { browser, page } = await setup();
+  try {
+    await page.evaluate(async () => {
+      const { host, reader } = fixture;
+      const toolbar = document.createElement('div');
+      toolbar.className = 'toolbar';
+      toolbar.innerHTML = '<div class="end"><div class="custom-sections"></div></div>';
+      document.body.append(toolbar);
+      host.Z.Reader = { _readers: [reader] };
+      host.ensureToolbar(reader, document);
+      await host.stop();
+      const replacement = new ZMAHost.Host(host.addon, {
+        Zotero: host.Z, IOUtils: host.IO, PathUtils: host.P, window
+      });
+      replacement.running = true;
+      replacement.load = async () => fixture.state;
+      replacement.save = async () => {};
+      replacement.ensureToolbar(reader, document);
+      fixture.host = replacement;
+    });
+    assert.equal(await page.locator('.zma-reader-dock-button').count(), 2);
+    await page.getByRole('button', { name: '打开 Notion 笔记栏', exact: true }).click();
+    await page.waitForFunction(() => fixture.host.panels.get(fixture.reader)?.notion?.visible, null, { timeout: 1500 });
+    assert.equal(await page.locator('.zma-notion-dock').isVisible(), true);
+    assert.equal(await page.locator('.zma-panel').isVisible(), false);
+  } finally {
+    await browser.close();
+  }
 });
 test('concurrent reference refreshes cannot discard the pending screenshot',async()=>{
   const {browser,page}=await setup();try{

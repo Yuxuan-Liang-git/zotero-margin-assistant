@@ -14,7 +14,7 @@
     const schedule=()=>{if(raf===null&&!destroyed)raf=win.requestAnimationFrame(align);};
     const observer=new win.ResizeObserver(schedule);observer.observe(anchor);observer.observe(frame);win.addEventListener('resize',schedule);reader._iframeWindow.addEventListener('resize',schedule);anchor.ownerDocument.addEventListener('scroll',schedule,true);
     const clear=()=>{clearTimeout(timer);timer=null;};
-    const listener={QueryInterface:platform.generateQI(['nsIWebProgressListener','nsISupportsWeakReference']),onStateChange(progress,_request,flags,status){if(destroyed||!progress.isTopLevel||!(flags&platform.STATE_STOP)||browser.currentURI?.spec==='about:blank')return;clear();if(status===platform.BINDING_ABORTED)return;onState({loading:false,error:!!status});},onLocationChange(){schedule();},onProgressChange(){},onStatusChange(){},onSecurityChange(){},onContentBlockingEvent(){}};
+    const listener={QueryInterface:platform.generateQI(['nsIWebProgressListener','nsISupportsWeakReference']),onStateChange(progress,_request,flags,status){if(destroyed||!progress.isTopLevel||!(flags&platform.STATE_STOP)||browser.currentURI?.spec==='about:blank')return;clear();if(status===platform.BINDING_ABORTED)return;onState({loading:false,error:!!status});schedule();},onLocationChange(){schedule();},onProgressChange(){},onStatusChange(){},onSecurityChange(){},onContentBlockingEvent(){}};
     browser.addProgressListener(listener,platform.NOTIFY_STATE_NETWORK);
     return {browser,portal,align,
       setVisible(value){visible=!!value;align();},

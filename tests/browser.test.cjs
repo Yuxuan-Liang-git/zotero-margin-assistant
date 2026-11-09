@@ -44,7 +44,7 @@ test('patched original editor preserves source anchors, formatting, math and rej
 test('question panel explicitly sends two regions, restores failure, and separates PDF sessions',async()=>{
   const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
   try{const page=await browser.newPage({viewport:{width:1400,height:900}});await page.setContent('<main>PDF 当前页：公式 (7.41)</main>');
-    for(const name of ['core','deepseek','panel']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(require('node:fs').existsSync(file))await page.addScriptTag({path:file});}
+    for(const name of ['core','deepseek','docks','panel']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(require('node:fs').existsSync(file))await page.addScriptTag({path:file});}
     const initial=await page.evaluate(async()=>{
       if(!globalThis.ZMAPanel)return false;
       const scope={libraryID:1,attachmentKey:'ABCD1234'};const states=new Map();globalThis.sends=[];
@@ -73,6 +73,7 @@ test('question panel explicitly sends two regions, restores failure, and separat
     await page.waitForFunction(()=>!panel1.busy);
     assert.equal(await page.locator('[data-zma="question"]').first().inputValue(),'新输入但尚未发送的追问');
     assert.equal(await page.evaluate(()=>panel1.conversation().draft),'新输入但尚未发送的追问');
+    await page.locator('.zma-panel').first().getByRole('button',{name:'文档助手操作'}).click();
     await page.locator('.zma-panel').first().getByRole('button',{name:'对话记录'}).click();
     await page.locator('.zma-panel').first().locator('.zma-conversations').getByRole('button',{name:'新会话'}).click();
     await page.waitForFunction(()=>panel1.state.conversations.length===2);
@@ -82,6 +83,7 @@ test('question panel explicitly sends two regions, restores failure, and separat
     await page.locator('[data-zma="send"]').first().click();
     await page.waitForFunction(()=>panel1.conversation().history.length===2&&!panel1.busy);
     assert.equal(await page.evaluate(()=>panel1.state.conversations[0].history.length),6);
+    await page.locator('.zma-panel').first().getByRole('button',{name:'文档助手操作'}).click();
     await page.locator('.zma-panel').first().getByRole('button',{name:'对话记录'}).click();
     await page.locator('.zma-panel').first().locator('.zma-conversations').getByRole('button',{name:'为什么使用前文公式？'}).click();
     await page.waitForFunction(()=>panel1.conversation().history.length===6);
@@ -94,7 +96,7 @@ test('question panel explicitly sends two regions, restores failure, and separat
 test('long PDF chat compacts older turns without losing raw history and streams without repeated Markdown work',async()=>{
   const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
   try{const page=await browser.newPage();await page.setContent('<main>Current PDF</main>');
-    for(const name of ['core','deepseek','panel'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});
+    for(const name of ['core','deepseek','docks','panel'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});
     const result=await page.evaluate(async()=>{
       const state=ZMACore.emptyState(),chat=ZMACore.activeConversation(state);
       for(let i=0;i<10;i++){chat.history.push({role:'user',content:`问题 ${i} `+'甲'.repeat(1700),materials:[]},{role:'assistant',content:`回答 ${i} `+'乙'.repeat(1700),materials:[],incomplete:false});}
@@ -179,7 +181,7 @@ test('display math with a plain LaTeX line break renders as two MathML rows',asy
 test('margin image button imports into PDF state and shows the saved image after card recreation',async()=>{
   const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
   try{const page=await browser.newPage();await page.setContent('<div id="card"><footer></footer></div>');
-    for(const name of ['core','deepseek','capture','panel','margin-references','host'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});
+    for(const name of ['core','deepseek','capture','docks','panel','margin-references','host'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});
     const available=await page.evaluate(async()=>{
       const host=new ZMAHost.Host({controller:{}},{Zotero:{DataDirectory:{dir:'/data'}},IOUtils:{},PathUtils:{join:(...p)=>p.join('/')},window,chooseImage:async()=>'/chosen/photo.png'});
       let state=ZMACore.emptyState();globalThis.imageImportCalls=[];globalThis.noteCalls=[];
