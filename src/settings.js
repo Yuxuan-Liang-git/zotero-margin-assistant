@@ -10,6 +10,13 @@
     container.querySelector('#zma-api-test').addEventListener('click',async event=>{const b=event.currentTarget;b.disabled=true;try{await apply();status.textContent='正在获取可用模型列表…';const models=await api.test();status.textContent=models.includes(model.value.trim())?'连接成功，当前模型可用。':'连接成功；当前模型不在列表中。可用模型：'+models.join(', ');}catch(e){status.textContent=e.message;}finally{b.disabled=false;}});
     if(api.chatgpt&&container.querySelector('#zma-provider'))bindChatGPT(container,api.chatgpt);
     if(container.querySelector('#zma-font-size'))bindAppearance(container,api.appearance);
+    if(container.querySelector('#zma-web-mode'))bindWeb(container,api.web);
+  }
+  function bindWeb(container,api){
+    const mode=container.querySelector('#zma-web-mode'),images=container.querySelector('#zma-web-images'),status=container.querySelector('#zma-web-status');let working=false;
+    const render=()=>{const state=api?.state()||{mode:'off',images:false};mode.value=state.mode;images.checked=state.images;mode.disabled=images.disabled=working||!api;};
+    const run=async action=>{working=true;render();try{await action();status.textContent='联网和配图设置已保存，下一次发送生效。';}catch(e){status.textContent=e.message;}finally{working=false;render();}};
+    mode.addEventListener('change',()=>{const value=mode.value;void run(()=>api.setMode(value));});images.addEventListener('change',()=>{const value=images.checked;void run(()=>api.setImages(value));});render();const dispose=api?.watch(render);if(dispose)container.ownerDocument.defaultView?.addEventListener('unload',dispose,{once:true});
   }
   function bindAppearance(container,api){
     const doc=container.ownerDocument,select=container.querySelector('#zma-font-size'),preview=container.querySelector('#zma-font-preview'),status=container.querySelector('#zma-appearance-status');

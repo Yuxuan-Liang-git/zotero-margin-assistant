@@ -1,6 +1,7 @@
 (function(root){
   'use strict';
   const D=root.ZMADeepSeek||(typeof require!=='undefined'?require('./deepseek.js'):null),ENDPOINT='https://api.openai.com/v1';
+  const W=root.ZMAWeb||(typeof require!=='undefined'?require('./web.js'):null);
   const EFFORTS=['none','minimal','low','medium','high','xhigh','max'];
   const CURRENT=/^gpt-(?:6(?:\.1)?-(?:sol|astra|luna)|5\.6-(?:sol|terra|luna))$/;
   function reasoningEfforts(model){
@@ -19,14 +20,15 @@
   function failure(status,detail){
     const error=detail&&typeof detail==='object'?detail:{code:detail},code=error.code;
     const usage=['subscription_sharing_usage_limit_exceeded','subscription_sharing_usage_unavailable'].includes(code);
-    const knownParams=['service_tier','reasoning.effort','reasoning','model','input','store','stream'];
+    const knownParams=['service_tier','reasoning.effort','reasoning','model','input','store','stream','tools','include','tool_choice'];
     const param=knownParams.includes(error.param)?error.param:'';
     // Inspect echoed text only to classify the field; never display or persist it.
     const speedRejected=!usage&&[0,400,403].includes(status)&&(param==='service_tier'||['unsupported_service_tier','invalid_service_tier','service_tier_not_supported'].includes(code)||/\bservice[_ ]tier\b/i.test(typeof error.message==='string'?error.message:typeof error.detail==='string'?error.detail:''));
+    const webRejected=!usage&&[0,400,403].includes(status)&&(/^(?:tools(?:\[\d+\])?(?:\.[a-z_]+)?|include|tool_choice)$/.test(error.param||'')||/web_search/i.test(error.message||error.detail||''));
     const safeCode=['subscription_sharing_usage_limit_exceeded','subscription_sharing_usage_unavailable','invalid_request_error','unsupported_parameter','invalid_value','context_length_exceeded'].includes(code)?code:'';
     const diagnostic=[status?'HTTP '+status:'',param?'参数 '+param:'',safeCode?'代码 '+safeCode:''].filter(Boolean).join('；');
-    const message=usage?'ChatGPT 订阅额度已用完或暂不可用，请点击“管理用量”检查额度。':speedRejected?'当前账户或订阅接入不接受所选速度档位，请以标准模式重试；不需要重建对话。':status===401?'ChatGPT 登录已失效，请重新登录。':status===429?'ChatGPT 请求限流，请稍后重试。':status===403?'当前 ChatGPT 账户无权使用此模型或速度档位，请切回标准、刷新模型列表或检查授权。':status===400?'ChatGPT 不接受此请求，请检查模型、思考强度、速度档位及所选材料。':'ChatGPT 响应失败，请稍后重试。';
-    return Object.assign(new Error(message+(diagnostic?'（'+diagnostic+'）':'')),{safe:true,status,usageLimit:usage,speedRejected,param,code:safeCode});
+    const message=usage?'ChatGPT 订阅额度已用完或暂不可用，请点击“管理用量”检查额度。':webRejected?'当前模型或账户不接受联网搜索/配图参数，请关闭联网搜索后重试，或更换模型。':speedRejected?'当前账户或订阅接入不接受所选速度档位，请以标准模式重试；不需要重建对话。':status===401?'ChatGPT 登录已失效，请重新登录。':status===429?'ChatGPT 请求限流，请稍后重试。':status===403?'当前 ChatGPT 账户无权使用此模型或速度档位，请切回标准、刷新模型列表或检查授权。':status===400?'ChatGPT 不接受此请求，请检查模型、思考强度、速度档位及所选材料。':'ChatGPT 响应失败，请稍后重试。';
+    return Object.assign(new Error(message+(diagnostic?'（'+diagnostic+'）':'')),{safe:true,status,usageLimit:usage,speedRejected,webRejected,param,code:safeCode});
   }
   function requestBody(messages,model){
     const instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');
@@ -41,8 +43,8 @@
     return {model,instructions,input,store:false,stream:true};
   }
   class ChatGPTClient{
-    constructor({auth,fetch,TextDecoder:Decoder=globalThis.TextDecoder,accountID=undefined}){this.auth=auth;this.fetch=fetch;this.Decoder=Decoder;this.accountID=accountID;}
-    forAccount(id){return new ChatGPTClient({auth:this.auth,fetch:this.fetch,TextDecoder:this.Decoder,accountID:id});}
+    constructor({auth,fetch,TextDecoder:Decoder=globalThis.TextDecoder,accountID=undefined,getWebOptions=()=>({mode:'off',images:false})}){this.auth=auth;this.fetch=fetch;this.Decoder=Decoder;this.accountID=accountID;this.getWebOptions=getWebOptions;}
+    forAccount(id){return new ChatGPTClient({auth:this.auth,fetch:this.fetch,TextDecoder:this.Decoder,accountID:id,getWebOptions:this.getWebOptions});}
     async request(path,options={},id=this.accountID||this.auth.state.activeID){
       for(let attempt=0;attempt<2;attempt++){
         const token=await this.auth.accessToken(id,attempt===1),response=await this.fetch(ENDPOINT+path,{...options,redirect:'error',headers:{'Content-Type':'application/json',...options.headers,Authorization:'Bearer '+token}});
@@ -56,21 +58,24 @@
       const models=(data.models||[]).filter(m=>m.visibility==='list'&&typeof m.slug==='string'&&/^[a-z0-9._-]{1,128}$/i.test(m.slug)).map(m=>{const levels=reasoningEfforts(m);return {slug:m.slug,displayName:typeof m.display_name==='string'?m.display_name:m.slug,...(levels.length?{reasoningEfforts:levels}:{}),speedTiers:speedTiers(m),capabilitiesVersion:2};});
       if(!models.length)throw Object.assign(new Error('当前 ChatGPT 账户没有可用模型，请检查订阅授权。'),{safe:true});await this.auth.setModels(id,models);return models;
     }
-    /** @param {any[]} messages @param {{signal?:AbortSignal,onDelta?:(delta:string)=>void,onServiceTier?:(info:any)=>void,maxTokens?:number,thinking?:any}} options */
-    async generate(messages,{signal,onDelta=(_delta)=>{},onServiceTier=(_info)=>{},maxTokens=undefined,thinking=undefined}={}){
-      let partial='',completed=false,reader;
+    /** @param {any[]} messages @param {{signal?:AbortSignal,onDelta?:(delta:string)=>void,onServiceTier?:(info:any)=>void,onWebUpdate?:(info:any)=>void,maxTokens?:number,thinking?:any}} options */
+    async generate(messages,{signal,onDelta=(_delta)=>{},onServiceTier=(_info)=>{},onWebUpdate=(_info)=>{},maxTokens=undefined,thinking=undefined}={}){
+      let partial='',completed=false,reader;const webState={used:false,citations:[],sources:[],images:[]},offsets=new Map();
       try{
         if(signal?.aborted)throw Error();const id=this.accountID||this.auth.state.activeID;let account=this.auth.state.accounts?.find(a=>a.id===id)||this.auth.active();
         if(!account?.model){await this.models();account=this.auth.state.accounts?.find(a=>a.id===id)||this.auth.active();}
         if(!account?.model)throw Object.assign(new Error('请先选择 ChatGPT 模型。'),{safe:true});
         const model=account.models?.find(m=>m.slug===account.model)||{slug:account.model},levels=reasoningEfforts(model),requested=thinking?.type==='disabled'?'low':account.reasoningEffort,speed=thinking?.type==='disabled'?'default':account.speed||'default';
         if(!speedTiers(model).includes(speed))throw Object.assign(new Error('当前模型不支持所选速度档位，请切换为标准或刷新模型列表。'),{safe:true});
+        /** @type {any} */
         const body={...requestBody(messages,account.model),service_tier:speed==='fast'?'priority':speed,...(requested&&requested!=='default'&&levels.includes(requested)?{reasoning:{effort:requested}}:{})};
+        const web=thinking?.type==='disabled'?{mode:'off'}:this.getWebOptions();
+        if(web?.mode==='auto'){body.tools=[{type:'web_search',...(web.images?{search_content_types:['text','image'],image_settings:{max_results:3,caption:true}}:{})}];body.tool_choice='auto';body.include=['web_search_call.action.sources',...(web.images?['web_search_call.results']:[])];body.instructions+='\n回答先给直观结论，再按问题需要解释关键概念、公式和例子，避免机械套用固定长模板。以当前PDF为主；需要外部背景、相关研究、最新资料或配图时主动检索网络，优先原始论文与官方资料，标明外部来源，区分论文内容和补充说明。仅在实际检索后声称联网。网络图片只选有助于解释的图，注明出处，不称为当前论文原图，不编造图片地址。';}
         const response=await this.request('/responses',{method:'POST',signal,headers:{Accept:'text/event-stream'},body:JSON.stringify(body)},id);
         if(!response.body?.getReader)throw Error();reader=response.body.getReader();const decoder=new this.Decoder('utf-8');let buffer='';const refusals=new Set();
         const consume=block=>{
           const data=block.split('\n').filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trim()).join('\n');if(!data||data==='[DONE]')return;
-          const value=JSON.parse(data);
+          const value=JSON.parse(data),key=`${value.item_id||''}:${value.content_index||0}`;if(value.type==='response.output_text.delta'&&!offsets.has(key))offsets.set(key,Array.from(partial).length);if(W&&(value.type.startsWith('response.web_search_call.')||['response.output_text.annotation.added','response.output_item.done','response.completed'].includes(value.type))){W.collect(webState,value,offsets.get(key)??offsets.get(`${value.item?.id||''}:0`)??0);if(webState.used||webState.citations.length||webState.images.length)onWebUpdate(W.clean(webState));}
           if(value.type==='response.output_text.delta'&&typeof value.delta==='string'){partial+=value.delta;if(partial.length>1000000)throw Error();onDelta(value.delta);}
           else if(value.type==='response.refusal.delta'||value.type==='response.refusal.done'){
             const key=`${value.item_id||''}:${value.content_index||0}`;

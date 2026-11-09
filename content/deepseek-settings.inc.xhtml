@@ -8,6 +8,11 @@
       <html:p id="zma-appearance-status" role="status" style="margin:0"></html:p>
       <html:p>12–24 px，默认 14 px。即时应用于所有文档助手的文字、公式与输入框，重启后保留；不修改 PDF 页面和 Zotero 主界面字号。</html:p>
       <html:h3>ChatGPT 订阅</html:h3>
+      <html:label for="zma-web-mode">联网搜索</html:label>
+      <html:select id="zma-web-mode"><html:option value="auto">自动：需要补充资料时检索</html:option><html:option value="off">关闭：仅使用文档与对话</html:option></html:select>
+      <html:label><html:input id="zma-web-images" type="checkbox" />展示检索配图</html:label>
+      <html:p id="zma-web-status" role="status" style="margin:0"></html:p>
+      <html:p>仅用于 ChatGPT，是否可用取决于模型、账户及工作区权限。搜索词可能包含问题或文档主题；配图最多 3 张，加载时连接来源网站，不自动保存图片副本。DeepSeek 继续使用当前文档上下文。</html:p>
       <html:p>使用自己的 ChatGPT 订阅，无需 OpenAI API Key。登录会在系统浏览器打开 OpenAI 授权页；登录信息在本机加密保存。</html:p>
       <html:label for="zma-provider">默认 AI 服务</html:label>
       <html:select id="zma-provider"><html:option value="deepseek">DeepSeek API</html:option><html:option value="chatgpt">ChatGPT 订阅</html:option></html:select>

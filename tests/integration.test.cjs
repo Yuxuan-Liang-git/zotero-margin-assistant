@@ -10,6 +10,10 @@ function fixture(overrides={}){
   return {host,Z,annotation,attachment,events,files};
 }
 
+test('web preferences survive host reconstruction and cannot change during an active request',async()=>{
+ const prefs=new Map(),overrides={Prefs:{get:k=>prefs.get(k),set:(k,v)=>prefs.set(k,v)}},{host}=fixture(overrides);assert.deepEqual(host.webState(),{mode:'auto',images:true});let notified=0;const stop=host.webAPI().watch(()=>notified++);await host.setWebMode('off');await host.setWebImages(false);assert.equal(notified,2);assert.deepEqual(fixture(overrides).host.webState(),{mode:'off',images:false});host.claimRequest({itemID:1});await assert.rejects(host.setWebMode('auto'));assert.equal(host.webState().mode,'off');host.releaseRequest({itemID:1});stop();await host.setWebMode('auto');assert.equal(notified,2);
+});
+
 test('automatic context captures text-bearing formula pages, respects capacity and reports skipped images',async()=>{
  const {host}=fixture(),captured=[];host.addon.controller.ensureSession=async()=>({adapter:{currentPageIndex:()=>0,pdfWindow:{PDFViewerApplication:{pdfDocument:{numPages:2,getPage:async()=>({view:[0,0,600,800],getTextContent:async()=>({items:[{str:'Formula prose'}]})})}}},pdfViewer:{}}});
  host.capture=async(_r,source)=>{captured.push(source.pageIndex);return {source,dataURL:'data:image/png;base64,YQ==',width:600,height:800};};

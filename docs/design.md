@@ -174,3 +174,15 @@ PDF 文字/区域可与对话批注混用：发送前重新 capture 每个有内
 0.12.7 的 PDF 分支在找不到可见编号时，用 logical AND 跳过聊天托盘查找，得到 boolean false。可选链只跳过 null/undefined，因此随后 anchor?.getBoundingClientRect() 仍尝试调用 false 上不存在的方法。改为显式 null 表示不存在的元素，并用条件表达式选择元素边界或已有 PDF 可视区域回退几何。来源、气泡内容、草稿格式和发送流程不变。
 
 回归覆盖尚未渲染的 page（adapter.page 返回 undefined）、隐藏编号、重新打开并编辑已有内容，确保气泡仍在 PDF 可视区域内；实际 Gecko 验收也暂时将 page lookup 置为空再恢复，验证同一回退分支。
+
+## 0.13.0 按需联网与检索配图
+
+用户选择继续插件模式。沿用当前 PDF 材料、订阅授权和本地会话，不嵌入网页。参考 [LibreChat 的检索与来源分层](https://www.librechat.ai/docs/features/web_search)，把检索协议/元数据、引用排版、检索配图区分别处理；没有复制其代码。订阅接入限制依 [OpenAI 官方说明](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)，参数和图像结果依 [Web search 官方指南](https://developers.openai.com/api/docs/guides/tools-web-search)。
+
+仅 ChatGPT 普通问答按设置添加 Responses web_search 工具和 tool_choice:auto，图像开启时增加 search_content_types、image_settings 与 results include。摘要请求不带工具。不存在“发送前总是搜索”的额外调用；由模型按问题决定。提示以 PDF 为依据，先直观解释再按需展开，外部资料明确标注。默认自动检索并允许配图，设置页可分别关闭；开关保存在 Zotero 首选项并在下一次请求生效，生成中禁止更改。
+
+web.js 统一收集搜索事件、URL 注释、最终 sources/results，去重并限量（40个引用、20个其他来源、3张图片）。URL 只允许公开 HTTP(S)，图片只允许 HTTPS，拒绝含凭据和常见本机/私有地址；这不是完整的 DNS 级网络隔离。图片必须同时有源站地址，不接受模型在普通 Markdown 中随意插入远程图片。结构化图片使用无 Referer、懒加载和加载失败的来源回退，标注其不是论文原图。原 HTML 仍不执行。
+
+保留原回答以维持注释偏移和选区引用，显示/复制/后续上下文时将 URL 注释变为编号链接；保护数学分隔块，避免把链接插进公式。来源与图片说明/地址作为可选 assistant.web 写入原 v2 JSON，不含图像字节和凭据。流式来源节流更新，不为每个检索事件重绘完整 Markdown/MathML；最终整理后沿用原阅读位置规则。
+
+搜索参数被账户/模型拒绝时不静默重试。只有用户点击“关闭联网搜索并重试”才保存关闭设置并重发，复用失败问答位置，保留附件、批注草稿及原问题。实际账户是否开放搜索/图像结果需要线上验收；本轮原生验证用合成推理/搜索响应，检索配图不是图像生成功能。

@@ -30,13 +30,18 @@
       this.client=new D.DeepSeekClient({fetch:(...args)=>this.runtimeWindow().fetch(...args),getKey:()=>this.key,getModel:()=>this.model,TextDecoder:win?.TextDecoder});
       this.provider=Z.Prefs?.get('margincomments.provider')==='chatgpt'?'chatgpt':'deepseek';this.providerListeners=new Set();this.authError='';
       const fontSize=Z.Prefs?.get('margincomments.fontSize');this.fontSize=Number.isSafeInteger(fontSize)&&fontSize>=12&&fontSize<=24?fontSize:14;this.appearanceListeners=new Set();
+      this.webPreferences={mode:Z.Prefs?.get('margincomments.webMode')==='off'?'off':'auto',images:Z.Prefs?.get('margincomments.webImages')!==false};
       if(this.credentials&&Auth&&GPT){
         const platform={crypto:win?.crypto||globalThis.crypto,URL:win?.URL||globalThis.URL,URLSearchParams:win?.URLSearchParams||globalThis.URLSearchParams,TextEncoder:win?.TextEncoder||globalThis.TextEncoder,TextDecoder:win?.TextDecoder||globalThis.TextDecoder,AbortController:win?.AbortController||globalThis.AbortController,atob:win?.atob?.bind(win)||globalThis.atob,btoa:win?.btoa?.bind(win)||globalThis.btoa};
         this.auth=new Auth.AuthManager({adapter:this.credentials.adapter,platform,fetch:(...args)=>this.runtimeWindow().fetch(...args),listen:chatgptListen||(()=>{throw new Error('ChatGPT 登录监听器不可用，请重新安装插件并重启 Zotero。');}),openBrowser:url=>this.Z.launchURL(url),onChange:()=>this.providersChanged()});
-        this.chatgpt=new GPT.ChatGPTClient({auth:this.auth,fetch:(...args)=>this.runtimeWindow().fetch(...args),TextDecoder:win?.TextDecoder});
+        this.chatgpt=new GPT.ChatGPTClient({auth:this.auth,fetch:(...args)=>this.runtimeWindow().fetch(...args),TextDecoder:win?.TextDecoder,getWebOptions:()=>this.webState()});
       }
     }
     providerLabel(){return this.provider==='chatgpt'?'ChatGPT':'DeepSeek';}
+    webState(){return {...this.webPreferences};}
+    webAPI(){return {state:()=>this.webState(),setMode:value=>this.setWebMode(value),setImages:value=>this.setWebImages(value),watch:listener=>{this.providerListeners.add(listener);return ()=>this.providerListeners.delete(listener);}};}
+    async setWebMode(value){this.providerIdle();if(!['auto','off'].includes(value))throw new Error('联网搜索选项无效');this.Z.Prefs?.set('margincomments.webMode',value);this.webPreferences.mode=value;this.providersChanged();}
+    async setWebImages(value){this.providerIdle();if(typeof value!=='boolean')throw new Error('配图选项无效');this.Z.Prefs?.set('margincomments.webImages',value);this.webPreferences.images=value;this.providersChanged();}
     appearanceState(){return {fontSize:this.fontSize};}
     appearanceAPI(){return {state:()=>this.appearanceState(),setFontSize:value=>this.setFontSize(value),watch:listener=>{this.appearanceListeners.add(listener);return ()=>this.appearanceListeners.delete(listener);}};}
     async setFontSize(value){const size=Number(value);if(!Number.isSafeInteger(size)||size<12||size>24)throw new Error('字体大小须为 12 至 24 px 的整数');this.Z.Prefs?.set('margincomments.fontSize',size);this.fontSize=size;for(const panel of this.panels.values())panel.applyAppearance?.();for(const listener of this.appearanceListeners)listener();}
@@ -259,6 +264,7 @@
     }
     jump(reader,source){const location={pageIndex:source.pageIndex,annotationID:source.fullPage||source.selection?undefined:source.annotationKey};reader._internalReader?.navigate?.(location);}
     copy(text){this.Z.Utilities.Internal.copyTextToClipboard(text);}
+    openExternal(url){this.Z.launchURL(url);}
     importAttachment(reader,input){if(!this.attachmentManager)throw new Error('附件模块不可用，请重启 Zotero');return this.attachmentManager.import(reader,input);}
     loadAttachment(reader,record){return this.attachmentManager.load(reader,record);}
     readAttachmentClipboard(){return this.readClipboardAssets?.()||[];}
@@ -270,7 +276,7 @@
       if(!this.credentials)throw new Error('当前 Zotero 不支持安全保存密钥');
       await this.credentials.save(key,model);
       if(key.trim())this.key=key.trim();this.model=model.trim();this.credentialError='';this.providersChanged();
-    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),appearance:this.appearanceAPI(),chatgpt:this.chatGPTAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
+    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),appearance:this.appearanceAPI(),web:this.webAPI(),chatgpt:this.chatGPTAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
     async restoreCredentials(){
       if(!this.credentials){this.credentialError='当前 Zotero 不支持安全保存密钥';return;}
       try{const saved=await this.credentials.load();this.key=saved.key;this.model=saved.model;this.credentialError='';}
