@@ -55,7 +55,7 @@
 
 ## 安装
 
-目前支持 Zotero 桌面版 10.0.x，主要在 Windows 环境验证。当前发布版为 [v0.19.0](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.0)；其他 Zotero 大版本尚未列入兼容范围。
+目前支持 Zotero 桌面版 10.0.x，主要在 Windows 环境验证。当前发布版为 [v0.19.1](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.1)；其他 Zotero 大版本尚未列入兼容范围。
 
 从 [Releases](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/latest) 的 Assets 下载 `.xpi` 安装包。在 Zotero 中打开“工具 → 插件”，通过右上角齿轮菜单的“从文件安装插件”选择该文件。已有版本可直接覆盖安装，随后完全退出并重新打开 Zotero。
 
@@ -132,6 +132,8 @@ npm test
 ```
 
 构建结果位于 `dist/`。`baseline/` 保留定制基线，`src/` 存放扩展模块，`scripts/build.py` 在生成目录中完成集成。`build/` 会在构建时重建，手写文件应放在源码目录中。测试浏览器目前默认使用 Windows Chrome 路径。
+
+0.19.1 已通过 399 项自动回归、JavaScript 类型检查，以及隔离 Zotero 10.0.8 首启和冷重启各 13 项原生验收；最终安装包另通过网页进程退出后的恢复及 Cookie 保留测试，见 [修复说明](docs/2026-11-09-notion-browser-recovery-release.md)。真实 Notion 私有页面登录和编辑未在自动化中执行。
 
 0.19.0 的已有验证记录包括 396 项自动回归通过，以及隔离 Zotero 10.0.7 首启、冷重启各 17 项通过；具体范围见 [该版说明](docs/2026-11-05-page-images-release.md)。这些记录对应当时的测试环境，不能替代其他平台和账户的实际使用验证。
 

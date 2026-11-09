@@ -558,3 +558,28 @@ test('completed long answers open at their beginning instead of jumping to the l
 test('manual reading during generation preserves position when the answer finishes',async()=>{
  const {browser,page}=await setup();try{await page.evaluate(async()=>{const host=fixture.host;host.documentContext=async()=>({mode:'full-text',text:'PDF',pages:[1],totalPages:1});host.client.generate=(_m,{onDelta})=>new Promise(resolve=>{const text='首段定义\n\n'+'推导过程\n\n'.repeat(150);onDelta(text);globalThis.finishReadingAnswer=()=>resolve(text);});globalThis.readingPanel=await host.panel(fixture.reader);readingPanel.showChat();readingPanel.question.value='解释';globalThis.readingSend=readingPanel.send();});await page.waitForFunction(()=>!!globalThis.finishReadingAnswer);const before=await page.evaluate(()=>{readingPanel.messages.dispatchEvent(new WheelEvent('wheel',{deltaY:-120,bubbles:true}));readingPanel.messages.scrollTop=200;return readingPanel.messages.scrollTop;});await page.evaluate(async()=>{finishReadingAnswer();await readingSend;});assert.ok(Math.abs((await page.evaluate(()=>readingPanel.messages.scrollTop))-before)<3);}finally{await browser.close();}
 });
+
+test('Notion browser failure leaves chat usable and is retried after reopening', async () => {
+  const { browser, page } = await setup();
+  try {
+    await page.evaluate(async () => {
+      const { host, reader } = fixture;
+      globalThis.recoveryLoads = 0;
+      host.notionLinks = async () => [{ id: 5, title: 'Notion', url: 'https://www.notion.so/0123456789abcdef0123456789abcdef' }];
+      host.createNotionBrowser = (_reader, _anchor, onState) => {
+        globalThis.notionBrowserState = onState;
+        return { load: async () => { recoveryLoads++; onState({ loading: false }); }, setVisible() {}, destroy() {} };
+      };
+      globalThis.recoveryPanel = await host.panel(reader);
+      recoveryPanel.question.value = 'Keep this unsent question';
+      await recoveryPanel.showNotion();
+      notionBrowserState({ loading: false, error: true, crashed: true });
+      recoveryPanel.showChat();
+    });
+    assert.equal(await page.locator('.zma-chat').isVisible(), true);
+    assert.equal(await page.getByRole('textbox', { name: '问题', exact: true }).inputValue(), 'Keep this unsent question');
+    await page.evaluate(async () => { recoveryPanel.notion.hide(); await recoveryPanel.showNotion(); });
+    assert.equal(await page.evaluate(() => recoveryLoads), 2);
+    assert.equal(await page.locator('.zma-notion-status').isVisible(), false);
+  } finally { await browser.close(); }
+});

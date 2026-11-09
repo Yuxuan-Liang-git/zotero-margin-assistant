@@ -4,7 +4,7 @@ const { create } = require('../src/notion-browser.js');
 
 test('native Notion geometry catches up when animation frames are suspended in a background window', async () => {
   let listener;
-  const node = () => ({ style: {}, setAttribute() {}, append() {}, remove() {}, addProgressListener: value => { listener = value; }, removeProgressListener() {}, currentURI: { spec: 'http://127.0.0.1/notion' } });
+  const node = () => ({ style: {}, isConnected: true, frameLoader: { remoteTab: {} }, browsingContext: {}, addEventListener() {}, removeEventListener() {}, setAttribute() {}, append() {}, remove() {}, addProgressListener: value => { listener = value; }, removeProgressListener() {}, currentURI: { spec: 'http://127.0.0.1/notion' } });
   const win = { document: { createXULElement: node }, requestAnimationFrame: () => 17, cancelAnimationFrame() {}, addEventListener() {}, removeEventListener() {}, ResizeObserver: class { observe() {} disconnect() {} } };
   const rect = { left: 12, top: 108, width: 279, height: 407 };
   const anchor = { isConnected: true, getBoundingClientRect: () => rect, ownerDocument: { addEventListener() {}, removeEventListener() {} } };

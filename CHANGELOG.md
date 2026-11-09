@@ -1,10 +1,18 @@
 # 更新日志
 
-这里记录各版本带来的功能、修复和行为变化。当前推荐版本为 [v0.19.0](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.0)，安装和操作见 [使用指南](docs/user-guide.md)。
+这里记录各版本带来的功能、修复和行为变化。当前推荐版本为 [v0.19.1](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.1)，安装和操作见 [使用指南](docs/user-guide.md)。
 
 现有44个历史版本于2026年11月9日从保留的源码 ZIP 和 XPI 整理入库，覆盖0.10.0至0.19.0。Git 提交和归档发布日期表示整理时间，原始逐次开发提交未保存在这些 ZIP 中。版本说明依据归档 README、开发记录及源码差异整理；现有资料缺少0.13.9的完整归档，因此没有创建对应标签。
 
 各版 Releases 保留原始 XPI、源码 ZIP 和 SHA-256 校验文件。机器可读目录见 [versions.json](releases/versions.json)，后续提交与发布规范见 [版本管理](docs/version-management.md)。
+
+### v0.19.1 · 修复 Notion 网页进程失效后无法重开
+
+修复 Zotero 10.0.8 中 Notion 网页进程退出后，刷新时报 `remoteTab is null` 且关闭重开仍无法加载的问题。加载前异步等待网页容器就绪；检测到失效进程时重建容器，并清除失败链接的加载缓存。健康网页仍保留关闭重开时的页面状态，Cookie 沿用原配置。
+
+399 项自动回归及类型检查通过；隔离 Zotero 10.0.8 首启、冷重启各 13 项通过，最终安装包另通过进程失效恢复和测试 Cookie 保留验证。真实 Notion 私有登录和编辑未自动验证，最初网页进程退出的原因仍待观察。
+
+[下载与说明](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.1) · [验证范围](docs/2026-11-09-notion-browser-recovery-release.md)
 
 ### v0.19.0 · 支持原图查看、页面贴图与带图导出
 

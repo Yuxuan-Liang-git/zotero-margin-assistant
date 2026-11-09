@@ -45,8 +45,8 @@
       this.selection.addEventListener('change',()=>{const link=this.links?.find(l=>String(l.id)===this.selection.value);if(link){this.toggleMenu(false);void this.load(link).catch(e=>this.fail(e));}});
     }
     toggleMenu(open=this.menu.hidden){this.menu.hidden=!open;this.menuButton.setAttribute('aria-expanded',String(open));this.panel.refreshDocks?.();}
-    fail(error){if(this.destroyed)return;this.message.hidden=false;this.message.textContent=error.message||'Notion 页面未能打开，可重新检测或在浏览器打开。';}
-    state(info){if(this.destroyed)return;this.message.hidden=!info.error&&!info.loading;this.message.textContent=info.error?'页面未能载入，可通过标题栏菜单刷新或在浏览器打开。':info.loading?'正在载入 Notion…':'';}
+    fail(error){if(this.destroyed||error?.name==='AbortError')return;this.loadedURL=null;this.message.hidden=false;this.message.textContent=error.message||'Notion 页面未能打开，可重新检测或在浏览器打开。';}
+    state(info){if(this.destroyed)return;if(info.error)this.loadedURL=null;this.message.hidden=!info.error&&!info.loading;this.message.textContent=info.error?'页面未能载入，可通过标题栏菜单刷新或在浏览器打开。':info.loading?'正在载入 Notion…':'';}
     async show(refresh=false){
       if(this.destroyed)return;this.visible=true;this.node.hidden=false;this.panel.refreshDocks?.();const token=++this.request;this.message.hidden=false;this.message.textContent='正在查找当前文献的 Notion 链接…';
       try{const links=await this.host.notionLinks(this.panel.reader);if(this.destroyed||!this.visible||token!==this.request)return;this.links=links;
