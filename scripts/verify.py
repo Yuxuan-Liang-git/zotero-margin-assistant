@@ -12,16 +12,16 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--node',default=os.environ.get('ZMA_NODE','node'))
 parser.add_argument('--baseline-xpi',default='C:/Users/HP/Downloads/margin-comments-latex-custom-0.9.5.xpi')
 args=parser.parse_args()
-package=PROJECT/'dist/margin-comments-deepseek-0.10.0.xpi'
+package=PROJECT/'dist/margin-comments-deepseek-0.10.1.xpi'
 with zipfile.ZipFile(package) as archive:
     assert archive.testzip() is None
     names=set(archive.namelist())
     manifest=json.loads(archive.read('manifest.json'))
-    assert manifest['version']=='0.10.0'
+    assert manifest['version']=='0.10.1'
     assert manifest['applications']['zotero']['strict_min_version']=='10.0'
     assert manifest['applications']['zotero']['strict_max_version']=='10.0.*'
     assert manifest['applications']['zotero']['id']=='margin-comments@local.zotero'
-    assert 'update_url' not in manifest['applications']['zotero']
+    assert manifest['applications']['zotero']['update_url']=='https://updates.invalid/margin-comments-deepseek/update.json'
     for name in ['bootstrap.js','content/scripts/core.js','content/scripts/capture.js','content/scripts/references.js','content/scripts/deepseek.js','content/scripts/panel.js','content/scripts/host.js','content/scripts/assistant-settings.js','content/assistant-settings.xhtml','content/assistant.css','content/vendor/katex/katex.min.css']:
         assert name in names,name
     for path in (PROJECT/'build').rglob('*.js'):
@@ -43,7 +43,7 @@ if original.exists():
             if not name.endswith('/'):
                 assert (PROJECT/'baseline'/name).read_bytes()==archive.read(name),name
     baseline_verified=True
-source_zip=PROJECT/'dist/margin-comments-deepseek-0.10.0-source.zip'
+source_zip=PROJECT/'dist/margin-comments-deepseek-0.10.1-source.zip'
 with zipfile.ZipFile(source_zip,'w',zipfile.ZIP_DEFLATED) as archive:
     for folder in ['baseline','src','content','tests','scripts','docs']:
         for path in sorted((PROJECT/folder).rglob('*')):

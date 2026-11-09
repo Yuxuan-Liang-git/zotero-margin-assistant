@@ -1,6 +1,6 @@
 {
   "name": "zotero-margin-assistant-custom",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "private": true,
   "description": "Additive DeepSeek and numbered-region references for custom Margin Comments",
   "scripts": {

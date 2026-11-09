@@ -23,10 +23,12 @@ def build():
     out.mkdir(exist_ok=True)
     shutil.copytree(PROJECT / 'baseline', out, dirs_exist_ok=True)
     manifest = json.loads((out / 'manifest.json').read_text(encoding='utf-8'))
-    manifest['version'] = '0.10.0'
+    manifest['version'] = '0.10.1'
     manifest['name'] = 'Margin Comments + DeepSeek'
     manifest['description'] = '页边批注、LaTeX、DeepSeek 区域提问与手动编号前文引用'
-    manifest['applications']['zotero'].pop('update_url', None)
+    # Zotero 10.0.6 requires this field even for manually distributed add-ons.
+    # Reserved .invalid avoids accidentally installing an unrelated upstream build.
+    manifest['applications']['zotero']['update_url'] = 'https://updates.invalid/margin-comments-deepseek/update.json'
     (out / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
     script = out / 'content/scripts/margincomments.js'
     text = script.read_text(encoding='utf-8')
@@ -81,7 +83,7 @@ def build():
     shutil.copytree(PROJECT / 'content', out / 'content', dirs_exist_ok=True)
     dist = PROJECT / 'dist'
     dist.mkdir(exist_ok=True)
-    package = dist / 'margin-comments-deepseek-0.10.0.xpi'
+    package = dist / 'margin-comments-deepseek-0.10.1.xpi'
     with zipfile.ZipFile(package, 'w', zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(out.rglob('*')):
             if path.is_file():
