@@ -13,6 +13,7 @@ function fixture({ readOnly = false, noteHTML = '', embeddedFailure = false } = 
   const notes = new Map();
   const attachments = new Map();
   let nextID = 10;
+  let nextImage = 0;
   const annotation = {
     key: 'ANNOT001', id: 7, parentID: 1, annotationType: 'image',
     annotationPosition: JSON.stringify({ pageIndex: 2, rects: [[1, 2, 3, 4]] }),
@@ -44,7 +45,7 @@ function fixture({ readOnly = false, noteHTML = '', embeddedFailure = false } = 
     Attachments: {
       importEmbeddedImage: async ({ blob, parentItemID }) => {
         if (embeddedFailure) throw new Error('embedded import failed');
-        const image = { id: ++nextID, key: 'IMAGE001', parentID: parentItemID, blob, isEmbeddedImageAttachment: () => true, async eraseTx() { attachments.delete(this.id); byKey.delete(this.key); } };
+        const image = { id: ++nextID, key: 'IMAGE' + String(++nextImage).padStart(3, '0'), parentID: parentItemID, blob, isEmbeddedImageAttachment: () => true, async eraseTx() { attachments.delete(this.id); byKey.delete(this.key); } };
         attachments.set(image.id, image); byKey.set(image.key, image); return image;
       },
     },
@@ -68,7 +69,7 @@ function fixture({ readOnly = false, noteHTML = '', embeddedFailure = false } = 
     sourceLink: () => 'zotero://open-pdf/library/items/PDFKEY01?page=3&annotation=ANNOT001',
     runtimeWindow: () => ({ Blob, crypto: { randomUUID: () => '12345678-1234-4234-8234-123456789abc' }, btoa: value => Buffer.from(value, 'binary').toString('base64') }),
   };
-  let uuidNumber=0;host.runtimeWindow=()=>({Blob,crypto:{randomUUID:()=>uuidNumber++===0?'12345678-1234-4234-8234-123456789abc':'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},btoa:value=>Buffer.from(value,'binary').toString('base64')});
+  let uuidNumber=0;host.runtimeWindow=()=>({Blob,crypto:{randomUUID:()=>uuidNumber++===0?'12345678-1234-4234-8234-123456789abc':'aaaaaaaa-aaaa-4aaa-8aaa-'+String(uuidNumber).padStart(12,'0')},btoa:value=>Buffer.from(value,'binary').toString('base64')});
   if (noteHTML) {
     const note = new Z.Item('note'); note.libraryID = 1; note.parentID = 2; note.key = 'EXIST001'; note._note = noteHTML;
     notes.set(note.id, note); byKey.set(note.key, note);
@@ -91,6 +92,54 @@ test('copies a validated image beside the PDF and appends it to the PDF-specific
   assert.match(note.getNote(), /zotero:\/\/open-pdf\/library\/items\/PDFKEY01\?page=3&amp;annotation=ANNOT001/);
   assert.equal(state.images[0], record);
   assert.equal(state.imageNoteKey, 'EXIST001');
+});
+
+test('pasted byte buffers, cross-window ArrayBuffers and dropped Blobs use the same native note and local-copy pipeline', async () => {
+  const f = fixture();
+  f.host.attachmentManager = new (require('../src/attachments.js').AttachmentManager)(f.host);
+  const otherBuffer = require('node:vm').runInNewContext('new Uint8Array([137,80,78,71,13,10,26,10,0,1]).buffer');
+  const state = { images: [] }, manager = new ImageManager(f.host);
+  for (const input of [{ bytes: PNG }, { bytes: otherBuffer }, new Blob([PNG], { type: 'image/png' })]) {
+    const record = await manager.importImage(f.reader, 'ANNOT001', input, state);
+    assert.deepEqual([...f.files.get('C:\\papers\\margin-comments-images\\' + record.fileName)], [...PNG]);
+  }
+  assert.equal(state.images.length, 3);
+  assert.equal(f.notes.size, 1);
+  assert.equal(f.attachments.size, 3);
+  assert.equal(new Set(state.images.map(record => record.noteImageKey)).size, 3);
+});
+
+test('image paste rejects oversized or invalid content before it creates any note or image copy', async () => {
+  const f = fixture();
+  f.host.attachmentManager = new (require('../src/attachments.js').AttachmentManager)(f.host);
+  const manager = new ImageManager(f.host), state = { images: [] };
+  await assert.rejects(manager.importImage(f.reader, 'ANNOT001', { size: 11 * 1024 * 1024, arrayBuffer: () => { throw Error('must not read oversized input'); } }, state), /10 MiB/);
+  await assert.rejects(manager.importImage(f.reader, 'ANNOT001', { bytes: Uint8Array.from([1, 2, 3]) }, state), /图片格式/);
+  assert.equal(state.images.length, 0);
+  assert.equal(f.notes.size, 0);
+  assert.equal(f.attachments.size, 0);
+  assert.equal([...f.files.keys()].some(name => name.includes('margin-comments-images')), false);
+});
+
+test('deleting the target or stopping the host during a clipboard read prevents late image commits', async () => {
+  for (const stop of [false, true]) {
+    const f = fixture();
+    f.host.running = true;
+    f.host.attachmentManager = new (require('../src/attachments.js').AttachmentManager)(f.host);
+    let release, entered;
+    const started = new Promise(resolve => { entered = resolve; });
+    const input = { arrayBuffer: async () => { entered(); return new Promise(resolve => { release = () => resolve(PNG.buffer); }); } };
+    const manager = new ImageManager(f.host), state = { images: [] };
+    const insertion = manager.importImage(f.reader, 'ANNOT001', input, state);
+    const failure = assert.rejects(insertion, /批注|停止|停用/);
+    await started;
+    if (stop) f.host.running = false; else f.host.nativeAnnotation = () => null;
+    release(); await failure;
+    assert.equal(state.images.length, 0);
+    assert.equal(f.notes.size, 0);
+    assert.equal(f.attachments.size, 0);
+    assert.equal([...f.files.keys()].some(name => name.includes('margin-comments-images')), false);
+  }
 });
 
 test('rejects readonly PDFs, missing annotations, and bytes that do not match an allowed image', async () => {

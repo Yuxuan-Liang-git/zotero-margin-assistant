@@ -8,6 +8,7 @@
   const Auth=root.ZMAChatGPTAuth||(typeof require!=='undefined'?require('./chatgpt-auth.js'):null);
   const GPT=root.ZMAChatGPT||(typeof require!=='undefined'?require('./chatgpt.js'):null);
   const Images=root.ZMAImages||(typeof require!=='undefined'?require('./images.js'):null);
+  const MarginImages=root.ZMAMarginImages||(typeof require!=='undefined'?require('./margin-images.js'):null);
   const Attachments=root.ZMAAttachments||(typeof require!=='undefined'?require('./attachments.js'):null);
   const Reading=root.ZMAReadingSummary||(typeof require!=='undefined'?require('./reading-summary.js'):null);
   const Docks=root.ZMADocks||(typeof require!=='undefined'?require('./docks.js'):null);
@@ -313,12 +314,39 @@
       const imageButton=root.ZMAPanel.button(doc,'插入图片',()=>this.guard(async()=>{
         if(!this.chooseImage||!this.imageManager)throw new Error('图片导入尚未就绪');
         imageButton.disabled=true;
-        try{await session.persist(runtime);const path=await this.chooseImage(this.runtimeWindow());if(!path)return;const state=await this.load(session.reader);await this.imageManager.importImage(session.reader,runtime.annotation.key,path,state,()=>this.save(session.reader,state));await root.ZMAMarginReferences.sync(this,session,runtime,true);}
+        try{const path=await this.chooseImage(this.runtimeWindow());if(!path)return;if(runtime.imageInput)await runtime.imageInput.insert([path]);else{const result=await this.insertMarginImages(session,runtime,[path]);if(result.errors.length)throw new Error(result.errors.join('。'));}}
         finally{imageButton.disabled=!!runtime.annotation.readOnly;}
       }));imageButton.className='zma-insert-image';imageButton.disabled=runtime.annotation.readOnly;
       imageButton.addEventListener('pointerdown',e=>e.stopPropagation());imageButton.addEventListener('mousedown',e=>e.preventDefault());runtime.card.querySelector('footer')?.append(imageButton);
+      imageButton.title='选择图片，也可在批注中按 Ctrl+V 粘贴截图或拖入图片';
       runtime.referenceRoot=root.ZMAPanel.el(doc,'div',undefined,'zma-reference-stack');runtime.card.insertBefore(runtime.referenceRoot,runtime.card.querySelector('footer'));
+      MarginImages?.install(this,session,runtime,inputs=>this.insertMarginImages(session,runtime,inputs));
       this.syncReferences(session,runtime);
+    }
+    async insertMarginImages(session,runtime,inputs){
+      if(this.running===false)throw new Error('插件已停用，图片插入已停止');
+      if(!this.imageManager)throw new Error('图片导入尚未就绪');
+      await session.persist(runtime);
+      const state=await this.load(session.reader),errors=[];let inserted=0;
+      for(const input of inputs){
+        try{await this.imageManager.importImage(session.reader,runtime.annotation.key,input,state,()=>this.save(session.reader,state));inserted++;}
+        catch(error){errors.push(error.message);}
+      }
+      if(inserted){session.marginImageKeys??=new Set();session.marginImageKeys.add(runtime.annotation.key);}
+      await root.ZMAMarginReferences.sync(this,session,runtime,true);
+      return {inserted,errors};
+    }
+    async restoreMarginImages(session){
+      if(session.marginImageRestore)return session.marginImageRestore;
+      session.marginImageRestore=(async()=>{
+        const state=await this.load(session.reader);
+        if(!this.running||this.closedReaders.has(session.reader))return;
+        const keys=new Set();
+        for(const record of state.images||[]){const annotation=this.nativeAnnotation(session.reader,record.annotationKey);if(annotation&&!annotation.deleted&&annotation.annotationType!=='text')keys.add(record.annotationKey);}
+        session.marginImageKeys=keys;
+        if(keys.size)await session.refresh(true);
+      })().catch(error=>this.Z.logError?.(error));
+      return session.marginImageRestore;
     }
     syncReferences(session,runtime){void root.ZMAMarginReferences.sync(this,session,runtime).catch(e=>{if(runtime.referenceRoot)runtime.referenceRoot.textContent=e.message;});}
     decorateSession(session){for(const runtime of session.cardRuntimes())if(!runtime.referenceRoot)this.attachCard(session,runtime);}
@@ -359,7 +387,7 @@
     openExternal(url){this.Z.launchURL(url);}
     importAttachment(reader,input){if(!this.attachmentManager)throw new Error('附件模块不可用，请重启 Zotero');return this.attachmentManager.import(reader,input);}
     loadAttachment(reader,record){return this.attachmentManager.load(reader,record);}
-    readAttachmentClipboard(){return this.readClipboardAssets?.()||[];}
+    readAttachmentClipboard(options){return this.readClipboardAssets?.(options)||[];}
     async chooseAttachments(){return (await this.chooseChatFiles?.(this.runtimeWindow())||[]).map(path=>({path}));}
     readClipboard(){return this.Z.Utilities.Internal.getClipboard('text/plain');}
     notify(message){const win=this.Z.getMainWindow?.()||this.win;if(win&&!win.closed)win.alert?.(message);else this.Z.logError?.(new Error(message));}
@@ -404,7 +432,7 @@
       const reader=event.reader;
       for(const kind of ['assistant','notion'])event.append(this.toolbarButton(reader,event.doc,kind));
       this.watchToolbar(reader,event.doc);
-      this.guard(async()=>{const session=await this.addon.controller.ensureSession(reader);if(session&&!this.closedReaders.has(reader)){this.bindReferences(reader,session.adapter.document());this.decorateSession(session);}});
+      this.guard(async()=>{const session=await this.addon.controller.ensureSession(reader);if(session&&!this.closedReaders.has(reader)){await this.restoreMarginImages(session);if(!this.running||this.closedReaders.has(reader))return;this.bindReferences(reader,session.adapter.document());this.decorateSession(session);}});
     };
     toolbarButton(reader,doc,kind){
       const assistant=kind==='assistant';
@@ -468,7 +496,7 @@
         await reader._initPromise;if(!this.running||this.closedReaders.has(reader))return;const doc=reader._iframeWindow?.document;if(!doc)return;
         this.memory?.forReader(reader);
         this.watchToolbar(reader,doc);this.ensureToolbar(reader,doc);
-        const session=await this.addon.controller.ensureSession(reader);if(session&&!this.closedReaders.has(reader)){this.decorateSession(session);this.bindReferences(reader,session.adapter.document());}
+        const session=await this.addon.controller.ensureSession(reader);if(session&&!this.closedReaders.has(reader)){await this.restoreMarginImages(session);if(!this.running||this.closedReaders.has(reader))return;this.decorateSession(session);this.bindReferences(reader,session.adapter.document());}
       });
     }
     onMenu=({reader,params,append})=>{
@@ -494,7 +522,7 @@
     async closeReader(reader){this.readingSummary?.forget(reader);this.closedReaders.add(reader);for(const [doc,entry]of this.toolbarObservers)if(entry.reader===reader){entry.observer?.disconnect();entry.parentObserver?.disconnect();entry.discoveryObserver?.disconnect();this.toolbarObservers.delete(doc);}const panel=this.panels.get(reader);this.panels.delete(reader);for(const [doc,entry]of this.cleanups)if(entry.reader===reader){entry.dispose();this.cleanups.delete(doc);}if(panel)await panel.destroy();}
     prune(){const live=new Set(this.Z.Reader._readers||[]);const readers=new Set([...this.panels.keys(),...[...this.cleanups.values()].map(x=>x.reader),...[...this.toolbarObservers.values()].map(x=>x.reader)]);for(const reader of readers)if(!live.has(reader))void this.closeReader(reader);}
     async stop(){
-      this.running=false;await this.memory?.stop();await this.readingSummary?.stop();this.key='';for(const panel of this.panels.values())panel.controller?.abort();await this.auth?.stop();this.providerListeners.clear();this.appearanceListeners.clear();this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
+      this.running=false;await this.imageManager?.flush?.();await this.memory?.stop();await this.readingSummary?.stop();this.key='';for(const panel of this.panels.values())panel.controller?.abort();await this.auth?.stop();this.providerListeners.clear();this.appearanceListeners.clear();this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
       for(const win of [...this.historyPanes.keys()])this.unbindHistoryPane(win);
       for(const {observer,parentObserver,discoveryObserver}of this.toolbarObservers.values()){observer?.disconnect();parentObserver?.disconnect();discoveryObserver?.disconnect();}this.toolbarObservers.clear();
       await Promise.allSettled(this.pending.values());await Promise.allSettled([...this.panels.values()].map(p=>p.destroy()));this.panels.clear();

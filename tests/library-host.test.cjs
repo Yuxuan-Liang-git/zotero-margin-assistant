@@ -159,6 +159,19 @@ test('large files reuse valid partial caches and remain outside native worker ex
   } finally { await f.manager.stop(); }
 });
 
+test('a native full-text cache with matching form-feed page boundaries preserves the last-page location', async () => {
+  const f = fixture();
+  try {
+    f.files.set('/cache/PDF00001', { text: 'Opening cached page.\fSecond cached page.\fCachedtailneedle excitation.', size: 73, lastModified: 101 });
+    f.Z.Fulltext.getPages = async () => ({ indexedPages: 3, total: 3 });
+    await f.manager.start(); await f.manager.run();
+    const source = (await f.manager.retrieve({ libraryID: 1, attachmentKey: 'CURRENT1' }, 'cachedtailneedle'))[0];
+    assert.equal(source.pageIndex, 2);
+    assert.equal(source.text, 'Cachedtailneedle excitation.');
+    assert.equal(f.workers.includes(2), false);
+  } finally { await f.manager.stop(); }
+});
+
 test('native cache edits invalidate old provenance and refresh the actual indexed text', async () => {
   const f = fixture();
   try {

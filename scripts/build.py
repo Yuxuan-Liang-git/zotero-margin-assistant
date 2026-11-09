@@ -35,7 +35,9 @@ def build():
     text = script.read_text(encoding='utf-8')
     # Native free-text annotations already draw their content on the PDF page.
     # Do not duplicate them as margin cards, including explicitly revealed keys.
-    text = replace_once(text, 'return forcedKeys.has(annotation.key) || annotation.type === "note" || annotation.comment.trim().length > 0;', 'return annotation.type !== "text" && (forcedKeys.has(annotation.key) || annotation.type === "note" || annotation.comment.trim().length > 0);')
+    text = replace_once(text, 'function shouldDisplayAnnotation(annotation, forcedKeys = /* @__PURE__ */ new Set()) {', 'function shouldDisplayAnnotation(annotation, forcedKeys = /* @__PURE__ */ new Set(), imageKeys) {')
+    text = replace_once(text, 'return forcedKeys.has(annotation.key) || annotation.type === "note" || annotation.comment.trim().length > 0;', 'return annotation.type !== "text" && (forcedKeys.has(annotation.key) || imageKeys?.has(annotation.key) || annotation.type === "note" || annotation.comment.trim().length > 0);')
+    text = replace_once(text, 'shouldDisplayAnnotation(annotation, this.forcedKeys)', 'shouldDisplayAnnotation(annotation, this.forcedKeys, this.marginImageKeys)')
     text = replace_once(text, 'function renderMathPreview(root, value) {\n    renderStoredComment(root, value);', 'function renderMathPreview(root, value, plain = false) {\n    if (plain) root.textContent = value; else renderStoredComment(root, value);')
     text = replace_once(text, 'const markup = katex.renderToString(expression, {', 'const markup = katex.renderToString(_globalThis.ZMAMath?.normalizeDisplay(expression, delimiter.display) ?? expression, {')
     text = replace_once(text, '                strict: "error",', '                strict: _globalThis.ZMAMath?.strict ?? "error",')
@@ -79,7 +81,7 @@ def build():
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
   Services.scriptloader.loadSubScript(rootURI + "content/vendor/marked/marked.umd.js", context);
-  for (const name of ["web", "instructions", "notion", "notion-browser", "docks", "reading-summary", "memory-core", "core", "memory-store", "library-index", "library-store", "library-host", "memory-host", "transfer", "capture", "document", "references", "attachments", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "streaming", "clipboard", "transfer-ui", "panel", "margin-references", "reference-preview", "text-math", "images", "host"]) {
+  for (const name of ["web", "instructions", "notion", "notion-browser", "docks", "reading-summary", "memory-core", "core", "memory-store", "library-index", "library-store", "library-host", "memory-host", "transfer", "capture", "document", "references", "attachments", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "streaming", "clipboard", "transfer-ui", "panel", "margin-references", "margin-images", "reference-preview", "text-math", "images", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();
@@ -111,10 +113,10 @@ def build():
       picker.appendFilter('PDF / 图片', '*.pdf; *.png; *.jpg; *.jpeg; *.webp');
       return await picker.show() === picker.returnOK ? picker.files : [];
     },
-    readClipboardAssets: () => {
+    readClipboardAssets: ({maxBytes=6*1024*1024}={}) => {
       const read = flavor => {const transfer=Components.classes['@mozilla.org/widget/transferable;1'].createInstance(Components.interfaces.nsITransferable);transfer.init(null);transfer.addDataFlavor(flavor);Services.clipboard.getData(transfer,Services.clipboard.kGlobalClipboard);const value={};transfer.getTransferData(flavor,value);return value.value;};
       try {const file=read('application/x-moz-file').QueryInterface(Components.interfaces.nsIFile);if(file.isFile())return [{path:file.path}];} catch {}
-      try {const stream=read('image/png').QueryInterface(Components.interfaces.nsIInputStream);const size=stream.available();if(size>6*1024*1024)throw new Error('剪贴板图片超过 6 MiB，请缩小图片');const binary=Components.classes['@mozilla.org/binaryinputstream;1'].createInstance(Components.interfaces.nsIBinaryInputStream);binary.setInputStream(stream);try{return [{name:'粘贴图片.png',bytes:new Uint8Array(binary.readByteArray(size))}];}finally{binary.close();}} catch(error) {if(error.message?.includes('6 MiB'))throw error;}
+      try {const stream=read('image/png').QueryInterface(Components.interfaces.nsIInputStream);const size=stream.available();if(size>maxBytes)throw new Error('剪贴板图片超过 '+(maxBytes/1024/1024)+' MiB，请缩小图片');const binary=Components.classes['@mozilla.org/binaryinputstream;1'].createInstance(Components.interfaces.nsIBinaryInputStream);binary.setInputStream(stream);try{return [{name:'粘贴图片.png',bytes:new Uint8Array(binary.readByteArray(size))}];}finally{binary.close();}} catch(error) {if(error.message?.startsWith('剪贴板图片超过 '))throw error;}
       return [];
     },
     chooseImage: async win => {

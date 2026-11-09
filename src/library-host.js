@@ -185,7 +185,8 @@
       if (!IO.read && stat.size > 8 * 1024 * 1024) return null;
       const coverage = await Z.Fulltext.getPages(item.id);
       const complete = coverage?.total > 0 && coverage.indexedPages >= coverage.total;
-      const pages = (async function* () {
+      const cachedText = IO.read ? null : await IO.readUTF8(file);
+      const textChunks = async function* () {
         if (IO.read) {
           const Decoder = host.runtimeWindow?.().TextDecoder || host.win?.TextDecoder || globalThis.TextDecoder;
           const decoder = new Decoder();
@@ -194,11 +195,29 @@
             const text = decoder.decode(bytes, { stream: offset + bytes.length < stat.size });
             yield { text };
           }
-        } else yield { text: await IO.readUTF8(file) };
+        } else yield { text: cachedText };
+      };
+      let separators = 0;
+      for await (const chunk of textChunks()) separators += chunk.text.split('\f').length - 1;
+      const pageAware = separators > 0 && separators + 1 === coverage?.indexedPages;
+      const pages = (async function* () {
+        let pageIndex = 0, hasText = false;
+        for await (const chunk of textChunks()) {
+          if (!pageAware) { yield chunk; continue; }
+          const parts = chunk.text.split('\f');
+          for (const [at, text] of parts.entries()) {
+            if (at) {
+              if (!hasText) yield { pageIndex, text: '' };
+              pageIndex++; hasText = false;
+            }
+            if (text.trim()) { hasText = true; yield { pageIndex, text }; }
+          }
+        }
+        if (pageAware && !hasText) yield { pageIndex, text: '' };
         const after = await IO.stat(file);
         if (stat.size !== after.size || stat.lastModified !== after.lastModified) throw new Error('全文缓存已变更，稍后重新读取');
       })();
-      return { status: complete ? 'ready' : 'partial', reason: complete ? '已有全文缓存，页号需搜索定位' : '已有全文缓存覆盖部分页，页号需搜索定位', pages };
+      return { status: complete ? 'ready' : 'partial', reason: pageAware ? '已有全文缓存，分页与原生覆盖记录一致' : complete ? '已有全文缓存，页号需搜索定位' : '已有全文缓存覆盖部分页，页号需搜索定位', pages };
     }
 
     async function readPDF(unit, { cacheOnly, signal }) {

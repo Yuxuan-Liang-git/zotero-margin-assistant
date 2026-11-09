@@ -19,6 +19,7 @@
     if (value instanceof Uint8Array) return value;
     if (value instanceof ArrayBuffer) return new Uint8Array(value);
     if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    if (Object.prototype.toString.call(value) === '[object ArrayBuffer]') return new Uint8Array(value);
     throw new Error('图片文件无法读取');
   }
 
@@ -41,6 +42,20 @@
 
   class ImageManager {
     constructor(host) { this.host = host; this.queues=new Map(); }
+
+    async flush() { await Promise.allSettled([...this.queues.values()]); }
+
+    _assertWritable(reader, annotationKey, position) {
+      if (this.host.running === false) throw new Error('插件已停用，图片插入已停止');
+      if (this.host.isReadOnly(reader)) throw new Error('此文献库为只读，无法保存图片');
+      const annotation = this.host.nativeAnnotation(reader, annotationKey);
+      if (!annotation || annotation.deleted || annotation.isEditable?.() === false) throw new Error('目标批注不存在或为只读');
+      if (position !== undefined) {
+        const current = typeof annotation.annotationPosition === 'string' ? JSON.parse(annotation.annotationPosition) : annotation.annotationPosition;
+        if (JSON.stringify(current) !== position) throw new Error('目标批注位置已改变，请重新插入图片');
+      }
+      return annotation;
+    }
 
     async _pdfPath(reader) {
       const item = this.host.Z.Items.get(Number(reader.itemID));
@@ -80,11 +95,12 @@
       if (!state || typeof state !== 'object') throw new Error('图片状态无效');
       if (state.images !== undefined && !Array.isArray(state.images)) throw new Error('图片记录数据损坏');
       if (state.imageNoteKey && (typeof state.imageNoteKey !== 'string' || !KEY.test(state.imageNoteKey))) throw new Error('图片笔记记录无效');
-      if (host.isReadOnly(reader)) throw new Error('此文献库为只读，无法保存图片');
       if (typeof annotationKey !== 'string' || !KEY.test(annotationKey)) throw new Error('目标批注无效');
-      const annotation = host.nativeAnnotation(reader, annotationKey);
-      if (!annotation || annotation.deleted || annotation.isEditable?.() === false) throw new Error('目标批注不存在或为只读');
-      if (typeof sourcePath !== 'string' || !sourcePath.trim()) throw new Error('图片文件无效');
+      const annotation = this._assertWritable(reader, annotationKey);
+      let input = typeof sourcePath === 'string' ? { path: sourcePath } : sourcePath;
+      if (host.unwrap) input = host.unwrap(input);
+      if (!input || typeof input !== 'object') throw new Error('图片文件无效');
+      if (input.path !== undefined && (typeof input.path !== 'string' || !input.path.trim())) throw new Error('图片文件无效');
 
       const annotationPosition = typeof annotation.annotationPosition === 'string'
         ? JSON.parse(annotation.annotationPosition) : annotation.annotationPosition;
@@ -93,9 +109,16 @@
       const source = { ...pdfScope, annotationKey, pageIndex: annotationPosition.pageIndex, rects: annotationPosition.rects };
       const pdfAttachment = host.Z.Items.get(Number(reader.itemID));
       const link = host.sourceLink(source);
-      if(host.IO.stat){const stat=await host.IO.stat(sourcePath);if(stat.size<1||stat.size>MAX_IMAGE_BYTES)throw new Error('图片大小必须为 1 字节至 10 MiB');}
-      const bytes = asBytes(await host.IO.read(sourcePath));
+      let size = input.size ?? input.bytes?.byteLength;
+      if (input.path && host.IO.stat) size = (await host.IO.stat(input.path)).size;
+      if (size !== undefined && (!Number.isSafeInteger(size) || size < 1 || size > MAX_IMAGE_BYTES)) throw new Error('图片大小必须为 1 字节至 10 MiB');
+      let raw;
+      if (host.attachmentManager) raw = await host.attachmentManager.readInput(input);
+      else raw = input.path ? await host.IO.read(input.path) : input.bytes;
+      const bytes = asBytes(host.unwrap ? host.unwrap(raw) : raw);
       const format = identify(bytes);
+      const position = JSON.stringify(annotationPosition);
+      this._assertWritable(reader, annotationKey, position);
       const win = host.runtimeWindow();
       const imageDir = host.P.join(host.P.parent(await this._pdfPath(reader)), 'margin-comments-images');
       await host.IO.makeDirectory(imageDir, { ignoreExisting: true });
@@ -123,6 +146,7 @@
         const content = `${linkHTML}${imageHTML}`;
         note.setNote(appendNoteHTML(noteInfo.isNew ? note.getNote() : originalNote, content));
         await note.saveTx();
+        this._assertWritable(reader, annotationKey, position);
 
         record = {
           id: uuid,

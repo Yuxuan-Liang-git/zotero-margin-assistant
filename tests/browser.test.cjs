@@ -184,6 +184,7 @@ test('margin image button imports into PDF state and shows the saved image after
     for(const name of ['core','deepseek','capture','docks','panel','margin-references','host'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});
     const available=await page.evaluate(async()=>{
       const host=new ZMAHost.Host({controller:{}},{Zotero:{DataDirectory:{dir:'/data'}},IOUtils:{},PathUtils:{join:(...p)=>p.join('/')},window,chooseImage:async()=>'/chosen/photo.png'});
+      host.running=true;
       let state=ZMACore.emptyState();globalThis.imageImportCalls=[];globalThis.noteCalls=[];
       host.load=async()=>state;host.save=async(_r,value)=>{state=ZMACore.cleanState(JSON.parse(JSON.stringify(value)));};host.bindReferences=()=>{};host.openImageNote=(_r,record)=>noteCalls.push(record.noteKey);
       host.imageManager={importImage:async(_r,key,path,s,commit)=>{imageImportCalls.push({key,path});const record={id:'a'.repeat(32),annotationKey:key,fileName:'margin-comment-'+ 'a'.repeat(32)+'.png',mime:'image/png',noteKey:'NOTEPDF1',noteImageKey:'IMAGE234'};s.images=[record];s.imageNoteKey=record.noteKey;await commit(record);return record;},readImage:async()=> 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5FYAAAAASUVORK5CYII='};
