@@ -1,0 +1,20 @@
+# Local build output and preserved release downloads
+/build/
+/dist/
+/node_modules/
+/.tools/
+
+# Native Zotero profiles, browser state and local development instructions
+/evidence/
+/AGENTS.md
+
+# Local credentials and temporary files
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini

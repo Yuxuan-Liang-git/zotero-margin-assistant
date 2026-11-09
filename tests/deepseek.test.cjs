@@ -1,0 +1,45 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');
+const D=fs.existsSync(__dirname+'/../src/deepseek.js')?require('../src/deepseek.js'):{};
+const image=n=>({dataURL:'data:image/png;base64,YQ==',text:'formula '+n,source:{number:n,pageLabel:'60'}});
+test('joint question includes two images and grounded instruction separate from sources',()=>{
+  assert.equal(typeof D.buildMessages,'function');
+  const messages=D.buildMessages([],'解释关系',[image('7.41'),image('6.30')]);
+  assert.equal(messages[0].role,'system');
+  assert.equal(messages[1].content.filter(c=>c.type==='image_url').length,2);
+  assert.ok(messages[1].content[0].text.includes('解释关系'));
+  assert.throws(()=>D.buildMessages([],'问题',Array(9).fill(image('1'))),/8/);
+  assert.throws(()=>D.buildMessages([],'问题',[{...image('1'),dataURL:'https://example.org/a.png'}]),/图片/);
+});
+test('stream handles UTF8 splits and multiline network chunks',async()=>{
+  assert.equal(typeof D.DeepSeekClient,'function');
+  const raw='data: {"choices":[{"delta":{"content":"中文"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":"解释"}}]}\n\ndata: [DONE]\n\n';
+  const bytes=new TextEncoder().encode(raw);const chunks=[];for(let i=0;i<bytes.length;i+=3)chunks.push(bytes.slice(i,i+3));
+  let request;const client=new D.DeepSeekClient({getKey:()=> 'secret',fetch:async(url,options)=>{request={url,options};return new Response(new ReadableStream({start(c){chunks.forEach(x=>c.enqueue(x));c.close();}}));}});
+  let seen='';const result=await client.generate(D.buildMessages([],'问',[image('6.30')]),{onDelta:s=>seen+=s});
+  assert.equal(result,'中文解释');assert.equal(seen,'中文解释');
+  assert.equal(request.url,'https://api.deepseek.com/chat/completions');
+  assert.equal(JSON.parse(request.options.body).model,'deepseek-flash');
+});
+test('HTTP errors are actionable and do not include keys or server echo',async()=>{
+  assert.equal(typeof D.DeepSeekClient,'function');
+  for(const [status,expected] of [[401,/API Key/],[429,/限流/],[402,/余额/],[500,/服务/]]){
+    const client=new D.DeepSeekClient({getKey:()=> 'private-secret',fetch:async()=>new Response('echo private-secret',{status})});
+    await assert.rejects(client.generate([]),e=>expected.test(e.message)&&!e.message.includes('private-secret'));
+  }
+});
+test('interrupted streams retain partial answer and are never marked complete',async()=>{
+  assert.equal(typeof D.DeepSeekClient,'function');
+  const client=new D.DeepSeekClient({getKey:()=> 'key',fetch:async()=>new Response('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n')});
+  await assert.rejects(client.generate([]),e=>e.partial==='partial'&&e.incomplete===true);
+  const controller=new AbortController();controller.abort();
+  await assert.rejects(client.generate([],{signal:controller.signal}),e=>e.incomplete===true);
+});
+test('cancel after the first streamed content preserves partial answer',async()=>{
+  const controller=new AbortController();
+  const client=new D.DeepSeekClient({getKey:()=> 'key',fetch:async()=>new Response('data: {"choices":[{"delta":{"content":"first"}}]}\n\ndata: [DONE]\n\n')});
+  await assert.rejects(client.generate([],{signal:controller.signal,onDelta:()=>controller.abort()}),e=>e.partial==='first'&&e.incomplete);
+});
+test('generation length limit is incomplete even if the SSE protocol ends normally',async()=>{
+  const client=new D.DeepSeekClient({getKey:()=> 'key',fetch:async()=>new Response('data: {"choices":[{"delta":{"content":"truncated"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n')});
+  await assert.rejects(client.generate([]),e=>e.partial==='truncated'&&e.incomplete&&/长度/.test(e.message));
+});

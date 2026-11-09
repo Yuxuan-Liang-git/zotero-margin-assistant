@@ -1,0 +1,18 @@
+{
+  "manifest_version": 2,
+  "name": "Margin Comments (LaTeX custom)",
+  "version": "0.9.5",
+  "description": "在 Zotero PDF 页边显示带引线、可直接编辑的批注评论",
+  "icons": {
+    "48": "content/icons/margin-comments.svg",
+    "96": "content/icons/margin-comments.svg"
+  },
+  "applications": {
+    "zotero": {
+      "id": "margin-comments@local.zotero",
+      "strict_min_version": "10.0",
+      "strict_max_version": "10.0.*",
+      "update_url": "https://github.com/XiaoDuComrade/Zotero-margin-comments/releases/download/release/update.json"
+    }
+  }
+}
