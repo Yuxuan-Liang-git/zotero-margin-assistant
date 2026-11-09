@@ -2,11 +2,11 @@ const {test}=require('node:test');const assert=require('node:assert/strict');con
 const H=fs.existsSync(__dirname+'/../src/host.js')?require('../src/host.js'):{};
 globalThis.ZMAPanel={Panel:class{constructor(){this.node={};}async init(){if(globalThis.waitInit)await globalThis.waitInit;return this;}async destroy(){globalThis.destroyedPending=true;}}};
 function fixture(overrides={}){
-  const attachment={id:1,libraryID:1,key:'ABCD1234',getFilePathAsync:async()=> '/book.pdf',isEditable:()=>true};
+  const attachment={id:1,libraryID:1,key:'ABCD1234',getFilePathAsync:async()=> '/book.pdf',isPDFAttachment:()=>true,isEditable:()=>true};
   const annotation={id:2,key:'FORM0630',libraryID:1,parentID:1,isAnnotation:()=>true,annotationType:'image',annotationPageLabel:'60',annotationPosition:JSON.stringify({pageIndex:65,rects:[[10,20,90,50]]}),annotationComment:'已有评论',isEditable:()=>true,saveTx:async()=>{}};
   const events=new Map();const Z={Items:{get:id=>id===1?attachment:annotation,getByLibraryAndKey:(lib,key)=>key===attachment.key?attachment:key===annotation.key?annotation:null},Reader:{_readers:[],registerEventListener:(name,fn)=>events.set(name,fn),_unregisterEventListenerByPluginID:()=>events.clear()},Libraries:{get:()=>({libraryType:'user'})},Notifier:{registerObserver:()=>1,unregisterObserver:()=>{}},DataDirectory:{dir:'/data'},...overrides};
   const files=new Map();const IO={exists:async p=>files.has(p),readUTF8:async p=>files.get(p),writeUTF8:async(p,s)=>files.set(p,s),makeDirectory:async()=>{},stat:async()=>({size:123,lastModified:9})};
-  const host=new H.Host({controller:{}},{Zotero:Z,IOUtils:IO,PathUtils:{join:(...p)=>p.join('/')},window:{fetch:async()=>{},TextDecoder,AbortController}});
+  const host=new H.Host({controller:{}},{Zotero:Z,IOUtils:IO,PathUtils:{join:(...p)=>p.join('/'),parent:p=>p.slice(0,p.lastIndexOf('/'))},window:{fetch:async()=>{},TextDecoder,AbortController}});
   return {host,Z,annotation,attachment,events,files};
 }
 test('source identity is taken from native image annotation and changes invalidate it',async()=>{

@@ -12,6 +12,7 @@ parser.add_argument('--run-name',required=True)
 parser.add_argument('--from-existing',action='store_true')
 parser.add_argument('--with-notero',action='store_true')
 parser.add_argument('--default-addon-prefs',action='store_true')
+parser.add_argument('--remove-before-install',action='store_true')
 args=parser.parse_args()
 if not args.run_name.replace('-','').isalnum():raise ValueError('Unsafe QA name')
 work=project/'evidence'/args.run_name
@@ -47,6 +48,7 @@ async function run(reason){
     if(seed.launch===1){
       const otherPane=Zotero.PreferencePanes.pluginPanes.find(p=>p.pluginID==='notero@vanoni.dev');
       if(otherPane){const otherWin=Zotero.Utilities.Internal.openPreferences(otherPane.id);await new Promise(r=>setTimeout(r,600));report.otherPaneBefore={id:otherPane.id,selected:otherWin.Zotero_Preferences.navigation.value,loaded:otherWin.Zotero_Preferences.panes.get(otherPane.id)?.loaded};}
+      if(__REMOVE__){const old=await AddonManager.getAddonByID('margin-comments@local.zotero');if(!old)throw new Error('Old add-on missing');await old.uninstall();await snapshot('after-uninstall');}
       const install=await AddonManager.getInstallForFile(new FileUtils.File(__PACKAGE__));
       report.install={stateBefore:install?.state,errorBefore:install?.error};
       await install.install();
@@ -64,7 +66,7 @@ async function run(reason){
   finally{await IOUtils.writeUTF8(PathUtils.join(work,'report-'+(report.launch||'fatal')+'.json'),JSON.stringify(report,null,2));Services.startup.quit(Services.startup.eForceQuit);}
 }
 '''
-for token,value in {'__WORK__':str(work),'__DATA__':str(data),'__PACKAGE__':str(package)}.items():bootstrap=bootstrap.replace(token,json.dumps(value,ensure_ascii=True))
+for token,value in {'__WORK__':str(work),'__DATA__':str(data),'__PACKAGE__':str(package),'__REMOVE__':args.remove_before_install}.items():bootstrap=bootstrap.replace(token,json.dumps(value,ensure_ascii=True))
 manifest={'manifest_version':2,'name':'Margin install lifecycle QA','version':'1.0','applications':{'zotero':{'id':'margin-install-lifecycle-qa@local.zotero','strict_min_version':'10.0','strict_max_version':'10.0.*','update_url':'https://updates.invalid/margin-install-lifecycle-qa.json'}}}
 with zipfile.ZipFile(profile/'extensions/margin-install-lifecycle-qa@local.zotero.xpi','w',zipfile.ZIP_DEFLATED) as archive:archive.writestr('manifest.json',json.dumps(manifest));archive.writestr('bootstrap.js',bootstrap)
 print(json.dumps({'profile':str(profile),'data':str(data),'fromExisting':args.from_existing,'withNotero':args.with_notero,'packageSha256':hashlib.sha256(package.read_bytes()).hexdigest()}))

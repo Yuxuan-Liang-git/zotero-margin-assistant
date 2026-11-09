@@ -17,14 +17,46 @@
         get:name=>Z.Prefs.get(name),set:(name,value)=>Z.Prefs.set(name,value),clear:name=>Z.Prefs.clear(name),
         encrypt:key=>Z.OSKeyStore.encrypt(key),decrypt:value=>Z.OSKeyStore.decrypt(value)
       }):null;
-      this.directory=P.join(Z.DataDirectory.dir,'margin-comments-assistant');
+      this.directory=P.join(Z.DataDirectory.dir,'margin-comments-assistant');this.historyPanes=new Map();
       this.documents=new Map();this.toolbarObservers=new Map();this.unwrap=unwrap;
       this.cloneInto=cloneInto;
       this.chooseImage=chooseImage;this.imageManager=Images?new Images.ImageManager(this):null;
-      this.store=new C.LocalStore({exists:p=>IO.exists(P.join(this.directory,p)),read:p=>IO.readUTF8(P.join(this.directory,p)),writeAtomic:async(p,text)=>{await IO.makeDirectory(this.directory,{ignoreExisting:true});await IO.writeUTF8(P.join(this.directory,p),text,{tmpPath:P.join(this.directory,p+'.tmp')});}});
+      this.store=new C.LocalStore({exists:async p=>{const sidecar=await this.pdfStatePath(p);if(await IO.exists(sidecar))return true;
+        if(p.endsWith('.json')){const old=P.join(this.directory,p);if(await IO.exists(old)){const raw=await IO.readUTF8(old);await IO.writeUTF8(sidecar,raw,{tmpPath:sidecar+'.tmp'});return true;}}return false;},
+        read:async p=>IO.readUTF8(await this.pdfStatePath(p)),writeAtomic:async(p,value)=>{const path=await this.pdfStatePath(p);await IO.writeUTF8(path,value,{tmpPath:path+'.tmp'});}});
       this.client=new D.DeepSeekClient({fetch:(...args)=>this.runtimeWindow().fetch(...args),getKey:()=>this.key,getModel:()=>this.model,TextDecoder:win?.TextDecoder});
     }
     scope(reader){const a=this.Z.Items.get(Number(reader.itemID));if(!a)throw new Error('PDF 附件不存在');return {libraryID:a.libraryID,attachmentKey:a.key};}
+    async pdfStatePath(name){const match=/^([1-9]\d*)-([A-Z0-9]{8})\.json(?:\.v1\.bak)?$/.exec(name);
+      if(!match)throw new Error('对话文件名无效');const attachment=this.Z.Items.getByLibraryAndKey(Number(match[1]),match[2]);
+      if(!attachment?.isPDFAttachment?.())throw new Error('PDF 附件不存在');const pdf=await attachment.getFilePathAsync();if(!pdf)throw new Error('PDF 文件缺失，无法保存对话');
+      return this.P.join(this.P.parent(pdf),'margin-comments-assistant-'+name);
+    }
+    historyMarker(scope){return `zma-history://${scope.libraryID}/${scope.attachmentKey}`;}
+    historyTarget(note){if(!note?.isNote?.()||note.deleted)return null;const match=/zma-history:\/\/([1-9]\d*)\/([A-Z0-9]{8})/.exec(note.getNote?.()||'');
+      if(!match||Number(match[1])!==note.libraryID)return null;const attachment=this.Z.Items.getByLibraryAndKey(note.libraryID,match[2]);
+      return attachment?.isPDFAttachment?.()&&Number(attachment.parentID||0)===Number(note.parentID||0)?attachment:null;
+    }
+    async ensureHistoryNote(reader){const attachment=this.Z.Items.get(Number(reader.itemID));
+      if(!attachment?.parentID||attachment.isEditable?.()===false||!this.Z.Item)return;
+      const parent=this.Z.Items.get(attachment.parentID);if(!parent?.isRegularItem?.()||!parent.getNotes)return;
+      for(const id of parent.getNotes()){const note=this.Z.Items.get(id);if(this.historyTarget(note)?.id===attachment.id)return;}
+      const note=new this.Z.Item('note');note.libraryID=attachment.libraryID;note.parentID=parent.id;
+      note.setNote(`<div data-schema-version="9"><p>DeepSeek 对话历史</p><p>双击此条目打开该 PDF 的对话列表；记录保存在 PDF 同目录。</p><p>${this.historyMarker(this.scope(reader))}</p></div>`);
+      await note.saveTx();
+    }
+    bindHistoryPane(win){const pane=win?.ZoteroPane;if(!pane?.viewItems||this.historyPanes.has(win))return;
+      const original=pane.viewItems,host=this;
+      const wrapped=async function(items,event,options){const normal=[];
+        for(const item of items){const target=host.historyTarget(item);if(target)await host.openHistory(target);else normal.push(item);}
+        if(normal.length)return original.call(this,normal,event,options);
+      };
+      pane.viewItems=wrapped;this.historyPanes.set(win,{pane,original,wrapped});
+    }
+    async openHistory(attachment){let reader=await this.Z.Reader.open(attachment.id);
+      if(!reader){for(let i=0;i<100&&!reader;i++){await new Promise(resolve=>setTimeout(resolve,50));reader=(this.Z.Reader._readers||[]).find(r=>r.itemID===attachment.id);}}
+      if(!reader)throw new Error('PDF 阅读器未能打开');await reader._initPromise;const panel=await this.panel(reader);panel.showConversations();
+    }
     groupID(source){const lib=this.Z.Libraries.get(source.libraryID);return lib?.libraryType==='group'?Number(lib.groupID||this.Z.Groups?.getGroupIDFromLibraryID?.(source.libraryID)):undefined;}
     isReadOnly(reader){const a=this.Z.Items.get(Number(reader.itemID));return a?.isEditable?.()===false;}
     sourceLink(source){return C.sourceLink(source,this.groupID(source));}
@@ -72,15 +104,16 @@
       if(context.needsImage)context.material=await this.capture(reader,await this.currentPage(reader));
       return context;
     }
-    load(reader){const scope=this.scope(reader),key=C.scopeKey(scope);if(!this.states.has(key))this.states.set(key,this.store.load(scope));return this.states.get(key);}
+    load(reader){const scope=this.scope(reader),key=C.scopeKey(scope);if(!this.states.has(key))this.states.set(key,(async()=>{const state=await this.store.load(scope);try{await this.ensureHistoryNote(reader);}catch(e){this.Z.logError?.(e);}return state;})());return this.states.get(key);}
     async save(reader,state){await this.store.save(this.scope(reader),state);this.refreshReferenceCards(reader);}
     claimRequest(reader){const key=C.scopeKey(this.scope(reader));if(this.activeRequests.has(key))throw new Error('此 PDF 已在另一窗口正在生成，请先停止或等待完成');this.activeRequests.add(key);}
     releaseRequest(reader){this.activeRequests.delete(C.scopeKey(this.scope(reader)));}
     isGenerating(reader){return this.activeRequests.has(C.scopeKey(this.scope(reader)));}
     runtimeWindow(){const win=this.Z.getMainWindow?.()||this.win;if(!win||win.closed)throw new Error('Zotero 主窗口尚未就绪，请稍后重试');return win;}
     newAbortController(){return new (this.runtimeWindow().AbortController)();}
-    mainWindowLoaded(win){this.win=win;this.restoreReaders();}
-    mainWindowUnloaded(win){if(this.win===win)this.win=null;}
+    mainWindowLoaded(win){this.win=win;this.bindHistoryPane(win);this.restoreReaders();}
+    mainWindowUnloaded(win){this.unbindHistoryPane(win);if(this.win===win)this.win=null;}
+    unbindHistoryPane(win){const entry=this.historyPanes.get(win);if(!entry)return;if(entry.pane.viewItems===entry.wrapped)entry.pane.viewItems=entry.original;this.historyPanes.delete(win);}
     async panel(reader){
       if(!this.running||this.closedReaders.has(reader))throw new Error('阅读助手或窗口已关闭');
       const cached=this.panels.get(reader),docNow=reader._iframeWindow?.document;
@@ -241,7 +274,8 @@
     async start(){
       if(this.running)return;
       await this.restoreCredentials();
-      this.running=true;this.Z.Reader.registerEventListener('renderToolbar',this.onToolbar,ID);this.Z.Reader.registerEventListener('createAnnotationContextMenu',this.onMenu,ID);
+      this.running=true;for(const win of this.Z.getMainWindows?.()||[this.win])this.bindHistoryPane(win);
+      this.Z.Reader.registerEventListener('renderToolbar',this.onToolbar,ID);this.Z.Reader.registerEventListener('createAnnotationContextMenu',this.onMenu,ID);
       this.Z.Reader.registerEventListener('createViewContextMenu',this.onViewMenu,ID);
       for(const doc of this.addon.controller.preferenceDocuments||[])this.bindPreferencePaneWindow(doc.defaultView);
       this.observer=this.Z.Notifier.registerObserver({notify:(_event,type)=>{this.prune();if(type==='item')this.refreshReferenceCards(undefined,true);if(type==='tab')this.restoreReaders();}},['tab','item'],ID);
@@ -251,6 +285,7 @@
     prune(){const live=new Set(this.Z.Reader._readers||[]);const readers=new Set([...this.panels.keys(),...[...this.cleanups.values()].map(x=>x.reader)]);for(const reader of readers)if(!live.has(reader))void this.closeReader(reader);}
     async stop(){
       this.running=false;this.key='';this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
+      for(const win of [...this.historyPanes.keys()])this.unbindHistoryPane(win);
       for(const {observer}of this.toolbarObservers.values())observer.disconnect();this.toolbarObservers.clear();
       await Promise.allSettled(this.pending.values());await Promise.allSettled([...this.panels.values()].map(p=>p.destroy()));this.panels.clear();
       for(const entry of this.cleanups.values())entry.dispose();this.cleanups.clear();this.cache.clear();this.documents.clear();
