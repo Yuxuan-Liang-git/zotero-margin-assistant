@@ -318,3 +318,15 @@ DeepSeek 的密码输入、模型、应用设置、连接测试和清除密钥�
 6. 点击页边“插入图片”，核对对应 Zotero 笔记、PDF 同目录副本及重启后的图片显示。纯扫描 PDF 默认只用当前页截图；全文问题需另行 OCR。
 
 当前验证报告在 `dist/verification-report.json`，0.10.6 冷重启原始报告在 `evidence/zotero-0106-conversation-qa/`；旧版日志保留在 `evidence/final-tests-0105.txt`。
+# 2026-10-26 — 0.13.5 conversation transfer
+
+- Full `npm test`: 205/205 passed, 133.5 s; `evidence/ui-0135/tests-final.txt`. Nine codec and six UI/I/O regressions added, including RED before implementation, failed-save rollback, reader-close/import concurrency, and bounded long-history display.
+- All src JavaScript checkJs passed. Archive/resource/script syntax and original 0.9.5 baseline preservation verified by `scripts/verify.py`.
+- Native Zotero 10.0.6 isolated first launch and cold restart: 19/19 each; `evidence/zotero-0135-transfer-v4/report-1.json`, `report-2.json`. Both use shipped XPI hash `20de24f8059fe77d78998a4230a0fc448a58ab6ac8d7296d0adab8e784915278`.
+- New native step `conversation-import-export`: actual local ChatGPT-style mapping JSON read, candidate selection, preview with no state mutation, additive import, native MathML, pasted role preview/cancel, real JSON/Markdown writes, byte-preserving live-sidecar overwrite rejection, imported history restored after restart. Synthetic next Responses request contains both imported messages and the actual current PDF input_file.
+- Paths chosen by an injected file-picker callback in automated native QA; OS dialog visual operation remains user acceptance. Existing installed FilePicker module was inspected for modeSave/returnReplace/defaultString/defaultExtension support. No live account inference or external import calls; no user-library/profile/PDF changes.
+- `evidence/ui-0135/import-preview.png` viewed: compact history-based dialog, editable title, clearly separated user/assistant blocks and confirm/cancel actions; no clipping in the 420px dock.
+- QA-only corrections: initial preparation lacked NODE_PATH, second QA package had a missing fixture object brace. Added generated-bootstrap syntax preflight; v3 passed. A delayed-save test fixture initially delayed the final close write as well; corrected its gate, then all regression tests passed. These failures did not require production workarounds.
+- Independent review found two Important edge cases, both fixed RED-to-GREEN and re-reviewed: transactions are serialized per PDF, publish only the addition, and defer normal saves until pending imports finish; empty incomplete native answers preserve their pair and retry draft. Destination document title is now shown. No remaining Critical/Important findings in the re-review.
+- Limits: JSON file 16 MiB; paste input 2 MiB characters; imported conversation 200 messages, 100000 characters per message and 1000000 total; previews clipped, storage retains accepted full text. Existing long local conversations can still be exported. Portable export omits attachment bytes/source associations and quote drafts; missing material warning included. ZIP/HTML/share-link/Markdown file import unsupported. ChatGPT export internals are not a guaranteed stable interface.
+

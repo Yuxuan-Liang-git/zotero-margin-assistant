@@ -116,6 +116,7 @@
       this.directory.className='zma-directory';this.installResizeHandle();
       this.disposeClipboard=root.ZMAClipboard?.install(this.node,{copy:text=>this.host.copy(text),read:()=>this.host.readClipboard?.(),readFiles:()=>this.host.readAttachmentClipboard?.()||[],onFiles:files=>this.addFiles(files),onQuote:(text,anchor)=>this.quoteSelection(text,anchor),onError:error=>this.error(error)});
       this.question.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files')){event.preventDefault();event.stopPropagation();}});this.question.addEventListener('drop',event=>{if(event.dataTransfer?.files.length){event.preventDefault();event.stopPropagation();void this.addFiles(Array.from(event.dataTransfer.files)).catch(e=>this.error(e));}});
+      this.transfer=root.ZMATransferUI?new root.ZMATransferUI.TransferUI(this):null;
       this.applyAppearance();this.refreshProvider();this.renderMaterials();this.renderMessages();this.renderConversationList();return this;
     }
     refreshProvider(){
@@ -135,12 +136,14 @@
     showConversations(){this.quotes.collapse();this.open();this.chat.hidden=true;this.directory.hidden=true;this.conversationList.hidden=false;this.historyButton.setAttribute('aria-pressed','true');this.referenceButton.setAttribute('aria-pressed','false');this.renderConversationList();this.quotes.layout();}
     renderConversationList(){
       this.conversationList.replaceChildren(button(this.doc,'新会话',()=>this.newConversation()));
+      if(this.transfer)this.conversationList.append(button(this.doc,'导入对话',()=>this.transfer.open()));
       for(const conversation of [...this.state.conversations].sort((a,b)=>b.updatedAt-a.updatedAt)){
         const row=el(this.doc,'div',undefined,'zma-conversation-row');
         if(conversation.id===this.conversationId)row.classList.add('zma-current');
         const label=conversation.title||'新对话';
         const open=button(this.doc,label,()=>this.switchConversation(conversation.id));open.title=label;
         row.append(open,el(this.doc,'small',conversation.updatedAt?new Date(conversation.updatedAt).toLocaleString():'旧版对话'));
+        if(this.transfer){const exports=el(this.doc,'div',undefined,'zma-transfer-exports');exports.append(button(this.doc,'导出 JSON',()=>this.transfer.exportConversation(conversation.id,'json')),button(this.doc,'导出 Markdown',()=>this.transfer.exportConversation(conversation.id,'md')));row.append(exports);}
         this.conversationList.append(row);
       }
     }
@@ -148,6 +151,12 @@
       if(this.busy||this.pendingMaterials.size||this.host.isGenerating?.(this.reader))throw new Error('请先等待当前操作完成');
       this.quotes.collapse();C.selectConversation(this.state,id);this.conversationId=id;this.materials=[];this.question.value=this.conversation().draft;
       this.contextInfo.textContent='文档背景：自动使用当前 PDF。';this.contextSummary.textContent='当前 PDF · 自动读取';this.contextDetails.open=false;this.renderMaterials();this.renderMessages();this.renderConversationList();this.showChat();await this.persist();
+    }
+    async commitImport(prepared){
+      if(this.busy||this.pendingMaterials.size||this.host.isGenerating?.(this.reader)||this.destroyed)throw new Error('请先等待当前操作完成');
+      this.quotes.collapse();clearTimeout(this.draftTimer);this.busy=true;this.refreshProvider();
+      this.importTask=(async()=>{const conversation=await this.host.importConversation(this.reader,prepared);this.conversationId=conversation.id;if(this.destroyed)return;this.materials=[];this.question.value=this.conversation().draft;this.contextInfo.textContent='文档背景：自动使用当前 PDF。导入的问答作为历史；原上传附件需重新添加。';this.contextSummary.textContent='当前 PDF · 自动读取';this.renderMaterials();this.renderMessages();this.renderConversationList();this.showChat();this.status.textContent='对话已导入，可结合当前 PDF 继续提问。';})();
+      try{await this.importTask;}finally{this.busy=false;if(!this.destroyed)this.refreshProvider();}
     }
     async newConversation(){
       if(this.busy||this.pendingMaterials.size||this.host.isGenerating?.(this.reader))throw new Error('请先等待当前操作完成');
@@ -193,10 +202,12 @@
         if(m.unavailable)card.append(el(this.doc,'small','来源已失效，本轮未发送。请移除后重新选择。','zma-invalid'));else if(m.source.kind==='text')card.append(el(this.doc,'blockquote',m.text,'zma-material-text'));else{const img=el(this.doc,'img');img.src=m.dataURL;img.alt=label;card.append(img);}card.append(el(this.doc,'small',label),remove);this.materialList.append(card);
       }
     }
-    renderMessages(){
+    renderMessages(start){
       this.messages.replaceChildren();
       const conversation=this.conversation();this.activeLabel.textContent=`当前对话：${conversation.title||'新对话'}`;
-      conversation.history.forEach((m,i)=>this.messages.append(this.messageCard(m,i)));
+      const first=Number.isSafeInteger(start)?Math.max(0,start):Math.max(0,conversation.history.length-20);
+      if(first)this.messages.append(button(this.doc,'显示更早消息',()=>{const height=this.messages.scrollHeight,top=this.messages.scrollTop;this.renderMessages(Math.max(0,first-20));this.messages.scrollTop=this.messages.scrollHeight-height+top;}));
+      conversation.history.slice(first).forEach((m,i)=>this.messages.append(this.messageCard(m,i+first)));
       if(!conversation.history.length)this.messages.append(el(this.doc,'p','直接问“当前这篇论文讲了什么”即可；助手会自动读取当前 PDF。也可框选内容或加入前文引用，进一步解释公式。','zma-empty-chat'));
       this.messages.scrollTop=this.messages.scrollHeight;this.quotes?.render();
     }
@@ -368,7 +379,7 @@
       query.addEventListener('input',refresh);type.addEventListener('change',refresh);this.directory.append(query,type,list);refresh();query.focus();
     }
     async preview(source){await this.host.previewReference(this.reader,source,this.insertTarget);}
-    async destroy(){clearTimeout(this.webRenderTimer);this.quotes.destroy();this.destroyed=true;this.liveRenderer?.finish();this.close();clearTimeout(this.draftTimer);this.controller?.abort();this.disposeMath?.();this.disposeClipboard?.();await this.host.save(this.reader,this.state).catch(()=>{});this.node.remove();}
+    async destroy(){this.destroyed=true;await this.importTask?.catch(()=>{});this.transfer?.destroy();clearTimeout(this.webRenderTimer);this.quotes.destroy();this.liveRenderer?.finish();this.close();clearTimeout(this.draftTimer);this.controller?.abort();this.disposeMath?.();this.disposeClipboard?.();await this.host.save(this.reader,this.state).catch(()=>{});this.node.remove();}
   }
   root.ZMAPanel={Panel,el,button};if(typeof module!=='undefined')module.exports=root.ZMAPanel;
 })(typeof _globalThis!=='undefined'?_globalThis:globalThis);

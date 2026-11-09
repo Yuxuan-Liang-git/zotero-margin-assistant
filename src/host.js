@@ -13,7 +13,7 @@
   class Host{
     /** @type {string|undefined} */
     styleText;
-    constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null,chatgptListen=null,chooseChatFiles=null,readClipboardAssets=null}){
+    constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null,chatgptListen=null,chooseChatFiles=null,readClipboardAssets=null,chooseConversationFile=null}){
       this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
       this.credentialError='';
       this.credentials=Z.Prefs&&Z.OSKeyStore&&Credentials?new Credentials.CredentialStore({
@@ -23,6 +23,8 @@
       this.directory=P.join(Z.DataDirectory.dir,'margin-comments-assistant');this.historyPanes=new Map();
       this.documents=new Map();this.pdfFiles=new Map();this.toolbarObservers=new Map();this.unwrap=unwrap;
       this.cloneInto=cloneInto;
+      this.transferTasks=new Map();
+      this.chooseConversationFile=chooseConversationFile;
       this.chooseChatFiles=chooseChatFiles;this.readClipboardAssets=readClipboardAssets;this.attachmentManager=Attachments?new Attachments.AttachmentManager(this):null;this.chooseImage=chooseImage;this.imageManager=Images?new Images.ImageManager(this):null;
       this.store=new C.LocalStore({exists:async p=>{const sidecar=await this.pdfStatePath(p);if(await IO.exists(sidecar))return true;
         if(p.endsWith('.json')){const old=P.join(this.directory,p);if(await IO.exists(old)){const raw=await IO.readUTF8(old);await IO.writeUTF8(sidecar,raw,{tmpPath:sidecar+'.tmp'});return true;}}return false;},
@@ -64,6 +66,23 @@
       if(!match)throw new Error('对话文件名无效');const attachment=this.Z.Items.getByLibraryAndKey(Number(match[1]),match[2]);
       if(!attachment?.isPDFAttachment?.())throw new Error('PDF 附件不存在');const pdf=await attachment.getFilePathAsync();if(!pdf)throw new Error('PDF 文件缺失，无法保存对话');
       return this.P.join(this.P.parent(pdf),'margin-comments-assistant-'+name);
+    }
+    conversationTarget(reader){const item=this.Z.Items.get(Number(reader.itemID));return item?.getDisplayTitle?.()||item?.getField?.('title')||this.scope(reader).attachmentKey;}
+    async readConversationFile(){
+      if(!this.chooseConversationFile)throw new Error('对话文件选择器不可用，请安装新版并重启 Zotero');
+      const path=await this.chooseConversationFile(this.runtimeWindow(),{save:false});if(!path)return null;
+      if(!/\.json$/i.test(path))throw new Error('请选择解压后的 JSON 文件；ZIP 和 HTML 暂不支持');
+      if((await this.IO.stat(path)).size>16*1024*1024)throw new Error('JSON 文件超过 16 MiB，请仅导出需要的对话后再导入');
+      return this.IO.readUTF8(path);
+    }
+    async writeConversationFile(text,extension,title){
+      if(!this.chooseConversationFile)throw new Error('对话文件选择器不可用，请安装新版并重启 Zotero');if(!['json','md'].includes(extension))throw new Error('导出扩展名无效');
+      const name=(title||'对话').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').replace(/[. ]+$/g,'').slice(0,80)||'对话';
+      const path=await this.chooseConversationFile(this.runtimeWindow(),{save:true,extension,name:'对话-'+name+'.'+extension});if(!path)return false;
+      const normalized=(this.P.normalize?.(path)||path).replace(/\\/g,'/'),file=normalized.split('/').at(-1).toLowerCase();
+      if(!file.endsWith('.'+extension))throw new Error('导出文件扩展名必须为 .'+extension);
+      if(file.startsWith('margin-comments-')||/\/margin-comments-assistant\//i.test(normalized)||/\/margin-comments-(?:images|attachments)\//i.test(normalized))throw new Error('不能覆盖插件的本地历史或材料，请使用其他文件名/目录');
+      await this.IO.writeUTF8(path,text,{tmpPath:path+'.zma-export.tmp'});return true;
     }
     historyMarker(scope){return `zma-history://${scope.libraryID}/${scope.attachmentKey}`;}
     historyTarget(note){if(!note?.isNote?.()||note.deleted)return null;const match=/zma-history:\/\/([1-9]\d*)\/([A-Z0-9]{8})/.exec(note.getNote?.()||'');
@@ -162,10 +181,22 @@
       return context;
     }
     load(reader){const scope=this.scope(reader),key=C.scopeKey(scope);if(!this.states.has(key))this.states.set(key,(async()=>{const state=await this.store.load(scope);try{await this.ensureHistoryNote(reader);}catch(e){this.Z.logError?.(e);}return state;})());return this.states.get(key);}
-    async save(reader,state){await this.store.save(this.scope(reader),state);this.refreshReferenceCards(reader);}
-    claimRequest(reader){const key=C.scopeKey(this.scope(reader));if(this.activeRequests.has(key))throw new Error('此 PDF 已在另一窗口正在生成，请先停止或等待完成');this.activeRequests.add(key);}
+    async save(reader,state){const key=C.scopeKey(this.scope(reader));while(this.transferTasks?.has(key))await this.transferTasks.get(key).catch(()=>{});await this.store.save(this.scope(reader),state);this.refreshReferenceCards(reader);}
+    importConversation(reader,prepared){
+      const scope=this.scope(reader),key=C.scopeKey(scope);this.transferTasks??=new Map();
+      const task=(this.transferTasks.get(key)||Promise.resolve()).catch(()=>{}).then(async()=>{
+        if(this.activeRequests?.has(key))throw new Error('请先等待当前操作完成');
+        const state=await this.load(reader),next=root.ZMATransfer.importState(state,prepared),conversation=C.activeConversation(next);
+        await this.store.save(scope,next);
+        // Publish only the addition. Other windows may have edited existing
+        // drafts during the write; replacing their objects would lose edits.
+        state.conversations.push(conversation);state.activeConversationId=conversation.id;return conversation;
+      });
+      this.transferTasks.set(key,task);const clear=()=>{if(this.transferTasks.get(key)===task)this.transferTasks.delete(key);};task.then(clear,clear);return task;
+    }
+    claimRequest(reader){const key=C.scopeKey(this.scope(reader));if(this.activeRequests.has(key)||this.transferTasks?.has(key))throw new Error('此 PDF 已在另一窗口正在生成，请先停止或等待完成');this.activeRequests.add(key);}
     releaseRequest(reader){this.activeRequests.delete(C.scopeKey(this.scope(reader)));}
-    isGenerating(reader){return this.activeRequests.has(C.scopeKey(this.scope(reader)));}
+    isGenerating(reader){const key=C.scopeKey(this.scope(reader));return this.activeRequests.has(key)||!!this.transferTasks?.has(key);}
     runtimeWindow(){const win=this.Z.getMainWindow?.()||this.win;if(!win||win.closed)throw new Error('Zotero 主窗口尚未就绪，请稍后重试');return win;}
     newAbortController(){return new (this.runtimeWindow().AbortController)();}
     mainWindowLoaded(win){this.win=win;this.bindHistoryPane(win);this.restoreReaders();}

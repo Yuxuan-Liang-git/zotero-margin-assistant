@@ -175,3 +175,19 @@ v1隔离原生启动发现内容窗口不能读取特权脚本的observer option
 
 最终XPI SHA-256：590abad3b6053b5c0b55a63ef4c87edca17140bc349cdb7257439c15d378796c，1130232字节。原始0.9.5 XPI与baseline保留。
 
+2026-10-26 0.13.5
+
+## 对话导入、导出与续聊
+
+用户确认同时支持ChatGPT导出文件和粘贴文本。新增独立transfer转换模块与transfer-ui，入口位于对话记录页；支持插件可移植JSON、已有sidecar及可识别的ChatGPT mapping结构，标题筛选/分支选择、文字预览、取消与添加新对话。只导入可见user/assistant，代码围栏内角色文字保留，网页“你说/ChatGPT说”及英文标记支持，末尾未回答问题转草稿；LaTeX保持原始源码。导入不包含上传文件、隐藏推理/工具消息/系统角色/本地材料路径，明确提示缺失附件。导出JSON可往返，Markdown便于阅读；凭据与设置不进入导出。
+
+导入先构造独立通过core校验的新状态，原子保存成功后才发布新增对话，失败保留原记录。同一PDF的导入按scope串行执行，写前基于最新状态构造，写后只追加新增会话，不替换其他窗口的旧会话对象；常规保存等所有当前/排队导入完成再快照，因此保留并发草稿编辑。阅读器销毁等待导入写入，避免旧状态晚到覆盖。生成期间禁止导入/切换；文件读取有尺寸/格式/消息数边界，导出拒绝live sidecar及插件材料目录。长历史每批20条展示，可展开更早消息，完整记录仍保留并进入已有压缩/上下文流程。未新增网络调用、外部依赖或存储schema。
+
+15项专项回归先失败后通过；最终完整npm test205/205通过，133.5秒，evidence/ui-0135/tests-final.txt；完整checkJs通过。预览截图import-preview.png已查看。QA的delayed-write夹具最初误阻塞第二次保存，修正仅阻塞首写后完整通过。
+
+隔离Zotero10.0.6首启/冷重启各19/19通过，evidence/zotero-0135-transfer-v4/report-1.json与report-2.json。真实本地读写、文件/粘贴预览、独立会话与MathML、两种导出、禁止覆盖live sidecar、冷恢复确认；下一轮模拟Responses请求确含导入旧问答和当前PDF。未做真实在线推理测试，OS选择器使用注入路径回调，用户原配置/文库/PDF保留。准备v1缺NODE_PATH，v2测试fixture漏括号；增加QA bootstrap语法预检后v3通过，没有因此改动产品代码。
+
+独立代码复查发现并发导入可能覆盖旧状态、空未完成回答丢失并重复草稿两项Important；新增两项回归先复现失败后修复，再次复查无剩余Critical/Important。预览也显示目标PDF标题。
+
+产物dist/margin-comments-deepseek-0.13.5.xpi，SHA256 20de24f8059fe77d78998a4230a0fc448a58ab6ac8d7296d0adab8e784915278，1138456字节。配套源码ZIP和verification-report由scripts/verify.py生成。
+
