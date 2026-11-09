@@ -1,6 +1,18 @@
 # 验收记录
 
-日期：2026-10-18。交付版本：0.10.10。目标 Zotero：10.0.x。下方旧版本记录保留为历史验收证据。
+日期：2026-10-18。交付版本：0.11.0。目标 Zotero：10.0.x。下方旧版本记录保留为历史验收证据。
+
+## 0.11.0：ChatGPT 订阅接入
+
+现有侧栏支持 DeepSeek API / ChatGPT 订阅选择、当前账户可用模型选择和用量入口。原生设置页提供 Continue with ChatGPT、其他账户/工作区、重新授权、刷新模型、取消登录和退出。系统浏览器授权使用新 state/nonce/PKCE、稳定主机标识和官方动态客户端注册；返回的 ID token 使用官方 JWKS 做 RS256/ES256 签名与 issuer/audience/azp/subject/nonce/时间验证。每份账户注册与其 client ID 分别保存，令牌经 OSKeyStore 加密后作为一个首选项记录更新；刷新串行，退出等待刷新后撤销最新续期令牌，清除本地令牌并保留注册信息。撤销未确认时提示到 ChatGPT 设置断开应用。
+
+ChatGPT 请求使用公开 Responses 端点和账户 OAuth token，无需 OpenAI API Key。使用 instructions、完整本地 input、store=false、stream=true，省略 SIWC 不支持的 max_output_tokens、previous_response_id 等字段。图文材料、自动 PDF 上下文、旧对话摘要、Markdown/LaTeX、复制和选区编辑沿用原逻辑。仅 response.completed 视为完成，订阅额度错误、断线和 incomplete 保留部分回答。当前请求固定所选账户的客户端，生成期间禁止更换服务/模型/账户。
+
+独立审查发现跨账户切换会使已轮换的刷新令牌丢失，以及拒绝回答流会变成空白完成；均先用回归复现再修复。账户切换不再丢弃其他注册的刷新结果，正常退出等待已发起的刷新提交加密存储；refusal delta/done 按消息部分显示一次。审查复核无未解决的阻塞问题。新回归覆盖 PKCE/身份校验、加密重启、刷新并发、刷新中退出、模型目录、请求图文和参数、额度错误/不完整流、401 单次刷新、服务路由和原生设置选值。完整 112/112 项测试通过（67.7 秒），JavaScript 类型检查通过。原生测试发现 Gecko HttpServer 的私有 _start(..., 127.0.0.1) 没有登记 IPv4 identity；先复现回调被原生 HTTP 400 拒绝，再用公开 start(-1) 的 loopback 行为修复并增加回归。
+
+最终包 SHA-256：`e37a38019ef561c56ff9e2f4088cafeb146de73851f09ad2e3f3b4870ae8591f`，1096531 字节。独立 Zotero 10.0.6 配置中，同一最终包首次启动和冷重启各通过 5 项检查，见 `evidence/zotero-0110-chatgpt-v6/report-1.json` 与 `report-2.json`；验证真实本机 HTTP 回调、错误 state 拒绝、WebCrypto 签名、系统加密、串行刷新、账户模型、自动读取真实夹具 PDF、Markdown/MathML，以及重启后恢复账户/模型和本地历史。OAuth/JWKS/模型/推理均为合成响应，系统剪贴板使用替身，不改动用户正式配置和文库。
+
+此前真实订阅原型验证另见 `docs/chatgpt-subscription-verification.md`；新版 XPI 的实际账户登录和在线推理仍需用户安装后验收，首次需要重新授权。无浏览器 Cookie 抓取、无网页历史导入、无外部运行时依赖。
 
 ## 0.10.10：助手输入框方向键与选字
 

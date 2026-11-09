@@ -76,7 +76,7 @@
   }
   function cleanMessage(m){
     if(!['user','assistant'].includes(m?.role)||typeof m.content!=='string'||m.materials!==undefined&&!Array.isArray(m.materials))throw new Error('对话数据损坏');
-    return {role:m.role,content:m.content,incomplete:!!m.incomplete,materials:(m.materials||[]).map(s=>({...pickSource(s),type:s.type,number:s.number,description:s.description}))};
+    return {role:m.role,content:m.content,incomplete:!!m.incomplete,materials:(m.materials||[]).map(s=>({...pickSource(s),type:s.type,number:s.number,description:s.description})),...(['deepseek','chatgpt'].includes(m.provider)?{provider:m.provider,...(typeof m.model==='string'&&/^[a-z0-9._-]{1,128}$/i.test(m.model)?{model:m.model}:{})}:{})};
   }
   function cleanConversation(c){
     if(!c||!conversationID.test(c.id)||typeof c.title!=='string'||c.title.length>120||!Number.isSafeInteger(c.createdAt)||c.createdAt<0||!Number.isSafeInteger(c.updatedAt)||c.updatedAt<0||!Array.isArray(c.history)||typeof c.draft!=='string')throw new Error('对话数据损坏');

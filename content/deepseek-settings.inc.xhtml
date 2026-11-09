@@ -1,6 +1,25 @@
-  <groupbox data-search-strings-raw="DeepSeek,API,密钥,区域提问,模型">
-    <label><html:h2 class="zmc-prefs-heading">DeepSeek 区域提问</html:h2></label>
+  <groupbox data-search-strings-raw="DeepSeek,ChatGPT,订阅,登录,API,密钥,区域提问,模型">
+    <label><html:h2 class="zmc-prefs-heading">文档助手 · DeepSeek / ChatGPT</html:h2></label>
     <html:div id="zma-api-settings" style="display:grid;gap:8px;max-width:540px">
+      <html:h3>ChatGPT 订阅</html:h3>
+      <html:p>使用自己的 ChatGPT 订阅，无需 OpenAI API Key。登录会在系统浏览器打开 OpenAI 授权页；登录信息在本机加密保存。</html:p>
+      <html:label for="zma-provider">默认 AI 服务</html:label>
+      <html:select id="zma-provider"><html:option value="deepseek">DeepSeek API</html:option><html:option value="chatgpt">ChatGPT 订阅</html:option></html:select>
+      <html:label for="zma-chatgpt-account">ChatGPT 账户 / 工作区</html:label>
+      <html:select id="zma-chatgpt-account"></html:select>
+      <html:label for="zma-chatgpt-model">ChatGPT 模型</html:label>
+      <html:select id="zma-chatgpt-model"></html:select>
+      <html:div style="display:flex;gap:6px;flex-wrap:wrap">
+        <html:button id="zma-chatgpt-login" type="button">Continue with ChatGPT</html:button>
+        <html:button id="zma-chatgpt-add" type="button">添加其他账户</html:button>
+        <html:button id="zma-chatgpt-cancel" type="button">取消登录</html:button>
+        <html:button id="zma-chatgpt-refresh" type="button">刷新模型</html:button>
+        <html:button id="zma-chatgpt-logout" type="button">退出当前账户</html:button>
+        <html:button id="zma-chatgpt-usage" type="button">管理用量</html:button>
+      </html:div>
+      <html:p id="zma-chatgpt-status" role="status" style="white-space:pre-wrap"></html:p>
+      <html:p>使用 ChatGPT 订阅时，发送问题会把自动读取的当前 PDF 内容、所选材料及本地对话上下文发给 OpenAI。此插件内的对话保存在 PDF 同目录，不会读取 ChatGPT 网页中的聊天历史。额度由 ChatGPT 账户及此应用的用量设置决定。</html:p>
+      <html:h3>DeepSeek API</html:h3>
       <html:p>服务地址：https://api.deepseek.com</html:p>
       <html:label for="zma-api-key">API Key（加密保存在本机）</html:label>
       <html:input id="zma-api-key" type="password" autocomplete="off" />

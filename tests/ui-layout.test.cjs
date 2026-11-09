@@ -53,6 +53,22 @@ test('reader focus navigation leaves composer caret, selection, multiline editin
     assert.equal(await page.evaluate(()=>readerMoves),1,'reader shortcuts outside the composer still work');
   }finally{await browser.close();}
 });
+
+test('ChatGPT provider/model picker routes PDF context and local history to the selected client',async()=>{
+  const {browser,page}=await setup();try{
+    await page.evaluate(async()=>{
+      const host=fixture.host;host.provider='deepseek';host.providerState=()=>({provider:host.provider,label:host.provider==='chatgpt'?'ChatGPT':'DeepSeek',signedIn:true,model:'qa-model',models:[{slug:'qa-model',displayName:'QA Model'}],accountLabel:'QA Account'});
+      host.setProvider=async value=>{host.provider=value;host.providersChanged();};host.selectedClient=()=>host.provider==='chatgpt'?{generate:async messages=>{globalThis.chatgptInput=messages;return 'ChatGPT 文档答案';},summarize:async()=> 'summary'}:host.client;
+      host.documentContext=async()=>({mode:'full-text',text:'current PDF facts',pages:[1],totalPages:1,title:'PDF QA'});
+      globalThis.providerPanel=await host.panel(fixture.reader);providerPanel.showChat();
+    });
+    const selector=page.getByRole('combobox',{name:'AI 服务',exact:true});assert.equal(await selector.count(),1);await selector.selectOption('chatgpt');
+    assert.equal(await page.getByRole('combobox',{name:'ChatGPT 模型',exact:true}).inputValue(),'qa-model');assert.match(await page.locator('.zma-provider-info').innerText(),/ChatGPT 订阅/);
+    await page.getByRole('textbox',{name:'问题',exact:true}).fill('解释当前文档');await page.getByRole('button',{name:'发送',exact:true}).click();
+    await page.waitForFunction(()=>!!globalThis.chatgptInput);assert.match(JSON.stringify(await page.evaluate(()=>chatgptInput)),/current PDF facts/);
+    assert.match(await page.locator('.zma-messages').innerText(),/ChatGPT 文档答案/);assert.equal(await page.evaluate(()=>providerPanel.conversation().history.at(-1).provider),'chatgpt');
+  }finally{await browser.close();}
+});
 test('references render automatically inside the corresponding margin card without opening chat',async()=>{
   const {browser,page}=await setup();try{
     await page.evaluate(()=>fixture.host.attachCard(fixture.session,fixture.runtime));

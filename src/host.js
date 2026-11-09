@@ -5,12 +5,14 @@
   const R=root.ZMACapture||(typeof require!=='undefined'?require('./capture.js'):null);
   const Doc=root.ZMADocument||(typeof require!=='undefined'?require('./document.js'):null);
   const Credentials=root.ZMACredentials||(typeof require!=='undefined'?require('./credentials.js'):null);
+  const Auth=root.ZMAChatGPTAuth||(typeof require!=='undefined'?require('./chatgpt-auth.js'):null);
+  const GPT=root.ZMAChatGPT||(typeof require!=='undefined'?require('./chatgpt.js'):null);
   const Images=root.ZMAImages||(typeof require!=='undefined'?require('./images.js'):null);
   const ID='margin-comments-assistant@local.zotero';
   class Host{
     /** @type {string|undefined} */
     styleText;
-    constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null}){
+    constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null,chatgptListen=null}){
       this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
       this.credentialError='';
       this.credentials=Z.Prefs&&Z.OSKeyStore&&Credentials?new Credentials.CredentialStore({
@@ -25,7 +27,25 @@
         if(p.endsWith('.json')){const old=P.join(this.directory,p);if(await IO.exists(old)){const raw=await IO.readUTF8(old);await IO.writeUTF8(sidecar,raw,{tmpPath:sidecar+'.tmp'});return true;}}return false;},
         read:async p=>IO.readUTF8(await this.pdfStatePath(p)),writeAtomic:async(p,value)=>{const path=await this.pdfStatePath(p);await IO.writeUTF8(path,value,{tmpPath:path+'.tmp'});}});
       this.client=new D.DeepSeekClient({fetch:(...args)=>this.runtimeWindow().fetch(...args),getKey:()=>this.key,getModel:()=>this.model,TextDecoder:win?.TextDecoder});
+      this.provider=Z.Prefs?.get('margincomments.provider')==='chatgpt'?'chatgpt':'deepseek';this.providerListeners=new Set();this.authError='';
+      if(this.credentials&&Auth&&GPT){
+        const platform={crypto:win?.crypto||globalThis.crypto,URL:win?.URL||globalThis.URL,URLSearchParams:win?.URLSearchParams||globalThis.URLSearchParams,TextEncoder:win?.TextEncoder||globalThis.TextEncoder,TextDecoder:win?.TextDecoder||globalThis.TextDecoder,AbortController:win?.AbortController||globalThis.AbortController,atob:win?.atob?.bind(win)||globalThis.atob,btoa:win?.btoa?.bind(win)||globalThis.btoa};
+        this.auth=new Auth.AuthManager({adapter:this.credentials.adapter,platform,fetch:(...args)=>this.runtimeWindow().fetch(...args),listen:chatgptListen||(()=>{throw new Error('ChatGPT 登录监听器不可用，请重新安装插件并重启 Zotero。');}),openBrowser:url=>this.Z.launchURL(url),onChange:()=>this.providersChanged()});
+        this.chatgpt=new GPT.ChatGPTClient({auth:this.auth,fetch:(...args)=>this.runtimeWindow().fetch(...args),TextDecoder:win?.TextDecoder});
+      }
     }
+    providerLabel(){return this.provider==='chatgpt'?'ChatGPT':'DeepSeek';}
+    providerState(){const account=this.auth?.active();return {provider:this.provider,label:this.providerLabel(),signedIn:!!account?.accessToken,accountLabel:this.auth?.accounts().find(a=>a.id===account?.id)?.label||'',model:this.provider==='chatgpt'?account?.model||'':this.model,models:this.provider==='chatgpt'?account?.models||[]:[],error:this.authError};}
+    providersChanged(){for(const panel of this.panels.values())panel.refreshProvider?.();for(const listener of this.providerListeners)listener();}
+    providerIdle(){if(this.activeRequests.size)throw new Error('请先停止或等待正在生成的回答，再更改服务或账户。');}
+    async setProvider(value){this.providerIdle();if(!['deepseek','chatgpt'].includes(value))throw new Error('服务名称无效');this.Z.Prefs?.set('margincomments.provider',value);this.provider=value;this.providersChanged();}
+    selectedClient(){if(this.provider!=='chatgpt')return this.client;if(!this.auth?.active()?.accessToken)throw new Error('请先在设置中登录 ChatGPT，再发送问题。');return this.chatgpt.forAccount(this.auth.state.activeID);}
+    async setChatGPTModel(model){this.providerIdle();await this.auth?.setModel(model);}
+    chatGPTAPI(){return {state:()=>({...this.providerState(),accounts:this.auth?.accounts()||[],activeID:this.auth?.state.activeID,pending:!!this.auth?.pending}),watch:listener=>{this.providerListeners.add(listener);return ()=>this.providerListeners.delete(listener);},provider:value=>this.setProvider(value),select:async id=>{this.providerIdle();await this.auth?.select(id);},model:value=>this.setChatGPTModel(value),refresh:async()=>{this.providerIdle();if(!this.chatgpt)throw new Error('ChatGPT 授权模块不可用');return this.chatgpt.models();},login:async id=>{
+      this.providerIdle();if(!this.auth)throw new Error('ChatGPT 安全登录不可用，请重启 Zotero。');this.authError='';await this.auth.signIn(id||undefined);await this.setProvider('chatgpt');
+      if(!this.auth.state.welcomed){this.notify('正在使用你的 ChatGPT 订阅。发送问题会使用当前 PDF 内容与本地对话；可在“管理用量”中调整应用额度。');await this.auth.update(s=>({...s,welcomed:true}));}
+      await this.chatgpt.models();
+    },cancel:()=>this.auth?.cancelSignIn(),logout:async()=>{for(const panel of this.panels.values())panel.controller?.abort();this.authError=await this.auth?.signOut()||'';this.providersChanged();return this.authError;},usage:()=>this.Z.launchURL('https://chatgpt.com/settings/usage')};}
     scope(reader){const a=this.Z.Items.get(Number(reader.itemID));if(!a)throw new Error('PDF 附件不存在');return {libraryID:a.libraryID,attachmentKey:a.key};}
     async pdfStatePath(name){const match=/^([1-9]\d*)-([A-Z0-9]{8})\.json(?:\.v1\.bak)?$/.exec(name);
       if(!match)throw new Error('对话文件名无效');const attachment=this.Z.Items.getByLibraryAndKey(Number(match[1]),match[2]);
@@ -214,7 +234,7 @@
       if(!this.credentials)throw new Error('当前 Zotero 不支持安全保存密钥');
       await this.credentials.save(key,model);
       if(key.trim())this.key=key.trim();this.model=model.trim();this.credentialError='';
-    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
+    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),chatgpt:this.chatGPTAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
     async restoreCredentials(){
       if(!this.credentials){this.credentialError='当前 Zotero 不支持安全保存密钥';return;}
       try{const saved=await this.credentials.load();this.key=saved.key;this.model=saved.model;this.credentialError='';}
@@ -245,7 +265,7 @@
     };
     onToolbar=event=>{
       if(!this.isPDF(event.reader))return;
-      const reader=event.reader;const b=root.ZMAPanel.button(event.doc,'DeepSeek',async()=>{const panel=await this.panel(reader);panel.showChat();});b.className='zma-toolbar';b.title='打开 DeepSeek 文档提问侧边栏';event.append(b);
+      const reader=event.reader;const b=root.ZMAPanel.button(event.doc,'DeepSeek / ChatGPT',async()=>{const panel=await this.panel(reader);panel.showChat();});b.className='zma-toolbar';b.title='打开 DeepSeek / ChatGPT 文档提问侧边栏';event.append(b);
       this.watchToolbar(reader,event.doc);
       this.guard(async()=>{const session=await this.addon.controller.ensureSession(reader);if(session&&!this.closedReaders.has(reader)){this.bindReferences(reader,session.adapter.document());this.decorateSession(session);}});
     };
@@ -275,6 +295,7 @@
     async start(){
       if(this.running)return;
       await this.restoreCredentials();
+      try{await this.auth?.load();}catch{this.authError='ChatGPT 登录信息无法读取，请在设置中重新登录。';}
       this.running=true;for(const win of this.Z.getMainWindows?.()||[this.win])this.bindHistoryPane(win);
       this.Z.Reader.registerEventListener('renderToolbar',this.onToolbar,ID);this.Z.Reader.registerEventListener('createAnnotationContextMenu',this.onMenu,ID);
       this.Z.Reader.registerEventListener('createViewContextMenu',this.onViewMenu,ID);
@@ -285,7 +306,7 @@
     async closeReader(reader){this.closedReaders.add(reader);for(const [doc,entry]of this.toolbarObservers)if(entry.reader===reader){entry.observer.disconnect();this.toolbarObservers.delete(doc);}const panel=this.panels.get(reader);this.panels.delete(reader);for(const [doc,entry]of this.cleanups)if(entry.reader===reader){entry.dispose();this.cleanups.delete(doc);}if(panel)await panel.destroy();}
     prune(){const live=new Set(this.Z.Reader._readers||[]);const readers=new Set([...this.panels.keys(),...[...this.cleanups.values()].map(x=>x.reader)]);for(const reader of readers)if(!live.has(reader))void this.closeReader(reader);}
     async stop(){
-      this.running=false;this.key='';this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
+      this.running=false;this.key='';for(const panel of this.panels.values())panel.controller?.abort();await this.auth?.stop();this.providerListeners.clear();this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
       for(const win of [...this.historyPanes.keys()])this.unbindHistoryPane(win);
       for(const {observer}of this.toolbarObservers.values())observer.disconnect();this.toolbarObservers.clear();
       await Promise.allSettled(this.pending.values());await Promise.allSettled([...this.panels.values()].map(p=>p.destroy()));this.panels.clear();

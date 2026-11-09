@@ -16,7 +16,14 @@
     async init(){
       this.state=await this.host.load(this.reader);this.conversationId=this.state.activeConversationId;const d=this.doc;
       this.node=el(d,'aside',undefined,'zma-panel');this.node.setAttribute('aria-label','区域阅读助手');this.node.hidden=true;
-      const header=el(d,'header');header.append(el(d,'strong','DeepSeek · 文档助手'),button(d,'设置',()=>this.host.settings()),button(d,'关闭',()=>this.close()));
+      const header=el(d,'header');header.append(el(d,'strong','文档助手 · DeepSeek / ChatGPT'),button(d,'设置',()=>this.host.settings()),button(d,'关闭',()=>this.close()));
+      this.providerBar=el(d,'div',undefined,'zma-provider-bar');this.providerSelect=el(d,'select');this.providerSelect.setAttribute('aria-label','AI 服务');
+      for(const [value,label]of [['deepseek','DeepSeek API'],['chatgpt','ChatGPT 订阅']]){const option=el(d,'option',label);option.value=value;this.providerSelect.append(option);}
+      this.modelSelect=el(d,'select');this.modelSelect.setAttribute('aria-label','ChatGPT 模型');
+      this.providerInfo=el(d,'small',undefined,'zma-provider-info');this.usageButton=button(d,'管理用量',()=>this.host.chatGPTAPI?.().usage());
+      this.providerBar.append(this.providerSelect,this.modelSelect,button(d,'登录 / 账户',()=>this.host.settings()),this.usageButton,this.providerInfo);
+      this.providerSelect.addEventListener('change',()=>void Promise.resolve(this.host.setProvider?.(this.providerSelect.value)).catch(e=>this.error(e)).finally(()=>this.refreshProvider()));
+      this.modelSelect.addEventListener('change',()=>void Promise.resolve(this.host.setChatGPTModel?.(this.modelSelect.value)).catch(e=>this.error(e)).finally(()=>this.refreshProvider()));
       this.tabs=el(d,'nav');this.chat=el(d,'section');this.directory=el(d,'section');this.directory.hidden=true;this.conversationList=el(d,'section',undefined,'zma-conversations');this.conversationList.hidden=true;
       this.tabs.append(button(d,'提问',()=>this.showChat()),button(d,'对话记录',()=>this.showConversations()),button(d,'引用目录',()=>this.showDirectory()));
       const info=el(d,'p','自动读取当前 PDF，发送时提供文档背景；可附加框选材料。','zma-info');
@@ -33,10 +40,15 @@
       this.status=el(d,'p','Enter 发送，Shift+Enter 换行。','zma-status');this.status.setAttribute('role','status');
       const composer=el(d,'div',undefined,'zma-composer');composer.append(this.question,actions);this.chat.className='zma-chat';this.chat.append(this.activeLabel,info,this.contextInfo,this.materialList,this.messages,composer);
       this.previewArea=el(d,'section',undefined,'zma-previews');
-      this.node.append(header,this.tabs,this.previewArea,this.chat,this.conversationList,this.directory,this.status);d.body.append(this.node);
+      this.node.append(header,this.providerBar,this.tabs,this.previewArea,this.chat,this.conversationList,this.directory,this.status);d.body.append(this.node);
       this.directory.className='zma-directory';this.installResizeHandle();
       this.disposeClipboard=root.ZMAClipboard?.install(this.node,{copy:text=>this.host.copy(text),read:()=>this.host.readClipboard?.(),onError:error=>this.error(error)});
-      this.renderMaterials();this.renderMessages();this.renderConversationList();return this;
+      this.refreshProvider();this.renderMaterials();this.renderMessages();this.renderConversationList();return this;
+    }
+    refreshProvider(){
+      const state=this.host.providerState?.()||{provider:'deepseek',model:this.host.model||''};this.providerSelect.value=state.provider;this.modelSelect.hidden=state.provider!=='chatgpt';this.usageButton.hidden=state.provider!=='chatgpt';
+      this.modelSelect.replaceChildren();for(const model of state.models||[]){const option=el(this.doc,'option',model.displayName);option.value=model.slug;this.modelSelect.append(option);}this.modelSelect.value=state.model||'';
+      this.providerSelect.disabled=this.busy;this.modelSelect.disabled=this.busy||!state.signedIn;this.providerInfo.textContent=state.provider==='chatgpt'?(state.signedIn?`使用 ChatGPT 订阅 · ${state.accountLabel||''}`:'请在设置中 Continue with ChatGPT 登录'):`使用 DeepSeek API · ${state.model||''}`;
     }
     installResizeHandle(){
       const handle=el(this.doc,'div',undefined,'zma-resizer');handle.setAttribute('role','separator');handle.setAttribute('aria-label','调整文档助手宽度');handle.setAttribute('aria-orientation','vertical');this.node.prepend(handle);
@@ -111,7 +123,7 @@
       const actions=el(this.doc,'div',undefined,'zma-actions');actions.append(button(this.doc,'复制',()=>this.host.copy(m.content)),button(this.doc,'保存为笔记',()=>this.saveAnswer(i,'note')),button(this.doc,'保存到批注',()=>this.saveAnswer(i,'comment')));card.append(actions);
     }
     renderAnswer(node,text){if(root.ZMAMarkdown)root.ZMAMarkdown.render(node,text,this.host.addon.bridge.renderMathPreview);else this.host.addon.bridge.renderMathPreview(node,text);}
-    async compactHistory(conversation,history,signal){
+    async compactHistory(conversation,history,signal,client=this.host.client){
       const target=C.compactionTarget({...conversation,history});let through=conversation.compactedThrough||0;
       while(through<target){
         let end=through,characters=0;
@@ -122,7 +134,7 @@
         }
         if(end===through||history[through]?.role!=='user'||history[end-1]?.role!=='assistant')throw new Error('历史对话格式异常，无法安全压缩；原始记录未改变');
         if(!this.destroyed)this.status.textContent=`正在压缩较早对话：${end}/${target}…`;
-        const summary=await this.host.client.summarize(conversation.summary||'',history.slice(through,end),{signal});
+        const summary=await client.summarize(conversation.summary||'',history.slice(through,end),{signal});
         if(!summary?.trim())throw new Error('历史对话摘要为空；原始记录未改变');
         conversation.summary=summary;conversation.compactedThrough=end;through=end;
       }
@@ -133,11 +145,12 @@
       const conversation=this.conversation(),history=conversation.history.slice();
       const retry=history.at(-1)?.incomplete&&history.at(-2)?.role==='user'&&history.at(-2).content===question;
       if(retry)history.splice(-2);
-      const controller=this.host.newAbortController();this.host.claimRequest?.(this.reader);this.busy=true;this.sendButton.disabled=true;this.stopButton.disabled=false;this.renderMaterials();this.status.textContent='准备来源…';
+      const client=this.host.selectedClient?.()||this.host.client,provider=this.host.provider,model=this.host.providerState?.().model,label=this.host.providerLabel?.()||'DeepSeek';
+      const controller=this.host.newAbortController();this.host.claimRequest?.(this.reader);this.busy=true;this.refreshProvider();this.sendButton.disabled=true;this.stopButton.disabled=false;this.renderMaterials();this.status.textContent='准备来源…';
       this.controller=controller;const deadline=setTimeout(()=>this.controller?.abort(),300000);
       let user,answer,answerCard;
       try{
-        await this.compactHistory(conversation,history,this.controller.signal);
+        await this.compactHistory(conversation,history,this.controller.signal,client);
         const hydrated=[];
         for(const m of history.slice(conversation.compactedThrough||0)){
           if(m.role==='assistant'){hydrated.push(m);continue;}
@@ -152,14 +165,14 @@
         if(this.controller.signal.aborted)throw new Error('生成已停止');
         const submitted=[...refreshed];if(context?.material&&submitted.length<8&&!submitted.some(m=>m.source.fullPage&&m.source.pageIndex===context.material.source.pageIndex))submitted.push(context.material);
         user={role:'user',content:question,materials:submitted.map(m=>({...C.pickSource(m.source),type:m.source.type,number:m.source.number,description:m.source.description})),incomplete:false};
-        answer={role:'assistant',content:'',materials:[],incomplete:true};
+        answer={role:'assistant',content:'',materials:[],incomplete:true,...(provider?{provider,model}:{} )};
         conversation.history=[...history,user,answer];conversation.draft=this.question.value;C.touchConversation(conversation);await this.persist();
         if(retry){this.messages.lastElementChild?.remove();this.messages.lastElementChild?.remove();}
         this.messages.querySelector('.zma-empty-chat')?.remove();this.messages.append(this.messageCard(user,history.length),this.messageCard(answer,history.length+1));answerCard=this.messages.lastElementChild;this.messages.scrollTop=this.messages.scrollHeight;this.activeLabel.textContent=`当前对话：${conversation.title||'新对话'}`;this.renderConversationList();
-        this.status.textContent='DeepSeek 正在回答…';
+        this.status.textContent=label+' 正在回答…';
         const streamText=this.messages.lastElementChild?.querySelector('.zma-answer');
         const streamNode=this.doc.createTextNode('');streamText?.append(streamNode);let lastScroll=0;
-        answer.content=await this.host.client.generate(messages,{signal:this.controller.signal,onDelta:delta=>{
+        answer.content=await client.generate(messages,{signal:this.controller.signal,onDelta:delta=>{
           answer.content+=delta;if(!this.destroyed){const follow=this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80;streamNode.appendData(delta);const now=Date.now();if(follow&&now-lastScroll>=100){this.messages.scrollTop=this.messages.scrollHeight;lastScroll=now;}}
         }});
         answer.incomplete=false;if(this.question.value.trim()===question)this.question.value='';conversation.draft=this.question.value;C.touchConversation(conversation);this.status.textContent='回答完成，可追问或保存。';
@@ -167,7 +180,7 @@
         if(answer){answer.content=e.partial??answer.content;answer.incomplete=true;}
         conversation.draft=this.question.value;C.touchConversation(conversation);this.error(e);
       }finally{
-        clearTimeout(deadline);this.controller=null;this.busy=false;this.host.releaseRequest?.(this.reader);
+        clearTimeout(deadline);this.controller=null;this.busy=false;this.host.releaseRequest?.(this.reader);this.refreshProvider();
         if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();if(answerCard){const text=answerCard.querySelector('.zma-answer');if(text)this.renderAnswer(text,answer.content);const label=answerCard.querySelector('strong');if(label)label.textContent=answer.incomplete?'回答（未完成）':'回答';if(answer.content)this.addAnswerActions(answerCard,answer,conversation.history.length-1);this.messages.scrollTop=this.messages.scrollHeight;}else if(answer)this.renderMessages();this.renderConversationList();await this.persist().catch(e=>this.error(e));}
       }
     }

@@ -25,8 +25,8 @@ def build():
     manifest = json.loads((out / 'manifest.json').read_text(encoding='utf-8'))
     version = json.loads((PROJECT / 'package.json').read_text(encoding='utf-8'))['version']
     manifest['version'] = version
-    manifest['name'] = 'Margin Comments + DeepSeek'
-    manifest['description'] = '页边批注、LaTeX、DeepSeek 文档提问、编号前文引用与笔记图片'
+    manifest['name'] = 'Margin Comments + DeepSeek + ChatGPT'
+    manifest['description'] = '页边批注、LaTeX、DeepSeek API / ChatGPT 订阅文档提问、前文引用与笔记图片'
     # Zotero 10.0.6 requires this field even for manually distributed add-ons.
     # Reserved .invalid avoids accidentally installing an unrelated upstream build.
     manifest['applications']['zotero']['update_url'] = 'https://updates.invalid/margin-comments-deepseek/update.json'
@@ -74,12 +74,16 @@ def build():
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
   Services.scriptloader.loadSubScript(rootURI + "content/vendor/marked/marked.umd.js", context);
-  for (const name of ["core", "capture", "document", "references", "deepseek", "credentials", "settings", "math", "markdown", "clipboard", "panel", "margin-references", "images", "host"]) {
+  for (const name of ["core", "capture", "document", "references", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "clipboard", "panel", "margin-references", "images", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();
   const assistant = new context.ZMAHost.Host(Zotero.MarginComments, {
     Zotero, IOUtils, PathUtils, window: Zotero.getMainWindow(),
+    chatgptListen: callback => {
+      const { HttpServer } = ChromeUtils.importESModule('chrome://remote/content/server/httpd.sys.mjs');
+      return context.ZMAChatGPTNative.listen(HttpServer, Zotero.getMainWindow().URL, callback);
+    },
     unwrap: value => Components.utils.waiveXrays(value),
     cloneInto: (value, target) => Components.utils.cloneInto(value, Components.utils.getGlobalForObject(target)),
     chooseImage: async win => {

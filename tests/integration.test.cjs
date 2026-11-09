@@ -9,6 +9,13 @@ function fixture(overrides={}){
   const host=new H.Host({controller:{}},{Zotero:Z,IOUtils:IO,PathUtils:{join:(...p)=>p.join('/'),parent:p=>p.slice(0,p.lastIndexOf('/'))},window:{fetch:async()=>{},TextDecoder,AbortController}});
   return {host,Z,annotation,attachment,events,files};
 }
+
+test('provider selection persists and a request snapshots the ChatGPT account; switches cannot race generation',async()=>{
+  const prefs=new Map(),{host}=fixture({Prefs:{get:k=>prefs.get(k),set:(k,v)=>prefs.set(k,v)}});
+  host.auth={state:{activeID:'registered-account'},active:()=>({accessToken:'private'})};host.chatgpt={forAccount:id=>({provider:'chatgpt',id})};
+  assert.equal(typeof host.setProvider,'function');await host.setProvider('chatgpt');assert.equal(prefs.get('margincomments.provider'),'chatgpt');assert.deepEqual(host.selectedClient(),{provider:'chatgpt',id:'registered-account'});
+  host.claimRequest({itemID:1});await assert.rejects(host.setProvider('deepseek'),/生成/);host.releaseRequest({itemID:1});await host.setProvider('deepseek');assert.equal(host.selectedClient(),host.client);
+});
 test('source identity is taken from native image annotation and changes invalidate it',async()=>{
   assert.equal(typeof H.Host,'function');const {host,annotation}=fixture();
   const s=await host.resolveSource({itemID:1},'FORM0630');assert.equal(s.pageIndex,65);assert.equal(s.pageLabel,'60');assert.equal(s.fingerprint,'123:9');
