@@ -22,7 +22,7 @@
   }
   class NotionView{
     constructor(panel){
-      this.panel=panel;this.host=panel.host;this.visible=false;this.request=0;const {el,button}=root.ZMAPanel,doc=panel.doc;
+      this.panel=panel;this.host=panel.host;this.visible=false;this.suspended=false;this.request=0;const {el,button}=root.ZMAPanel,doc=panel.doc;
       this.node=el(doc,'aside',undefined,'zma-notion-dock');this.node.hidden=true;
       this.node.setAttribute('aria-label','Notion 笔记栏');
       this.header=el(doc,'header',undefined,'zma-notion-header');
@@ -60,11 +60,12 @@
       const url=normalizeURL(link.url);if(!url)throw new Error('关联地址不是有效的 Notion 页面');if(this.destroyed||!this.visible)return;
       this.selected={...link,url};this.external.disabled=false;
       if(!this.browser)this.browser=this.host.createNotionBrowser(this.panel.reader,this.viewport,info=>this.state(info));
-      this.browser.setVisible(true);
+      this.browser.setVisible(!this.suspended);
       if(this.loadedURL!==url||refresh){this.message.hidden=false;this.message.textContent='正在载入 Notion…';await this.browser.load(url);this.loadedURL=url;}else{this.message.hidden=true;this.message.textContent='';}
       if(!this.visible||this.destroyed)this.browser?.setVisible(false);
     }
     hide(){this.visible=false;this.request++;this.node.hidden=true;this.toggleMenu(false);this.browser?.setVisible(false);this.panel.refreshDocks?.();}
+    suspend(value){this.suspended=!!value;this.browser?.setVisible(this.visible&&!this.suspended&&!this.destroyed);}
     destroy(){if(this.destroyed)return;this.destroyed=true;this.hide();this.browser?.destroy();this.browser=null;this.node.remove();}
   }
   const api={normalizeURL,linksForReader,NotionView};root.ZMANotion=api;if(typeof module!=='undefined')module.exports=api;

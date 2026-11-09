@@ -40,7 +40,8 @@
     remove(id) { const at=this.records.findIndex(s=>s.id===id);if(at>=0)this.records.splice(at,1); }
   }
   function sourceLink(s,groupID) {
-    validateSource(s);
+    if(s?.fullPage){scopeKey(s);if(!Number.isSafeInteger(s.pageIndex)||s.pageIndex<0)throw new Error('来源页码无效');}
+    else validateSource(s);
     if(groupID!==undefined&&(!Number.isSafeInteger(groupID)||groupID<1))throw new Error('群组标识无效');
     return `zotero://open-pdf/${groupID?`groups/${groupID}`:'library'}/items/${s.attachmentKey}?page=${s.pageIndex+1}${s.fullPage||s.selection?'':`&annotation=${s.annotationKey}`}`;
   }
@@ -71,8 +72,9 @@
   }
   function pickImage(record){
     const mimeExtensions={'image/png':'png','image/jpeg':'jpg','image/gif':'gif','image/webp':'webp'};
-    if(!record||typeof record.id!=='string'||!/^[a-f0-9]{32}$/.test(record.id)||!keyPattern.test(record.annotationKey)||!keyPattern.test(record.noteKey)||!keyPattern.test(record.noteImageKey)||record.fileName!==`margin-comment-${record.id}.${mimeExtensions[record.mime]}`||!mimeExtensions[record.mime])throw new Error('图片记录数据损坏');
-    return {id:record.id,annotationKey:record.annotationKey,fileName:record.fileName,mime:record.mime,noteKey:record.noteKey,noteImageKey:record.noteImageKey};
+    const pageTarget=record?.annotationKey===undefined&&Number.isSafeInteger(record?.sourcePageIndex)&&record.sourcePageIndex>=0;
+    if(!record||typeof record.id!=='string'||!/^[a-f0-9]{32}$/.test(record.id)||!pageTarget&&!keyPattern.test(record.annotationKey)||!keyPattern.test(record.noteKey)||!keyPattern.test(record.noteImageKey)||record.fileName!==`margin-comment-${record.id}.${mimeExtensions[record.mime]}`||!mimeExtensions[record.mime])throw new Error('图片记录数据损坏');
+    return {id:record.id,...(pageTarget?{sourcePageIndex:record.sourcePageIndex}:{annotationKey:record.annotationKey}),fileName:record.fileName,mime:record.mime,noteKey:record.noteKey,noteImageKey:record.noteImageKey};
   }
   function pickAttachment(record){
     const extensions={'application/pdf':'pdf','image/png':'png','image/jpeg':'jpg','image/webp':'webp'};
@@ -113,7 +115,7 @@
     return history.slice(target).reduce((n,m)=>n+m.content.length,0)>40000&&history.at(-1)?.role==='assistant'&&!history.at(-1).incomplete?history.length:target;
   }
   function cleanState(value) {
-    if(!value||![1,2].includes(value.version)||!Array.isArray(value.sources)||!Array.isArray(value.references))throw new Error('数据损坏或版本不兼容');
+    if(!value||![1,2,3].includes(value.version)||!Array.isArray(value.sources)||!Array.isArray(value.references))throw new Error('数据损坏或版本不兼容');
     const idx=new ReferenceIndex([]);value.sources.forEach(s=>idx.add(s));
     if(value.images!==undefined&&!Array.isArray(value.images)||value.imageNoteKey&&(!keyPattern.test(value.imageNoteKey)||typeof value.imageNoteKey!=='string'))throw new Error('图片记录数据损坏');
     let conversations,activeConversationId;
@@ -127,16 +129,23 @@
       if(new Set(conversations.map(c=>c.id)).size!==conversations.length||!conversations.some(c=>c.id===activeConversationId))throw new Error('对话索引损坏');
     }
     const summaries=root.ZMAReadingSummary||(typeof require!=='undefined'?require('./reading-summary.js'):null);
-    return {version:2,sources:idx.records,references:value.references.map(r=>({annotationKey:String(r.annotationKey),sourceID:String(r.sourceID),link:String(r.link)})).filter(r=>keyPattern.test(r.annotationKey)&&parseSourceLink(r.link)),conversations,activeConversationId,images:(value.images||[]).map(pickImage),imageNoteKey:value.imageNoteKey||null,...(value.readingSummary&&summaries?{readingSummary:summaries.clean(value.readingSummary)}:{})};
+    const pictures=root.ZMAPageImageCore||(typeof require!=='undefined'?require('./page-image-core.js'):null);
+    if(value.pageImages!==undefined&&!Array.isArray(value.pageImages))throw new Error('页面图片记录数据损坏');
+    const images=(value.images||[]).map(pickImage),pageImages=(value.pageImages||[]).map(record=>pictures.cleanPlacement(record));
+    const imageIDs=new Set(images.map(image=>image.id));
+    if(new Set(pageImages.map(image=>image.id)).size!==pageImages.length||pageImages.some(image=>!imageIDs.has(image.imageID)))throw new Error('页面图片关联数据损坏');
+    const version=value.version===3||pageImages.length||images.some(image=>image.sourcePageIndex!==undefined)?3:2;
+    return {version,sources:idx.records,references:value.references.map(r=>({annotationKey:String(r.annotationKey),sourceID:String(r.sourceID),link:String(r.link)})).filter(r=>keyPattern.test(r.annotationKey)&&parseSourceLink(r.link)),conversations,activeConversationId,images,imageNoteKey:value.imageNoteKey||null,...(version===3?{pageImages}:{}),...(value.readingSummary&&summaries?{readingSummary:summaries.clean(value.readingSummary)}:{})};
   }
   class LocalStore {
-    constructor(adapter){this.adapter=adapter;this.queues=new Map();this.blocked=new Set();}
+    constructor(adapter){this.adapter=adapter;this.queues=new Map();this.blocked=new Set();this.versions=new Map();}
     async load(scope){
       const path=scopeKey(scope)+'.json';
       if(!await this.adapter.exists(path))return emptyState();
       let raw,parsed,state;
       try{raw=await this.adapter.read(path);parsed=JSON.parse(raw);state=cleanState(parsed);}
       catch{this.blocked.add(path);throw new Error('本地数据损坏：已保留原文件，请先恢复备份，未覆盖数据');}
+      this.versions.set(path,parsed.version);
       if(parsed.version===1){
         try{if(!await this.adapter.exists(path+'.v1.bak'))await this.adapter.writeAtomic(path+'.v1.bak',raw);}
         catch{this.blocked.add(path);throw new Error('旧版对话备份失败：未覆盖原文件');}
@@ -146,8 +155,22 @@
     save(scope,state){
       const path=scopeKey(scope)+'.json';
       if(this.blocked.has(path))return Promise.reject(new Error('本地数据损坏，禁止覆盖'));
-      const snapshot=JSON.stringify(cleanState(state));
-      const write=(this.queues.get(path)||Promise.resolve()).catch(()=>{}).then(()=>this.adapter.writeAtomic(path,snapshot));
+      const clean=cleanState(state),snapshot=JSON.stringify(clean);
+      const write=(this.queues.get(path)||Promise.resolve()).catch(()=>{}).then(async()=>{
+        let version=this.versions.get(path),raw;
+        if(version===undefined){
+          if(await this.adapter.exists(path)){raw=await this.adapter.read(path);version=JSON.parse(raw).version;}
+          else version=0;
+        }
+        if(version===3&&clean.version<3)throw new Error('本地数据版本已升级，请重新打开后保存');
+        if(version>0&&version<clean.version){
+          raw??=await this.adapter.read(path);
+          let backup=path+'.v'+version+'.bak';
+          if(await this.adapter.exists(backup)&&await this.adapter.read(backup)!==raw)backup=path+'.v'+version+'.'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.bak';
+          if(!await this.adapter.exists(backup))await this.adapter.writeAtomic(backup,raw);
+        }
+        await this.adapter.writeAtomic(path,snapshot);this.versions.set(path,clean.version);
+      });
       this.queues.set(path,write);return write;
     }
     async flush(){await Promise.all(this.queues.values());}

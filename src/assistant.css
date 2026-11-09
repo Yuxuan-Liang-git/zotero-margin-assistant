@@ -145,3 +145,33 @@ body.zma-docks-open .split-view {
 .zma-memory-excerpt { margin: 6px 0; padding-left: 10px; border-left: 2px solid var(--zma-line); max-height: 240px; overflow: auto; overflow-wrap: anywhere; }
 .zma-panel .zma-memory-cite { display: inline; padding: 0 2px; border: 0; background: transparent; color: var(--zma-accent); font: inherit; cursor: pointer; text-decoration: underline; }
 .zma-memory-highlight { box-shadow: inset 3px 0 var(--zma-accent); padding-left: 10px; }
+.zma-inline-image > img { cursor: zoom-in; }
+.zma-image-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.zma-image-viewer {
+  position: fixed; inset: 12px; z-index: 2147483000; display: flex; flex-direction: column; gap: 10px;
+  box-sizing: border-box; padding: 12px; border: 1px solid GrayText; border-radius: 10px;
+  color: CanvasText; background: Canvas; box-shadow: 0 0 0 100vmax rgb(0 0 0 / 45%);
+  font: 14px/1.5 system-ui, sans-serif;
+}
+.zma-image-viewer[hidden] { display: none !important; }
+.zma-image-viewer > header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.zma-image-viewer-title { margin-right: auto; }
+.zma-image-viewer button { font: inherit; padding: 3px 9px; }
+.zma-image-viewer output { min-width: 4em; text-align: center; }
+.zma-image-viewport { flex: 1; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; touch-action: none; cursor: grab; background: light-dark(#e8ebf0, #202329); }
+.zma-image-viewport.zma-image-panning { cursor: grabbing; }
+.zma-image-stage { display: flex; align-items: center; justify-content: center; min-width: 100%; min-height: 100%; width: max-content; height: max-content; }
+.zma-image-stage > img { display: block; flex: none; max-width: none !important; max-height: none !important; user-select: none; }
+.zma-page-image-layer { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.zma-page-image { position: absolute; pointer-events: auto; outline: none; user-select: none; box-sizing: border-box; }
+.zma-page-image > img { position: absolute; left: 0; top: 0; display: block; max-width: none !important; max-height: none !important; transform-origin: 0 0; cursor: move; }
+.zma-page-image-selected { outline: 2px solid #376ece; }
+.zma-page-image-actions { position: absolute; left: 0; bottom: 100%; display: flex; flex-wrap: wrap; gap: 3px; padding: 4px; background: Canvas; color: CanvasText; box-shadow: 0 1px 5px #888; white-space: nowrap; z-index: 2; font: 12px/1.5 system-ui,sans-serif; }
+.zma-page-image-actions button { font: inherit; padding: 2px 5px; }
+.zma-page-image-actions[hidden], .zma-page-image-handle[hidden] { display: none !important; }
+.zma-page-image-handle { position: absolute; right: -5px; bottom: -5px; width: 12px; height: 12px; padding: 0; border: 1px solid #376ece; background: Canvas; color: transparent; overflow: hidden; font-size: 0; cursor: nwse-resize; }
+.zma-page-image-status { position: fixed; bottom: 12px; left: 12px; z-index: 10000; max-width: min(440px,85vw); padding: 7px 10px; border: 1px solid #aaa; border-radius: 7px; color: CanvasText; background: Canvas; font: 13px/1.5 system-ui,sans-serif; box-shadow: 0 2px 8px #8885; }
+.zma-page-image-status[hidden] { display: none !important; }
+.zma-page-image-status button { margin-left: 8px; }
+.zma-page-image-status { overflow-wrap: anywhere; }
+.zma-image-export-progress { position: fixed; top: 24px; left: 50%; transform: translateX(-50%); z-index: 2147483001; display: flex; align-items: center; gap: 14px; max-width: 90vw; padding: 14px 18px; border: 1px solid GrayText; border-radius: 8px; color: CanvasText; background: Canvas; box-shadow: 0 3px 16px #5557; font: 14px/1.5 system-ui,sans-serif; }

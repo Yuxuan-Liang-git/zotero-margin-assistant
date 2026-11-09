@@ -18,7 +18,14 @@
     for(const eventName of ['pointerdown','mousedown','click','keydown'])card.addEventListener(eventName,e=>e.stopPropagation());
     card.dataset.imageID=record.id;const image=el(doc,'img');image.alt='此页边批注插入的图片';image.src=await host.imageManager.readImage(session.reader,record);
     image.addEventListener('load',()=>{if(runtime.card.isConnected)relayout(session,runtime);});
-    card.append(image,button(doc,'打开图片笔记',()=>host.guard(()=>host.openImageNote(session.reader,record))));return card;
+    image.tabIndex=0;image.setAttribute('role','button');image.setAttribute('aria-label','查看插入图片的原图');
+    const open=()=>host.guard(()=>host.viewImage(session.reader,record,image));image.addEventListener('click',open);
+    image.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});
+    const actions=el(doc,'div',undefined,'zma-image-actions');
+    const view=button(doc,'查看原图',()=>host.guard(()=>host.viewImage(session.reader,record,view)));view.className='zma-view-image';
+    actions.append(view,button(doc,'打开图片笔记',()=>host.guard(()=>host.openImageNote(session.reader,record))));
+    const place=button(doc,'放到 PDF 页面',()=>host.guard(()=>host.placeImageOnPage(session.reader,record)));place.className='zma-place-image';place.disabled=host.isReadOnly(session.reader);actions.append(place);
+    card.append(image,actions);return card;
   }
   async function sync(host,session,runtime,force=false){
     if(!runtime.referenceRoot)return;

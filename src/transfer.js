@@ -45,7 +45,7 @@
       if(value.version!==1)throw new Error('不支持的导出格式版本');
       return [{title:titleOf(value.conversation?.title),kind:'native',data:value.conversation}];
     }
-    if(value?.version===2&&Array.isArray(value.conversations))return value.conversations.map(data=>({title:titleOf(data.title),kind:'native',data}));
+    if([2,3].includes(value?.version)&&Array.isArray(value.conversations))return value.conversations.map(data=>({title:titleOf(data.title),kind:'native',data}));
     if(value?.version===1&&Array.isArray(value.history))return [{title:'旧版对话',kind:'native',data:value}];
     const chats=Array.isArray(value)?value:value?.mapping?[value]:null;if(!chats?.length||chats.length>5000)throw new Error('不识别此 JSON 对话格式或对话数量超过限制');
     const candidates=[];

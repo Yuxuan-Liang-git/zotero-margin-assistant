@@ -61,6 +61,6 @@
     return runtime.imageInput;
   }
 
-  root.ZMAMarginImages = { install };
+  root.ZMAMarginImages = { install, filesFrom };
   if (typeof module !== 'undefined') module.exports = root.ZMAMarginImages;
 })(typeof _globalThis !== 'undefined' ? _globalThis : globalThis);

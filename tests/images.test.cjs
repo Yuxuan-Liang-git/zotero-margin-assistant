@@ -5,6 +5,107 @@ const { ImageManager } = require('../src/images.js');
 
 const PNG = Uint8Array.from([137,80,78,71,13,10,26,10,0,1]);
 
+test('page image assets use the same native note and copy without requiring an annotation', async () => {
+  const f = fixture(), state = { images: [] };
+  f.host.pageImageInfo = async () => ({ fingerprint: '10:20', pageCount: 4 });
+  f.host.sourceLink = source => require('../src/core.js').sourceLink(source);
+  const record = await new ImageManager(f.host).importImage(f.reader, { pageIndex: 1, fingerprint: '10:20' }, { bytes: PNG }, state);
+  assert.equal(record.annotationKey, undefined); assert.equal(record.sourcePageIndex, 1); assert.equal(state.version, 3);
+  const note = [...f.notes.values()][0]; assert.match(note.getNote(), /page=2/); assert.ok(!note.getNote().includes('&amp;annotation='));
+  assert.equal(f.attachments.size, 1); assert.equal(f.files.has('C:\\papers\\margin-comments-images\\' + record.fileName), true);
+});
+
+test('page image source replacement during reads leaves no saved image or native note', async () => {
+  const f = fixture(), state = { images: [] };let fingerprint = '10:20';
+  f.host.pageImageInfo = async () => ({ fingerprint, pageCount: 4 });
+  const input = { size: PNG.length, arrayBuffer: async () => { fingerprint = '11:30'; return PNG.buffer; } };
+  f.host.attachmentManager = { readInput: value => value.arrayBuffer() };
+  await assert.rejects(new ImageManager(f.host).importImage(f.reader, { pageIndex: 1, fingerprint: '10:20' }, input, state), /改变|变更/);
+  assert.equal(state.images.length + f.notes.size + f.attachments.size, 0);
+  assert.equal([...f.files.keys()].filter(name => name.includes('margin-comments-images')).length, 0);
+});
+
+test('closing a reader during an existing margin image read cancels its pending import', async () => {
+  const f = fixture(), state = { images: [] }; f.host.closedReaders = new WeakSet();
+  const input = { size: PNG.length, arrayBuffer: async () => { f.host.closedReaders.add(f.reader); return PNG.buffer; } };
+  f.host.attachmentManager = { readInput: value => value.arrayBuffer() };
+  await assert.rejects(new ImageManager(f.host).importImage(f.reader, 'ANNOT001', input, state), /停止|关闭/);
+  assert.equal(state.images.length + f.notes.size + f.attachments.size, 0);
+});
+
+test('concurrent chat save waits for an image rollback before taking its persisted snapshot', async () => {
+  const f = fixture(), C = require('../src/core.js'), { Host } = require('../src/host.js');
+  const host = Object.assign(Object.create(Host.prototype), f.host), state = C.emptyState(), saved = [];
+  host.imageManager = new ImageManager(host); host.refreshReferenceCards = () => {};
+  let release, entered, first = true;
+  const started = new Promise(resolve => { entered = resolve; });
+  host.store = { save: async (_scope, value) => {
+    if (first) { first = false; entered(); await new Promise(resolve => { release = resolve; }); throw Error('disk commit blocked'); }
+    saved.push(C.cleanState(value));
+  } };
+  const image = host.imageManager.importImage(f.reader, 'ANNOT001', { bytes: PNG }, state, () => host.save(f.reader, state, { imageCommit: true }));
+  const failure = assert.rejects(image, /disk commit blocked/); await started;
+  state.conversations[0].draft = 'concurrent draft'; const chat = host.save(f.reader, state);
+  release(); await failure; await chat;
+  assert.equal(saved.at(-1).images.length, 0); assert.equal(saved.at(-1).conversations[0].draft, 'concurrent draft');
+});
+
+test('a page image commit during conversation import preserves both changes on disk', async () => {
+  const f = fixture(), C = require('../src/core.js'), T = require('../src/transfer.js'), { Host } = require('../src/host.js');
+  globalThis.ZMATransfer = T;
+  const host = Object.assign(Object.create(Host.prototype), f.host), state = C.emptyState();
+  host.activeRequests = new Set(); host.load = async () => state; host.refreshReferenceCards = () => {};
+  host.imageManager = new ImageManager(host);
+  let release, entered; const started = new Promise(resolve => { entered = resolve; });
+  const sidecar = '1-PDFKEY01.json', files = new Map();
+  const adapter = { exists: async name => files.has(name), read: async name => files.get(name),
+    writeAtomic: async (name, text) => { if (!release) { entered(); await new Promise(resolve => { release = resolve; }); } files.set(name, text); } };
+  host.store = new C.LocalStore(adapter);
+  const importing = host.importConversation(f.reader, T.parseText('用户：\n继续解释\n助手：\n已有结论', 'Imported'));
+  await started;
+  const pageChange = host.imageManager.transaction(f.reader, async () => {
+    state.version = 3;
+    state.images.push({ id: 'a'.repeat(32), sourcePageIndex: 0, mime: 'image/png', fileName: 'margin-comment-' + 'a'.repeat(32) + '.png', noteKey: 'NOTE0001', noteImageKey: 'IMAGE001' });
+    state.pageImages = [{ id: 'b'.repeat(32), imageID: 'a'.repeat(32), pageIndex: 0, matrix: [100,0,0,50,20,30], locked: true, fingerprint: 'fixture:1' }];
+    await host.save(f.reader, state, { imageCommit: true });
+  });
+  await new Promise(resolve => setImmediate(resolve)); release(); await importing; await pageChange;
+  const reopened = await new C.LocalStore(adapter).load(host.scope(f.reader));
+  assert.deepEqual(reopened.conversations.map(conversation => conversation.title), ['新对话', 'Imported']);
+  assert.equal(reopened.pageImages[0].locked, true); assert.equal(JSON.parse(files.get(sidecar)).images.length, 1);
+});
+
+for (const transition of ['reader-close', 'plugin-stop', 'readonly']) {
+  test('page asset final validation rejects ' + transition + ' during its source read', async () => {
+    const f = fixture(), state = { images: [] }; f.host.running = true; f.host.closedReaders = new WeakSet();
+    let entered, release, reads = 0, committed = false, readonly = false;
+    const started = new Promise(resolve => { entered = resolve; });
+    f.host.isReadOnly = () => readonly;
+    f.host.pageImageInfo = async () => { if (++reads === 3) { entered(); await new Promise(resolve => { release = resolve; }); } return { fingerprint: 'fixture:1', pageCount: 2 }; };
+    const task = new ImageManager(f.host).importImage(f.reader, { pageIndex: 0, fingerprint: 'fixture:1' }, { bytes: PNG }, state, () => { committed = true; });
+    const rejected = assert.rejects(task, /停止|只读/); await started;
+    if (transition === 'reader-close') f.host.closedReaders.add(f.reader);
+    if (transition === 'plugin-stop') f.host.running = false;
+    if (transition === 'readonly') readonly = true;
+    release(); await rejected;
+    assert.equal(committed, false); assert.equal(state.images.length + f.notes.size + f.attachments.size, 0);
+    assert.equal([...f.files.keys()].some(name => name.includes('margin-comments-images')), false);
+  });
+
+  test('page placement validation rejects ' + transition + ' during its source read', async () => {
+    const f = fixture(), { PageImages } = require('../src/page-images.js');
+    let release, readonly = false;
+    f.host.running = true; f.host.closedReaders = new WeakSet(); f.host.isReadOnly = () => readonly;
+    f.host.pageImageInfo = () => new Promise(resolve => { release = () => resolve({ fingerprint: 'fixture:1', pageCount: 2 }); });
+    const layer = Object.assign(Object.create(PageImages.prototype), { host: f.host, reader: f.reader, destroyed: false });
+    const task = layer.assertWritable('fixture:1'), rejected = assert.rejects(task, /停止|只读/);
+    if (transition === 'reader-close') f.host.closedReaders.add(f.reader);
+    if (transition === 'plugin-stop') f.host.running = false;
+    if (transition === 'readonly') readonly = true;
+    release(); await rejected;
+  });
+}
+
 function fixture({ readOnly = false, noteHTML = '', embeddedFailure = false } = {}) {
   const files = new Map([
     ['C:\\papers\\figure.png', PNG],

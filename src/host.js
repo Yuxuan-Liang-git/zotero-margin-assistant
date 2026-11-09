@@ -9,6 +9,7 @@
   const GPT=root.ZMAChatGPT||(typeof require!=='undefined'?require('./chatgpt.js'):null);
   const Images=root.ZMAImages||(typeof require!=='undefined'?require('./images.js'):null);
   const MarginImages=root.ZMAMarginImages||(typeof require!=='undefined'?require('./margin-images.js'):null);
+  const ImageViewer=root.ZMAImageViewer||(typeof require!=='undefined'?require('./image-viewer.js'):null);
   const Attachments=root.ZMAAttachments||(typeof require!=='undefined'?require('./attachments.js'):null);
   const Reading=root.ZMAReadingSummary||(typeof require!=='undefined'?require('./reading-summary.js'):null);
   const Docks=root.ZMADocks||(typeof require!=='undefined'?require('./docks.js'):null);
@@ -22,6 +23,8 @@
     styleText;
     constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null,chatgptListen=null,chooseChatFiles=null,readClipboardAssets=null,chooseConversationFile=null,notionBrowser=null}){
       this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.referenceSignatures=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
+      this.imageViewers=new Map();this.pageImageLayers=new Map();this.imageExports=new Map();
+      this.createImageExportWorker=()=>new (this.runtimeWindow().Worker)('chrome://margincomments/content/pdf-image-worker.js');
       this.customPrompt=Instructions?Instructions.restore(Z.Prefs?.get('margincomments.customPrompt')):'';
       this.dockLayout=Docks?Docks.normalize(Z.Prefs?.get('margincomments.dockLayout')):{};
       this.notionBrowser=notionBrowser;
@@ -116,7 +119,7 @@
       await this.chatgpt.models();
     },cancel:()=>this.auth?.cancelSignIn(),logout:async()=>{for(const panel of this.panels.values())panel.controller?.abort();this.authError=await this.auth?.signOut()||'';this.providersChanged();return this.authError;},usage:()=>this.Z.launchURL('https://chatgpt.com/settings/usage')};}
     scope(reader){const a=this.Z.Items.get(Number(reader.itemID));if(!a)throw new Error('PDF 附件不存在');return {libraryID:a.libraryID,attachmentKey:a.key};}
-    async pdfStatePath(name){const match=/^([1-9]\d*)-([A-Z0-9]{8})\.json(?:\.v1\.bak)?$/.exec(name);
+    async pdfStatePath(name){const match=/^([1-9]\d*)-([A-Z0-9]{8})\.json(?:\.v[1-9]\d?(?:\.\d{1,16}-[a-z0-9]{1,12})?\.bak)?$/.exec(name);
       if(!match)throw new Error('对话文件名无效');const attachment=this.Z.Items.getByLibraryAndKey(Number(match[1]),match[2]);
       if(!attachment?.isPDFAttachment?.())throw new Error('PDF 附件不存在');const pdf=await attachment.getFilePathAsync();if(!pdf)throw new Error('PDF 文件缺失，无法保存对话');
       return this.P.join(this.P.parent(pdf),'margin-comments-assistant-'+name);
@@ -169,6 +172,7 @@
     isReadOnly(reader){const a=this.Z.Items.get(Number(reader.itemID));return a?.isEditable?.()===false;}
     sourceLink(source){return C.sourceLink(source,this.groupID(source));}
     async fingerprint(reader){const a=this.Z.Items.get(Number(reader.itemID));const path=await a.getFilePathAsync();if(!path)throw new Error('PDF 附件文件缺失');const stat=await this.IO.stat(path);return `${stat.size}:${stat.lastModified}`;}
+    async pageImageInfo(reader){const session=await this.addon.controller.ensureSession(reader);if(!session)throw new Error('PDF 阅读器尚未就绪');return {pageCount:session.adapter.pageCount(),fingerprint:await this.fingerprint(reader)};}
     nativeAnnotation(reader,key){const scope=this.scope(reader),item=this.Z.Items.getByLibraryAndKey(scope.libraryID,key);if(!item?.isAnnotation?.()||item.parentID!==Number(reader.itemID))return null;return item;}
     async resolveSource(reader,query){
       const scope=this.scope(reader);let source;
@@ -238,17 +242,18 @@
     }
     referenceStateSignature(state){return referenceStateSignature(state);}
     load(reader){this.referenceSignatures??=new Map();const scope=this.scope(reader),key=C.scopeKey(scope);if(!this.states.has(key))this.states.set(key,(async()=>{const state=await this.store.load(scope);this.referenceSignatures.set(key,referenceStateSignature(state));try{await this.ensureHistoryNote(reader);}catch(e){this.Z.logError?.(e);}return state;})());return this.states.get(key);}
-    async save(reader,state){this.referenceSignatures??=new Map();const scope=this.scope(reader),key=C.scopeKey(scope);while(this.transferTasks?.has(key))await this.transferTasks.get(key).catch(()=>{});const previous=this.referenceSignatures.get(key),signature=referenceStateSignature(state);await this.store.save(scope,state);this.referenceSignatures.set(key,signature);this.memory?.schedule(scope);if(previous===undefined||previous!==signature)this.refreshReferenceCards(reader);}
+    async save(reader,state,{imageCommit=false}={}){this.referenceSignatures??=new Map();const scope=this.scope(reader),key=C.scopeKey(scope);if(!imageCommit){await this.imageManager?.waitFor?.(reader);while(this.transferTasks?.has(key))await this.transferTasks.get(key).catch(()=>{});}const previous=this.referenceSignatures.get(key),signature=referenceStateSignature(state);await this.store.save(scope,state);this.referenceSignatures.set(key,signature);this.memory?.schedule(scope);if(previous===undefined||previous!==signature)this.refreshReferenceCards(reader);}
     importConversation(reader,prepared){
       const scope=this.scope(reader),key=C.scopeKey(scope);this.transferTasks??=new Map();
-      const task=(this.transferTasks.get(key)||Promise.resolve()).catch(()=>{}).then(async()=>{
+      const publish=async()=>{
         if(this.activeRequests?.has(key))throw new Error('请先等待当前操作完成');
         const state=await this.load(reader),next=root.ZMATransfer.importState(state,prepared),conversation=C.activeConversation(next);
         await this.store.save(scope,next);
         // Publish only the addition. Other windows may have edited existing
         // drafts during the write; replacing their objects would lose edits.
         state.conversations.push(conversation);state.activeConversationId=conversation.id;this.readingSummary?.schedule(reader);this.memory?.schedule(scope);return conversation;
-      });
+      };
+      const task=(this.transferTasks.get(key)||Promise.resolve()).catch(()=>{}).then(()=>this.imageManager?.transaction?this.imageManager.transaction(reader,publish):publish());
       this.transferTasks.set(key,task);const clear=()=>{if(this.transferTasks.get(key)===task)this.transferTasks.delete(key);if(!this.transferTasks.size&&!this.activeRequests.size){this.readingSummary?.resume();void this.memory?.resume().catch(error=>this.Z.logError?.(error));}};task.then(clear,clear);return task;
     }
     claimRequest(reader){const key=C.scopeKey(this.scope(reader));if(this.activeRequests.has(key)||this.transferTasks?.has(key))throw new Error('此 PDF 已在另一窗口正在生成，请先停止或等待完成');this.readingSummary?.pause();this.memory?.pause();this.activeRequests.add(key);}
@@ -329,7 +334,7 @@
       await session.persist(runtime);
       const state=await this.load(session.reader),errors=[];let inserted=0;
       for(const input of inputs){
-        try{await this.imageManager.importImage(session.reader,runtime.annotation.key,input,state,()=>this.save(session.reader,state));inserted++;}
+        try{await this.imageManager.importImage(session.reader,runtime.annotation.key,input,state,()=>this.save(session.reader,state,{imageCommit:true}));inserted++;}
         catch(error){errors.push(error.message);}
       }
       if(inserted){session.marginImageKeys??=new Set();session.marginImageKeys.add(runtime.annotation.key);}
@@ -342,15 +347,43 @@
         const state=await this.load(session.reader);
         if(!this.running||this.closedReaders.has(session.reader))return;
         const keys=new Set();
-        for(const record of state.images||[]){const annotation=this.nativeAnnotation(session.reader,record.annotationKey);if(annotation&&!annotation.deleted&&annotation.annotationType!=='text')keys.add(record.annotationKey);}
+        for(const record of state.images||[]){if(!record.annotationKey)continue;const annotation=this.nativeAnnotation(session.reader,record.annotationKey);if(annotation&&!annotation.deleted&&annotation.annotationType!=='text')keys.add(record.annotationKey);}
         session.marginImageKeys=keys;
         if(keys.size)await session.refresh(true);
       })().catch(error=>this.Z.logError?.(error));
       return session.marginImageRestore;
     }
     syncReferences(session,runtime){void root.ZMAMarginReferences.sync(this,session,runtime).catch(e=>{if(runtime.referenceRoot)runtime.referenceRoot.textContent=e.message;});}
-    decorateSession(session){for(const runtime of session.cardRuntimes())if(!runtime.referenceRoot)this.attachCard(session,runtime);}
-    refreshReferenceCards(reader,force=false){for(const entry of this.cleanups.values())if(!reader||Number(entry.reader.itemID)===Number(reader.itemID))entry.preview?.hide();for(const session of this.addon.controller.sessions?.values()||[]){if(reader&&Number(session.reader.itemID)!==Number(reader.itemID))continue;for(const runtime of session.cardRuntimes())if(runtime.referenceRoot)void root.ZMAMarginReferences.sync(this,session,runtime,force).catch(()=>{});}}
+    decorateSession(session){this.ensurePageImages(session);for(const runtime of session.cardRuntimes())if(!runtime.referenceRoot)this.attachCard(session,runtime);}
+    ensurePageImages(session){
+      if(!this.running||this.closedReaders.has(session.reader)||typeof session.adapter?.page!=='function')return null;
+      const doc=session.adapter.document();if(!doc?.body)return null;
+      const module=root.ZMAPageImages||(typeof require!=='undefined'?require('./page-images.js'):null);if(!module)return null;
+      this.pageImageLayers??=new Map();let layer=this.pageImageLayers.get(session.reader);
+      if(!layer||layer.destroyed||layer.doc!==doc){layer?.destroy();this.installStyles(doc);layer=new module.PageImages(this,session.reader,session);this.pageImageLayers.set(session.reader,layer);}
+      return layer;
+    }
+    refreshPageImages(reader,except){for(const layer of this.pageImageLayers?.values()||[])if(layer!==except&&Number(layer.reader.itemID)===Number(reader.itemID))layer.handle(()=>layer.refresh());}
+    async placeImageOnPage(reader,record){const session=await this.addon.controller.ensureSession(reader),layer=session&&this.ensurePageImages(session);if(!layer)throw new Error('页面图片功能尚未就绪');if(!layer.ready)await layer.refresh();return layer.place(record);}
+    async exportPageImages(reader){
+      if(this.imageExports.has(reader))throw new Error('当前 PDF 正在导出');
+      if(!this.chooseConversationFile)throw new Error('PDF 文件选择器尚未就绪');
+      const target=await this.chooseConversationFile(this.runtimeWindow(),{save:true,extension:'pdf',title:'导出带图片的 PDF',name:'文献-含图片.pdf'});
+      if(!target||!this.running||this.closedReaders.has(reader))return;
+      const module=root.ZMAPageImageExport||(typeof require!=='undefined'?require('./page-image-export.js'):null);
+      const doc=reader._iframeWindow?.document||this.runtimeWindow().document;this.installStyles(doc);
+      const controller=this.newAbortController(),node=root.ZMAPanel.el(doc,'section',undefined,'zma-image-export-progress');
+      node.setAttribute('role','status');node.setAttribute('aria-live','polite');
+      const label=root.ZMAPanel.el(doc,'span','正在准备 PDF…');
+      node.append(label,root.ZMAPanel.button(doc,'取消导出',()=>controller.abort()));doc.body.append(node);
+      const job={controller,promise:null};this.imageExports.set(reader,job);this.syncImageOverlay(reader);
+      try{
+        job.promise=(async()=>{const value=await module.snapshot(this,reader);return module.exportPDF(this,reader,value,target,{signal:controller.signal,onProgress:text=>{if(node.isConnected)label.textContent=text;}});})();
+        const result=await job.promise;this.pageImageLayers.get(reader)?.report('PDF 已导出至 '+result);return result;
+      }finally{node.remove();this.imageExports.delete(reader);this.syncImageOverlay(reader);}
+    }
+    syncImageOverlay(reader){if(this.running&&!this.closedReaders.has(reader))this.panels.get(reader)?.notion?.suspend(this.imageExports.has(reader)||!!this.imageViewers.get(reader)&&!this.imageViewers.get(reader).node.hidden);}
+    refreshReferenceCards(reader,force=false){if(force)for(const layer of this.pageImageLayers?.values()||[])if(!reader||layer.reader===reader)layer.handle(()=>layer.refresh());for(const entry of this.cleanups.values())if(!reader||Number(entry.reader.itemID)===Number(reader.itemID))entry.preview?.hide();for(const session of this.addon.controller.sessions?.values()||[]){if(reader&&Number(session.reader.itemID)!==Number(reader.itemID))continue;for(const runtime of session.cardRuntimes())if(runtime.referenceRoot)void root.ZMAMarginReferences.sync(this,session,runtime,force).catch(()=>{});}}
     async previewReference(reader,source,target){
       const session=await this.addon.controller.ensureSession(reader);if(!session)throw new Error('阅读器尚未就绪');
       const runtime=session.cardRuntimes().find(r=>r.annotation.key===(target?.annotationKey||session.activeKey));
@@ -358,6 +391,14 @@
       await root.ZMAMarginReferences.show(this,session,runtime,source);
     }
     openImageNote(reader,record){const note=this.Z.Items.getByLibraryAndKey(this.scope(reader).libraryID,record.noteKey);if(!note?.isNote?.()||note.deleted)throw new Error('图片笔记已删除');return this.runtimeWindow().ZoteroPane.openNote(note.id,{openInWindow:true});}
+    async viewImage(reader,record,trigger){
+      const src=await this.imageManager.readImage(reader,record);
+      if(!this.running||this.closedReaders.has(reader))return;
+      const doc=reader._iframeWindow?.document||trigger?.ownerDocument||this.runtimeWindow().document;
+      this.imageViewers??=new Map();let viewer=this.imageViewers.get(reader);
+      if(viewer?.doc!==doc){viewer?.destroy();this.installStyles(doc);viewer=new ImageViewer.ImageViewer(doc,{onClose:()=>this.syncImageOverlay(reader)});this.imageViewers.set(reader,viewer);}
+      viewer.show(src,trigger);this.syncImageOverlay(reader);
+    }
     async insertReference(reader,target,source,state){
       await this.resolveSource(reader,source);
       const annotation=this.nativeAnnotation(reader,target.annotationKey);if(!annotation||annotation.isEditable?.()===false)throw new Error('此批注为只读或已删除');
@@ -420,7 +461,7 @@
       return (this.Z.Items.get(Number(reader.itemID)).getAnnotations()||[]).filter(a=>a.key!==exclude&&!a.deleted&&a.isEditable?.()!==false).map(a=>({annotationKey:a.key,label:`第 ${a.annotationPageLabel||'?'} 页 · ${String(a.annotationComment||a.annotationText||'空批注').replace(/<[^>]*>/g,'').slice(0,65)}`}));
     }
     onViewMenu=({reader,params,append})=>{
-      if(!this.isPDF(reader))return;const snapshot=this.selectionSnapshot(reader,params);if(!snapshot)return;
+      if(!this.isPDF(reader))return;this.pageImageLayers?.get(reader)?.menu(append);const snapshot=this.selectionSnapshot(reader,params);if(!snapshot)return;
       const disabled=this.isReadOnly(reader);
       append({label:'批注并提问（选中文字）',disabled:false,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);try{await panel.addPDFQuote(await this.selectionQuoteSource(reader,snapshot));}catch(e){panel.error?.(e);}})});
       append({label:'引用选中文字到页边批注',disabled,onCommand:()=>this.guard(async()=>{const source=await this.saveSelection(reader,snapshot),panel=await this.panel(reader);await panel.markSource(source,true);})});
@@ -519,10 +560,10 @@
       this.observer=this.Z.Notifier.registerObserver({notify:(event,type,ids)=>{this.prune();if(type==='item')this.onItemChange(event,ids);if(type==='tab')this.restoreReaders();}},['tab','item'],ID);
       this.restoreReaders();
     }
-    async closeReader(reader){this.readingSummary?.forget(reader);this.closedReaders.add(reader);for(const [doc,entry]of this.toolbarObservers)if(entry.reader===reader){entry.observer?.disconnect();entry.parentObserver?.disconnect();entry.discoveryObserver?.disconnect();this.toolbarObservers.delete(doc);}const panel=this.panels.get(reader);this.panels.delete(reader);for(const [doc,entry]of this.cleanups)if(entry.reader===reader){entry.dispose();this.cleanups.delete(doc);}if(panel)await panel.destroy();}
+    async closeReader(reader){const exportJob=this.imageExports?.get(reader);exportJob?.controller.abort();this.pageImageLayers?.get(reader)?.destroy();this.pageImageLayers?.delete(reader);this.imageViewers?.get(reader)?.destroy();this.imageViewers?.delete(reader);this.readingSummary?.forget(reader);this.closedReaders.add(reader);for(const [doc,entry]of this.toolbarObservers)if(entry.reader===reader){entry.observer?.disconnect();entry.parentObserver?.disconnect();entry.discoveryObserver?.disconnect();this.toolbarObservers.delete(doc);}const panel=this.panels.get(reader);this.panels.delete(reader);for(const [doc,entry]of this.cleanups)if(entry.reader===reader){entry.dispose();this.cleanups.delete(doc);}if(panel)await panel.destroy();if(exportJob)await exportJob.promise.catch(()=>{});}
     prune(){const live=new Set(this.Z.Reader._readers||[]);const readers=new Set([...this.panels.keys(),...[...this.cleanups.values()].map(x=>x.reader),...[...this.toolbarObservers.values()].map(x=>x.reader)]);for(const reader of readers)if(!live.has(reader))void this.closeReader(reader);}
     async stop(){
-      this.running=false;await this.imageManager?.flush?.();await this.memory?.stop();await this.readingSummary?.stop();this.key='';for(const panel of this.panels.values())panel.controller?.abort();await this.auth?.stop();this.providerListeners.clear();this.appearanceListeners.clear();this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
+      this.running=false;for(const job of this.imageExports?.values()||[])job.controller.abort();for(const layer of this.pageImageLayers?.values()||[])layer.destroy();this.pageImageLayers?.clear();for(const viewer of this.imageViewers?.values()||[])viewer.destroy();this.imageViewers?.clear();await this.imageManager?.flush?.();await Promise.allSettled([...(this.imageExports?.values()||[])].map(job=>job.promise));await this.memory?.stop();await this.readingSummary?.stop();this.key='';for(const panel of this.panels.values())panel.controller?.abort();await this.auth?.stop();this.providerListeners.clear();this.appearanceListeners.clear();this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
       for(const win of [...this.historyPanes.keys()])this.unbindHistoryPane(win);
       for(const {observer,parentObserver,discoveryObserver}of this.toolbarObservers.values()){observer?.disconnect();parentObserver?.disconnect();discoveryObserver?.disconnect();}this.toolbarObservers.clear();
       await Promise.allSettled(this.pending.values());await Promise.allSettled([...this.panels.values()].map(p=>p.destroy()));this.panels.clear();

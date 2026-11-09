@@ -81,7 +81,7 @@ def build():
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
   Services.scriptloader.loadSubScript(rootURI + "content/vendor/marked/marked.umd.js", context);
-  for (const name of ["web", "instructions", "notion", "notion-browser", "docks", "reading-summary", "memory-core", "core", "memory-store", "library-index", "library-store", "library-host", "memory-host", "transfer", "capture", "document", "references", "attachments", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "streaming", "clipboard", "transfer-ui", "panel", "margin-references", "margin-images", "reference-preview", "text-math", "images", "host"]) {
+  for (const name of ["web", "instructions", "notion", "notion-browser", "docks", "reading-summary", "memory-core", "page-image-core", "core", "memory-store", "library-index", "library-store", "library-host", "memory-host", "transfer", "capture", "document", "references", "attachments", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "streaming", "clipboard", "transfer-ui", "panel", "image-viewer", "margin-references", "margin-images", "page-images", "page-image-export", "reference-preview", "text-math", "images", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();
@@ -103,7 +103,7 @@ def build():
     chooseConversationFile: async (win, options) => {
       const { FilePicker } = ChromeUtils.importESModule('chrome://zotero/content/modules/filePicker.mjs');
       const picker = new FilePicker();picker.init(win, options.title || (options.save ? '导出对话' : '导入对话 JSON'), options.save ? picker.modeSave : picker.modeOpen);
-      const extension = options.extension || 'json';picker.appendFilter(extension === 'md' ? 'Markdown' : 'JSON', '*.' + extension);
+      const extension = options.extension || 'json';picker.appendFilter(extension === 'md' ? 'Markdown' : extension === 'pdf' ? 'PDF' : 'JSON', '*.' + extension);
       if (options.save) {picker.defaultString = options.name;picker.defaultExtension = extension;}
       const result = await picker.show();return result === picker.returnOK || options.save && result === picker.returnReplace ? picker.file : null;
     },

@@ -54,3 +54,11 @@ test('closing a reader during image-visibility restoration cannot repaint its re
   assert.equal(f.session.forcedKeys.size, 0);
   assert.equal(f.counts().refreshes, 0);
 });
+
+test('page-only image assets are excluded from native margin annotation lookup', async () => {
+  const f = fixture(), lookup = f.host.nativeAnnotation;
+  f.state.images.push({ id: 'b'.repeat(32), sourcePageIndex: 0 });
+  f.host.nativeAnnotation = (reader, key) => { assert.equal(typeof key, 'string'); return lookup(reader, key); };
+  await f.host.restoreMarginImages(f.session);
+  assert.equal(f.session.marginImageKeys?.has('IMGONLY1'), true);
+});

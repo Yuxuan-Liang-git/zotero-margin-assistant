@@ -45,9 +45,32 @@
 
     async flush() { await Promise.allSettled([...this.queues.values()]); }
 
-    _assertWritable(reader, annotationKey, position) {
-      if (this.host.running === false) throw new Error('插件已停用，图片插入已停止');
+    async waitFor(reader) {
+      const scope = this.host.scope(reader), key = `${scope.libraryID}:${scope.attachmentKey}`;
+      while (this.queues.has(key)) { try { await this.queues.get(key); } catch {} }
+    }
+
+    async readImageInput(sourcePath) {
+      const { host } = this;
+      let input = typeof sourcePath === 'string' ? { path: sourcePath } : sourcePath;
+      if (host.unwrap) input = host.unwrap(input);
+      if (!input || typeof input !== 'object') throw new Error('图片文件无效');
+      if (input.path !== undefined && (typeof input.path !== 'string' || !input.path.trim())) throw new Error('图片文件无效');
+      let size = input.size ?? input.bytes?.byteLength;
+      if (input.path && host.IO.stat) size = (await host.IO.stat(input.path)).size;
+      if (size !== undefined && (!Number.isSafeInteger(size) || size < 1 || size > MAX_IMAGE_BYTES)) throw new Error('图片大小必须为 1 字节至 10 MiB');
+      const raw = host.attachmentManager ? await host.attachmentManager.readInput(input) : input.path ? await host.IO.read(input.path) : input.bytes;
+      const bytes = asBytes(host.unwrap ? host.unwrap(raw) : raw), format = identify(bytes);
+      return { bytes, mime: format.mime, extension: format.extension };
+    }
+
+    _assertActive(reader) {
+      if (this.host.running === false || this.host.closedReaders?.has(reader)) throw new Error('图片插入已停止');
       if (this.host.isReadOnly(reader)) throw new Error('此文献库为只读，无法保存图片');
+    }
+
+    _assertWritable(reader, annotationKey, position) {
+      this._assertActive(reader);
       const annotation = this.host.nativeAnnotation(reader, annotationKey);
       if (!annotation || annotation.deleted || annotation.isEditable?.() === false) throw new Error('目标批注不存在或为只读');
       if (position !== undefined) {
@@ -55,6 +78,23 @@
         if (JSON.stringify(current) !== position) throw new Error('目标批注位置已改变，请重新插入图片');
       }
       return annotation;
+    }
+
+    async _resolveTarget(reader, target, expectedPosition) {
+      if (typeof target === 'string') {
+        if (!KEY.test(target)) throw new Error('目标批注无效');
+        const annotation = this._assertWritable(reader, target, expectedPosition);
+        const position = typeof annotation.annotationPosition === 'string' ? JSON.parse(annotation.annotationPosition) : annotation.annotationPosition;
+        if (!Number.isSafeInteger(position?.pageIndex) || position.pageIndex < 0) throw new Error('批注页面位置无效');
+        return { source: { annotationKey: target, pageIndex: position.pageIndex, rects: position.rects }, position: JSON.stringify(position) };
+      }
+      this._assertActive(reader);
+      if (!Number.isSafeInteger(target?.pageIndex) || target.pageIndex < 0 || typeof target.fingerprint !== 'string' || !target.fingerprint) throw new Error('页面图片目标无效');
+      const info = await this.host.pageImageInfo(reader);
+      this._assertActive(reader);
+      if (info.fingerprint !== target.fingerprint) throw new Error('PDF 文件已经改变，请重新插入图片');
+      if (target.pageIndex >= info.pageCount) throw new Error('页面图片页码无效');
+      return { source: { pageIndex: target.pageIndex, fullPage: true }, position: undefined };
     }
 
     async _pdfPath(reader) {
@@ -84,41 +124,28 @@
       return { note, isNew: true, parentID };
     }
 
-    async importImage(reader, annotationKey, sourcePath, state, commit=async()=>{}) {
+    async transaction(reader, action) {
       const scope=this.host.scope(reader),key=`${scope.libraryID}:${scope.attachmentKey}`;
-      const task=(this.queues.get(key)||Promise.resolve()).catch(()=>{}).then(()=>this._importImage(reader,annotationKey,sourcePath,state,commit));
+      const task=(this.queues.get(key)||Promise.resolve()).catch(()=>{}).then(action);
       this.queues.set(key,task);try{return await task;}finally{if(this.queues.get(key)===task)this.queues.delete(key);}
     }
 
-    async _importImage(reader, annotationKey, sourcePath, state, commit) {
+    importImage(reader, target, sourcePath, state, commit=async()=>{}) {
+      return this.transaction(reader, () => this._importImage(reader, target, sourcePath, state, commit));
+    }
+
+    async _importImage(reader, target, sourcePath, state, commit) {
       const { host } = this;
       if (!state || typeof state !== 'object') throw new Error('图片状态无效');
       if (state.images !== undefined && !Array.isArray(state.images)) throw new Error('图片记录数据损坏');
       if (state.imageNoteKey && (typeof state.imageNoteKey !== 'string' || !KEY.test(state.imageNoteKey))) throw new Error('图片笔记记录无效');
-      if (typeof annotationKey !== 'string' || !KEY.test(annotationKey)) throw new Error('目标批注无效');
-      const annotation = this._assertWritable(reader, annotationKey);
-      let input = typeof sourcePath === 'string' ? { path: sourcePath } : sourcePath;
-      if (host.unwrap) input = host.unwrap(input);
-      if (!input || typeof input !== 'object') throw new Error('图片文件无效');
-      if (input.path !== undefined && (typeof input.path !== 'string' || !input.path.trim())) throw new Error('图片文件无效');
-
-      const annotationPosition = typeof annotation.annotationPosition === 'string'
-        ? JSON.parse(annotation.annotationPosition) : annotation.annotationPosition;
-      if (!Number.isSafeInteger(annotationPosition?.pageIndex) || annotationPosition.pageIndex < 0) throw new Error('批注页面位置无效');
+      const resolved = await this._resolveTarget(reader, target);
       const pdfScope = host.scope(reader);
-      const source = { ...pdfScope, annotationKey, pageIndex: annotationPosition.pageIndex, rects: annotationPosition.rects };
+      const source = { ...pdfScope, ...resolved.source };
       const pdfAttachment = host.Z.Items.get(Number(reader.itemID));
       const link = host.sourceLink(source);
-      let size = input.size ?? input.bytes?.byteLength;
-      if (input.path && host.IO.stat) size = (await host.IO.stat(input.path)).size;
-      if (size !== undefined && (!Number.isSafeInteger(size) || size < 1 || size > MAX_IMAGE_BYTES)) throw new Error('图片大小必须为 1 字节至 10 MiB');
-      let raw;
-      if (host.attachmentManager) raw = await host.attachmentManager.readInput(input);
-      else raw = input.path ? await host.IO.read(input.path) : input.bytes;
-      const bytes = asBytes(host.unwrap ? host.unwrap(raw) : raw);
-      const format = identify(bytes);
-      const position = JSON.stringify(annotationPosition);
-      this._assertWritable(reader, annotationKey, position);
+      const format = await this.readImageInput(sourcePath), bytes = format.bytes;
+      await this._resolveTarget(reader, target, resolved.position);
       const win = host.runtimeWindow();
       const imageDir = host.P.join(host.P.parent(await this._pdfPath(reader)), 'margin-comments-images');
       await host.IO.makeDirectory(imageDir, { ignoreExisting: true });
@@ -127,7 +154,7 @@
       const fileName = `margin-comment-${uuid}.${format.extension}`;
       const copiedPath = host.P.join(imageDir, fileName);
       let copyOwned = false, embedded = null, noteInfo = null, originalNote = null,record = null;
-      const oldNoteKey=state.imageNoteKey,oldImages=state.images,oldImageCount=oldImages?.length||0;
+      const oldNoteKey=state.imageNoteKey,oldImages=state.images,oldImageCount=oldImages?.length||0,oldVersion=state.version;
       try {
         if (await host.IO.exists(copiedPath)) throw new Error('图片文件名冲突，请重试');
         copyOwned = true;
@@ -141,16 +168,17 @@
         const blob = new win.Blob([bytes], { type: format.mime });
         embedded = await host.Z.Attachments.importEmbeddedImage({ blob, parentItemID: note.id });
         const pdfTitle = String(pdfAttachment.getField?.('title') || '当前 PDF').slice(0, 240);
-        const linkHTML = `<p><a href="${escapeHTML(link)}">${escapeHTML(`来源：${pdfTitle} · 第 ${annotationPosition.pageIndex + 1} 页`)}</a></p>`;
+        const linkHTML = `<p><a href="${escapeHTML(link)}">${escapeHTML(`来源：${pdfTitle} · 第 ${source.pageIndex + 1} 页`)}</a></p>`;
         const imageHTML = `<p><img data-attachment-key="${escapeHTML(embedded.key)}" /></p>`;
         const content = `${linkHTML}${imageHTML}`;
         note.setNote(appendNoteHTML(noteInfo.isNew ? note.getNote() : originalNote, content));
         await note.saveTx();
-        this._assertWritable(reader, annotationKey, position);
+        await this._resolveTarget(reader, target, resolved.position);
+        this._assertActive(reader);
 
         record = {
           id: uuid,
-          annotationKey,
+          ...(typeof target === 'string' ? { annotationKey: target } : { sourcePageIndex: source.pageIndex }),
           fileName,
           mime: format.mime,
           noteKey: note.key,
@@ -159,11 +187,12 @@
         state.images ||= [];
         state.images.push(record);
         state.imageNoteKey = note.key;
+        if (typeof target !== 'string') state.version = 3;
         await commit(record);
         return record;
       }
       catch (error) {
-        if(record){if(oldImages){oldImages.length=oldImageCount;state.images=oldImages;}else delete state.images;state.imageNoteKey=oldNoteKey;}
+        if(record){if(oldImages){oldImages.length=oldImageCount;state.images=oldImages;}else delete state.images;state.imageNoteKey=oldNoteKey;if(oldVersion===undefined)delete state.version;else state.version=oldVersion;}
         if (noteInfo && !noteInfo.isNew && originalNote !== null) {
           try { noteInfo.note.setNote(originalNote); await noteInfo.note.saveTx(); } catch {}
         }
@@ -182,7 +211,7 @@
       catch {}
     }
 
-    async readImage(reader, record) {
+    async readBytes(reader, record) {
       if (!record || typeof record !== 'object') throw new Error('图片记录无效');
       const match = typeof record.fileName === 'string' && FILE_NAME.exec(record.fileName);
       const format = FORMATS.find(x => x.mime === record.mime);
@@ -191,9 +220,18 @@
       const target = this.host.P.join(this.host.P.parent(filePath), 'margin-comments-images', record.fileName);
       const bytes = asBytes(await this.host.IO.read(target));
       if (identify(bytes).mime !== format.mime) throw new Error('图片记录无效');
+      return { bytes, mime: format.mime };
+    }
+
+    async readImage(reader, record) {
+      const { bytes, mime } = await this.readBytes(reader, record);
+      return this.dataURL(bytes, mime);
+    }
+
+    dataURL(bytes, mime) {
       const binary = [];
       for (let i = 0; i < bytes.length; i += 0x8000) binary.push(String.fromCharCode(...bytes.subarray(i, i + 0x8000)));
-      return `data:${format.mime};base64,${this.host.runtimeWindow().btoa(binary.join(''))}`;
+      return `data:${mime};base64,${this.host.runtimeWindow().btoa(binary.join(''))}`;
     }
   }
 

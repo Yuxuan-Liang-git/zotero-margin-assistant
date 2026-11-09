@@ -183,7 +183,7 @@ test('margin image button imports into PDF state and shows the saved image after
   try{const page=await browser.newPage();await page.setContent('<div id="card"><footer></footer></div>');
     for(const name of ['core','deepseek','capture','docks','panel','margin-references','host'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});
     const available=await page.evaluate(async()=>{
-      const host=new ZMAHost.Host({controller:{}},{Zotero:{DataDirectory:{dir:'/data'}},IOUtils:{},PathUtils:{join:(...p)=>p.join('/')},window,chooseImage:async()=>'/chosen/photo.png'});
+      const host=new ZMAHost.Host({controller:{}},{Zotero:{DataDirectory:{dir:'/data'},Items:{get:()=>({isEditable:()=>true})}},IOUtils:{},PathUtils:{join:(...p)=>p.join('/')},window,chooseImage:async()=>'/chosen/photo.png'});
       host.running=true;
       let state=ZMACore.emptyState();globalThis.imageImportCalls=[];globalThis.noteCalls=[];
       host.load=async()=>state;host.save=async(_r,value)=>{state=ZMACore.cleanState(JSON.parse(JSON.stringify(value)));};host.bindReferences=()=>{};host.openImageNote=(_r,record)=>noteCalls.push(record.noteKey);

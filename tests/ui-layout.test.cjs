@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 async function setup(){
   const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true}),page=await browser.newPage({viewport:{width:1440,height:960}});
   await page.setContent('<style>body{margin:0;overflow:hidden}#split-view{position:fixed;left:0;right:0;top:40px;bottom:0;background:#eee}.zmc-card{position:absolute;right:10px;top:100px;width:264px;background:white;padding:8px;box-sizing:border-box}</style><div id="split-view"><article class="zmc-card" data-annotation-key="CURRENT2"><div class="zmc-card-preview"></div><footer></footer></article></div>');
-  for(const name of ['web','instructions','notion','reading-summary','core','capture','references','deepseek','settings','attachments','clipboard','docks','panel','margin-references','reference-preview','host']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(fs.existsSync(file))await page.addScriptTag({path:file});}
+  for(const name of ['web','instructions','notion','reading-summary','core','capture','references','deepseek','settings','attachments','clipboard','docks','panel','image-viewer','margin-references','reference-preview','host']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(fs.existsSync(file))await page.addScriptTag({path:file});}
   await page.evaluate(css=>{
     const source={libraryID:1,attachmentKey:'ABCD1234',annotationKey:'FORM0630',id:'source1',type:'公式',number:'6.30',pageIndex:60,pageLabel:'60',rects:[[10,20,90,50]],fingerprint:'v1'};
     const state=ZMACore.emptyState();state.sources=[source];const link=ZMACore.sourceLink(source);state.references=[{annotationKey:'CURRENT2',sourceID:source.id,link}];
@@ -72,6 +72,43 @@ test('Notion page selection, explicit refresh and external opening use validated
   await page.evaluate(async()=>{const {host,reader}=fixture;globalThis.notionLoads=[];globalThis.externalURL='';host.notionLinks=async()=>[{id:5,title:'Notion甲',url:'https://www.notion.so/0123456789abcdef0123456789abcdef'},{id:6,title:'Notion乙',url:'https://app.notion.com/fedcba9876543210fedcba9876543210'}];host.openExternal=url=>externalURL=url;host.createNotionBrowser=()=>({load:url=>notionLoads.push(url),setVisible:()=>{},destroy:()=>{}});globalThis.notionPanel=await host.panel(reader);await notionPanel.showNotion();});
   await page.getByRole('button',{name:'Notion 栏操作',exact:true}).click();await page.getByRole('combobox',{name:'关联的 Notion 页面'}).selectOption('6');await page.waitForFunction(()=>notionLoads.length===2);await dockCommand(page,'在浏览器打开',true);assert.match(await page.evaluate(()=>externalURL),/fedcba/);await dockCommand(page,'重新检测 / 刷新',true);await page.waitForFunction(()=>notionLoads.length===3);
   await page.evaluate(async()=>{fixture.host.notionLinks=async()=>[{id:7,title:'错误链接',url:'javascript:alert(1)'}];await notionPanel.notion.show(true);});assert.equal(await page.evaluate(()=>notionLoads.length),3);assert.match(await page.locator('.zma-notion-status').innerText(),/有效的 Notion/);
+ }finally{await browser.close();}
+});
+
+test('the image viewer temporarily suspends the native Notion browser and restores its current page',async()=>{
+ const {browser,page}=await setup();try{
+  await page.evaluate(async()=>{const {host,reader,source}=fixture;globalThis.visibility=[];globalThis.loads=0;host.notionLinks=async()=>[{id:5,title:'Notion',url:'https://www.notion.so/0123456789abcdef0123456789abcdef'}];host.createNotionBrowser=()=>({load:async()=>{loads++;},setVisible:value=>visibility.push(value),destroy:()=>{}});host.imageManager={readImage:async()=>(await host.capture(reader,source)).dataURL};globalThis.viewerPanel=await host.panel(reader);await viewerPanel.showNotion();await host.viewImage(reader,{id:'a'.repeat(32)},document.querySelector('.zmc-card'));});
+  assert.equal(await page.evaluate(()=>visibility.at(-1)),false);
+  assert.equal(await page.evaluate(()=>viewerPanel.notion.visible),true);
+  await page.getByRole('dialog',{name:'图片查看器'}).getByRole('button',{name:'关闭',exact:true}).click();
+  assert.equal(await page.evaluate(()=>visibility.at(-1)),true);assert.equal(await page.evaluate(()=>loads),1);
+  await page.evaluate(async()=>{const {host,reader}=fixture;let finish;host.notionLinks=()=>new Promise(resolve=>{finish=resolve;});const opening=viewerPanel.notion.show(true);await host.viewImage(reader,{id:'a'.repeat(32)},document.querySelector('.zmc-card'));finish([{id:5,title:'Notion',url:'https://www.notion.so/0123456789abcdef0123456789abcdef'}]);await opening;});
+  assert.equal(await page.evaluate(()=>visibility.at(-1)),false);
+  await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>visibility.at(-1)),true);
+ }finally{await browser.close();}
+});
+
+test('export progress stays above Notion until both export and image viewing have finished',async()=>{
+ const {browser,page}=await setup();try{
+  await page.evaluate(async()=>{
+    const {host,reader,source}=fixture;globalThis.visibility=[];
+    host.notionLinks=async()=>[{id:5,title:'Notion',url:'https://www.notion.so/0123456789abcdef0123456789abcdef'}];
+    host.createNotionBrowser=()=>({load:async()=>{},setVisible:value=>visibility.push(value),destroy:()=>{}});
+    host.imageManager={readImage:async()=>(await host.capture(reader,source)).dataURL};
+    host.chooseConversationFile=async()=>'/exports/paper.pdf';
+    globalThis.ZMAPageImageExport={snapshot:async()=>({}),exportPDF:async()=>new Promise(resolve=>globalThis.finishExport=()=>resolve('/exports/paper.pdf'))};
+    globalThis.viewerPanel=await host.panel(reader);await viewerPanel.showNotion();
+    globalThis.exportTask=host.exportPageImages(reader);
+  });
+  await page.getByRole('button',{name:'取消导出',exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>visibility.at(-1)),false);
+  await page.evaluate(async()=>{const {host,reader}=fixture;await host.viewImage(reader,{id:'a'.repeat(32)},document.querySelector('.zmc-card'));});
+  await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>visibility.at(-1)),false);
+  await page.evaluate(async()=>{finishExport();await exportTask;});assert.equal(await page.evaluate(()=>visibility.at(-1)),true);
+  await page.evaluate(async()=>{const {host,reader}=fixture;await host.viewImage(reader,{id:'a'.repeat(32)},document.querySelector('.zmc-card'));globalThis.exportTask=host.exportPageImages(reader);});
+  await page.getByRole('button',{name:'取消导出',exact:true}).waitFor();
+  await page.evaluate(async()=>{finishExport();await exportTask;});assert.equal(await page.evaluate(()=>visibility.at(-1)),false);
+  await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>visibility.at(-1)),true);
  }finally{await browser.close();}
 });
 

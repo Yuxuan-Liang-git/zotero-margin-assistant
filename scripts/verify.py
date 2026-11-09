@@ -15,19 +15,22 @@ parser.add_argument('--native-run',default='zotero-0106-native-final')
 parser.add_argument('--restart-run',default='zotero-0105-final')
 parser.add_argument('--conversation-run',default='zotero-0106-conversation-qa')
 parser.add_argument('--upgrade-run',default='zotero-0106-upgrade')
-parser.add_argument('--clipboard-run',default='zotero-0182-auth-final')
-parser.add_argument('--test-output',default='evidence/auth-0182/tests-final.txt')
-parser.add_argument('--auth-discovery-run',default='auth-0182-discovery-final')
+parser.add_argument('--clipboard-run',default='zotero-0190-page-images-final-v2')
+parser.add_argument('--test-output',default='evidence/page-images-0190/tests-final.txt')
+parser.add_argument('--auth-discovery-run',default='auth-0190-discovery-final')
 args=parser.parse_args()
 version=json.loads((PROJECT/'package.json').read_text(encoding='utf-8'))['version']
 package=PROJECT/f'dist/margin-comments-deepseek-{version}.xpi'
 with zipfile.ZipFile(package) as archive:
     assert archive.testzip() is None
     names=set(archive.namelist())
-    assert all('content/scripts/'+name+'.js' in names for name in ['instructions','notion','notion-browser','docks','reading-summary','memory-core','memory-store','library-index','library-store','library-host','memory-host','clipboard','chatgpt-auth','chatgpt','chatgpt-native','streaming','attachments','margin-images','reference-preview','text-math','transfer','transfer-ui'])
+    assert all('content/scripts/'+name+'.js' in names for name in ['instructions','notion','notion-browser','docks','reading-summary','memory-core','memory-store','library-index','library-store','library-host','memory-host','clipboard','chatgpt-auth','chatgpt','chatgpt-native','streaming','attachments','margin-images','reference-preview','text-math','transfer','transfer-ui','image-viewer','page-image-core','page-images','page-image-export'])
     for path in (PROJECT/'src').glob('*.js'):
         assert archive.read('content/scripts/'+path.name)==path.read_bytes(),path.name
     assert archive.read('content/assistant.css')==(PROJECT/'src/assistant.css').read_bytes()
+    for name in ['content/pdf-image-worker.js','content/vendor/pdf-lib/pdf-lib.min.js','content/vendor/pdf-lib/LICENSE.md']:
+        assert name in names,name
+        assert archive.read(name)==(PROJECT/name).read_bytes(),name
     manifest=json.loads(archive.read('manifest.json'))
     assert manifest['version']==version
     assert manifest['applications']['zotero']['strict_min_version']=='10.0'
@@ -56,13 +59,17 @@ if original.exists():
                 assert (PROJECT/'baseline'/name).read_bytes()==archive.read(name),name
     baseline_verified=True
 source_zip=PROJECT/f'dist/margin-comments-deepseek-{version}-source.zip'
+def add_source(archive,path):
+    info=zipfile.ZipInfo(path.relative_to(PROJECT).as_posix(),(2026,11,5,0,0,0))
+    info.compress_type=zipfile.ZIP_DEFLATED
+    archive.writestr(info,path.read_bytes())
 with zipfile.ZipFile(source_zip,'w',zipfile.ZIP_DEFLATED) as archive:
     for folder in ['baseline','src','content','tests','scripts','docs']:
         for path in sorted((PROJECT/folder).rglob('*')):
             if path.is_file() and '__pycache__' not in path.parts:
-                archive.write(path,path.relative_to(PROJECT).as_posix())
+                add_source(archive,path)
     for name in ['package.json','README.md','progress.md']:
-        archive.write(PROJECT/name,name)
+        add_source(archive,PROJECT/name)
 smoke_path=PROJECT/'evidence'/args.native_run/'report.json'
 smoke=json.loads(smoke_path.read_text(encoding='utf-8')) if smoke_path.exists() else None
 package_hash=hashlib.sha256(package.read_bytes()).hexdigest()
@@ -161,13 +168,22 @@ margin_image_flags=['nativePaste','nativeDrop','clipboardFallback','onePasteOneI
 margin_images_ok=clipboard_ok and all(any(s.get('name')=='margin-images-native' and s.get('ok') and all(s.get('result',{}).get(key) for key in margin_image_flags) for s in r['steps']) for r in clipboard_reports) and any(s.get('name')=='margin-images-native' and s.get('result',{}).get('coldRestored') for s in (clipboard_reports[1] or {}).get('steps',[]))
 report['native_margin_images']='passed: isolated Zotero first launch and cold restart; synthetic card paste/drop, controlled clipboard fallback, real embedded-image note, matching PDF sibling bytes, plain LaTeX delegation, readonly rejection, visible file button, card refresh and empty highlight restoration; no system clipboard reads or writes, no external AI calls' if margin_images_ok else 'not passed or not run'
 report['margin_image_limits']={'image_bytes':10*1024*1024,'formats':['PNG','JPEG','GIF','WebP'],'sibling_directory':'margin-comments-images','native_storage':'one PDF-specific Zotero note with embedded image attachments','clipboard_scope':'test fixture callback; no user clipboard access'}
+page_image_flags=['normalPaste','nativePointerMove','nativePointerResize','locked','originalPixelViewer','version3Saved','nativeNoteAndCopy','nativeGifNormalization','realWorkerExport','exportReopened','exportPixelsAtSavedPosition','sourceHashPreserved','snapshotAndTemporaryCleanup','noExternalApiCalls']
+page_images_ok=clipboard_ok and all(len(r['steps'])==17 and any(s.get('name')=='page-images-native' and s.get('ok') and all(s.get('result',{}).get(key) for key in page_image_flags) for s in r['steps']) for r in clipboard_reports) and any(s.get('name')=='page-images-native' and s.get('result',{}).get('coldRestored') for s in (clipboard_reports[1] or {}).get('steps',[]))
+report['native_page_images']='passed: Zotero first launch and cold restart; synthetic PDF paste and pointer move/resize/lock; original-size viewer; v3 positions and old backup; actual native image note and matching PDF sibling bytes; real native annotation export, GIF normalization and background Worker; reopened exported PDF sampled at saved image position; original hash preserved and owned temporary files absent; system clipboard and daily profile unchanged' if page_images_ok else 'not passed or not run'
+report['page_image_export']={'target':'a separate PDF selected by the user','composition':'bundled pdf-lib 1.17.1 in a dedicated Worker after native Zotero annotation export','geometry':'shared PDF-space matrices, automated independent PDF.js pixel checks across 0/90/180/270 degrees and nonzero crop offsets','formats':['PNG','JPEG','GIF first frame','WebP','EXIF-oriented JPEG'],'storage_version':3,'old_storage_backup':'byte-preserving .v2.bak before first version3 publication; version1 migration remains supported','position_storage':'pageImages in the PDF sibling dialogue JSON; assets remain in Zotero image note and margin-comments-images','independent_render_evidence':'evidence/page-images-0190/export-page-1.png through export-page-4.png'}
+independent_path=clipboard_dir/'independent-export-check.json'
+independent=json.loads(independent_path.read_text(encoding='utf-8')) if independent_path.exists() else {}
+independent_ok=page_images_ok and independent.get('passed') and len(independent.get('outputs',[]))==2 and all(output.get('savedImagePixels') and output.get('originalText') and output.get('sha256')==hashlib.sha256((clipboard_dir/f"page-images-export-{output['launch']}.pdf").read_bytes()).hexdigest() for output in independent.get('outputs',[]))
+report['native_page_image_independent_render']='passed: both actual native-exported PDFs rendered outside Zotero with pdfjs-dist 5.6.205; original text and saved image pixels verified, preview PNGs inspected' if independent_ok else 'not passed or not run'
 discovery_path=PROJECT/'evidence'/args.auth_discovery_run/'report.json'
 discovery=json.loads(discovery_path.read_text(encoding='utf-8')) if discovery_path.exists() else None
 discovery_steps=['public-discovery-fetch','production-auth-discovery','production-discovery-recovery','production-discovery-safe-error']
 discovery_ok=bool(discovery and discovery.get('done') and discovery.get('version')==version and discovery.get('packageSha256')==package_hash and discovery.get('credentialsAbsent') and all(any(s.get('name')==name and s.get('ok') for s in discovery.get('steps',[])) for name in discovery_steps))
 report['native_auth_discovery']='passed: isolated Zotero public HTTPS metadata and production AuthManager validation; one simulated connection failure followed by a real public metadata read; concurrent requests share the retry; HTTP 403 has a safe status message and one attempt; no account credentials or paid inference used' if discovery_ok else 'not passed or not run'
-report['auth_failure_scope']='The user later reported that the issue had resolved and suspected the VPN had not been connected. The original failure was not reproduced; installed 0.18.1 and 0.18.2 both read valid public metadata during investigation. Fixed the catch that masked connection, HTTP, response and metadata-validation errors, and added one retry for transient discovery GET failures.'
+report['auth_failure_scope']='Historical 0.18.2 investigation: the user reported resolution and suspected a disconnected VPN. This image-feature release does not repeat real account authorization or inference. A public-only discovery probe is reported above only if its package hash matches this release.'
 report['automated_tests']=report['reading_summary_automated_tests']
-report['native_run_scope']='first ten admission/clipboard/context checks, reading-summary-native, notion-sidebar-native, custom-prompt-native, cross-paper-memory-native, personal-library-memory-native and margin-images-native; 16 checks on each of two launches; actual five-page unread PDF uses native Worker/SDT, real embedded image note and sibling bytes; clipboard callbacks and events are fixtures, inference mocked; broader later multi-PDF/performance chain not run'
+report['native_run_scope']='first ten admission/clipboard/context checks, reading-summary-native, notion-sidebar-native, custom-prompt-native, cross-paper-memory-native, personal-library-memory-native, margin-images-native and page-images-native; 17 checks on each of two launches when passed. Actual SQLite, SDT/PDF Workers, native image note, sibling bytes and exported-PDF reopening are exercised; clipboard callbacks and pointer events are fixtures, inference mocked; broader later multi-PDF/performance chain not run'
+report['source_sha256']=hashlib.sha256(source_zip.read_bytes()).hexdigest()
 (PROJECT/'dist/verification-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(report))
