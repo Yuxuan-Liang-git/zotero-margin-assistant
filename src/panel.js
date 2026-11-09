@@ -188,6 +188,11 @@
       }catch(e){
         if(answer){answer.content=e.partial??answer.content;answer.incomplete=true;}
         conversation.draft=this.question.value;C.touchConversation(conversation);this.error(e);
+        if(e.speedRejected&&answerCard&&!this.destroyed){const retryButton=button(this.doc,'以标准模式重试',async()=>{
+          if(this.busy)return;await this.host.setChatGPTSpeed('default');this.refreshProvider();
+          if(this.conversation()!==conversation||this.question.value.trim()!==question){this.status.textContent='已切换为标准模式，请点击发送当前问题。';return;}
+          await this.send();
+        });retryButton.className='zma-retry-standard';answerCard.append(retryButton);}
       }finally{
         this.liveRenderer?.finish();this.liveRenderer=null;clearTimeout(deadline);this.controller=null;this.busy=false;this.host.releaseRequest?.(this.reader);this.refreshProvider();
         if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();if(answerCard){const text=answerCard.querySelector('.zma-answer');if(text)this.renderAnswer(text,answer.content);const label=answerCard.querySelector('strong');if(label)label.textContent=answer.incomplete?'回答（未完成）':'回答';if(answer.content)this.addAnswerActions(answerCard,answer,conversation.history.length-1);this.messages.scrollTop=this.messages.scrollHeight;}else if(answer)this.renderMessages();this.renderConversationList();await this.persist().catch(e=>this.error(e));}

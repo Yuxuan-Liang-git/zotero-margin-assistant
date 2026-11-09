@@ -45,7 +45,7 @@ test('speed requests are independent of reasoning and report the confirmed tier 
   const f=fixture([event({type:'response.completed',response:{service_tier:'default'}})]),confirmed=[];
   f.auth.active=()=>({id:'account',model:'gpt-6.1-sol',reasoningEffort:'max',speed,models:[{slug:'gpt-6.1-sol'}]});
   await f.client.generate([{role:'user',content:'q'}],{onServiceTier:info=>confirmed.push(info)});
-  const body=JSON.parse(f.calls[0].options.body);assert.equal(body.reasoning.effort,'max');assert.equal(body.service_tier,speed);assert.deepEqual(confirmed,[{requested:speed,actual:'default'}]);
+  const body=JSON.parse(f.calls[0].options.body);assert.equal(body.reasoning.effort,'max');assert.equal(body.service_tier,speed==='fast'?'priority':speed);assert.deepEqual(confirmed,[{requested:speed,actual:'default'}]);
  }
 });
 test('account catalog speed restrictions are respected and unsupported selected tiers do not trigger inference',async()=>{
@@ -53,4 +53,17 @@ test('account catalog speed restrictions are respected and unsupported selected 
  await assert.rejects(f.client.generate([{role:'user',content:'q'}]),/速度|档位/);assert.equal(f.calls.length,0);
  f.client.fetch=async()=>Response.json({models:[{slug:'gpt-6.1-sol',visibility:'list',service_tiers:[{id:'priority'},{id:'ultrafast'}],supported_reasoning_levels:[{effort:'max'},{effort:'ultra'}]}]});
  const model=(await f.client.models())[0];assert.deepEqual(model.speedTiers,['default','fast','ultrafast']);assert.deepEqual(model.reasoningEfforts,['max']);
+});
+test('a rejected speed tier exposes safe parameter diagnostics without leaking server echoes or retrying',async()=>{
+ const f=fixture([]);f.auth.active=()=>({id:'account',model:'gpt-6.1-sol',reasoningEffort:'high',speed:'fast',models:[{slug:'gpt-6.1-sol'}]});
+ f.client.fetch=async(url,options)=>{f.calls.push({url,options});return Response.json({error:{code:null,type:'invalid_request_error',param:'service_tier',message:'Invalid service_tier: subscription-secret PDF private'}},{status:400});};
+ await assert.rejects(f.client.generate([{role:'user',content:'PDF private'}]),e=>{assert.equal(e.speedRejected,true);assert.match(e.message,/标准/);assert.match(e.message,/400/);assert.match(e.message,/service_tier/);assert.doesNotMatch(e.message,/subscription-secret|PDF private/);return true;});assert.equal(f.calls.length,1);assert.equal(JSON.parse(f.calls[0].options.body).service_tier,'priority');
+});
+test('unknown HTTP input errors retain safe HTTP diagnostics and are not mistaken for a speed rejection',async()=>{
+ const f=fixture([]);f.client.fetch=async()=>Response.json({error:{code:'arbitrary-secret-code',param:'input',message:'PDF private'}},{status:400});
+ await assert.rejects(f.client.generate([{role:'user',content:'q'}]),e=>{assert.equal(e.speedRejected,false);assert.match(e.message,/400/);assert.match(e.message,/input/);assert.doesNotMatch(e.message,/arbitrary-secret|PDF private/);return true;});
+});
+test('SSE speed rejection preserves partial answer and exposes the same actionable reason',async()=>{
+ const f=fixture([event({type:'response.output_text.delta',delta:'partial'}),event({type:'response.failed',response:{error:{code:'invalid_request_error',param:'service_tier',message:'service_tier is not allowed'}}})]);
+ await assert.rejects(f.client.generate([{role:'user',content:'q'}]),e=>e.speedRejected===true&&e.partial==='partial'&&e.incomplete===true);
 });

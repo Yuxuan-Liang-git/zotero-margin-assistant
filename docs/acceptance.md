@@ -1,6 +1,16 @@
 # 验收记录
 
-日期：2026-10-18。交付版本：0.11.2。目标 Zotero：10.0.x。下方旧版本记录保留为历史验收证据。
+日期：2026-10-18。交付版本：0.11.3。目标 Zotero：10.0.x。下方旧版本记录保留为历史验收证据。
+
+## 0.11.3：加速拒绝与标准模式恢复
+
+用户报告 Fast 请求出现 HTTP 400，而同一问题切到 Standard 后成功，已把实际故障隔离到速度参数路径。旧版丢弃了服务端 error.param/error.code，无法凭截图区分 fast 别名兼容与授权不允许，不能据此断言具体权限原因，也不能把 Codex 中可用等同于该第三方订阅授权可用。
+
+Fast 的请求使用兼容的 priority 值，UI 与实际返回值继续统一为 Fast。HTTP/SSE 错误只保留 HTTP 状态和白名单参数/错误码；原始 message 仅用于内存中的字段分类，不展示、保存或打印服务端回显。识别 service_tier 拒绝后提供“以标准模式重试”按钮，用户点击才切换并发送；沿用历史且替换失败问答，不重复插入用户问题。输入或当前会话已变化时只切换标准，保留草稿并让用户发送，避免覆盖编辑。部分回答继续保留且不会自动重复推理。
+
+新增四项回归先失败再修复：HTTP 加速拒绝与安全错误诊断、其他输入错误不误判、SSE 部分回答拒绝、显式标准重试不重复问题。完整 125/125 通过（63.8 秒），完整 checkJs 通过。最终 XPI SHA-256：`92557543e20d2fc2caa5bd021ff6db061da8c93aef5504f09f9c89e113bd2fc7`，1102107 字节。隔离 Zotero 10.0.6 首次与冷重启各 5/5 通过，见 `evidence/zotero-0113-speed-rejection-v1/report-1.json`、`report-2.json`，包括合成 HTTP 400 service_tier 拒绝、无自动重发、点击标准重试成功、实际档位显示与加密设置恢复。此次仍是合成 OAuth/推理响应，不消耗真实订阅用量；没有证明当前账户在线 Fast/Ultrafast 已可用，正式配置和资料库未改动。
+
+依据：[官方 Fast 与 priority 别名](https://developers.openai.com/api/docs/guides/fast-mode)、[服务档位不被允许的错误](https://developers.openai.com/api/docs/guides/error-codes)。
 
 ## 0.11.2：对齐思考档位、快速与极速
 

@@ -16,9 +16,17 @@
     if(Array.isArray(supplied)){const values=[...(model.speedTiers||[]),...(model.service_tiers||[]),...(model.additional_speed_tiers||[])].map(v=>typeof v==='string'?v:v?.id).map(v=>v==='priority'?'fast':v);return ['default',...['fast','ultrafast'].filter(v=>values.includes(v))];}
     return CURRENT.test(model.slug)?['default','fast',...(['gpt-6-astra','gpt-6.1-sol'].includes(model.slug)?['ultrafast']:[])]:['default'];
   }
-  function failure(status,code){
+  function failure(status,detail){
+    const error=detail&&typeof detail==='object'?detail:{code:detail},code=error.code;
     const usage=['subscription_sharing_usage_limit_exceeded','subscription_sharing_usage_unavailable'].includes(code);
-    return Object.assign(new Error(usage?'ChatGPT 订阅额度已用完或暂不可用，请点击“管理用量”检查额度。':status===401?'ChatGPT 登录已失效，请重新登录。':status===429?'ChatGPT 请求限流，请稍后重试。':status===403?'当前 ChatGPT 账户无权使用此模型或速度档位，请切回标准、刷新模型列表或检查授权。':status===400?'ChatGPT 不接受此请求，请检查模型、思考强度、速度档位及所选材料。':'ChatGPT 响应失败，请稍后重试。'),{safe:true,status,usageLimit:usage});
+    const knownParams=['service_tier','reasoning.effort','reasoning','model','input','store','stream'];
+    const param=knownParams.includes(error.param)?error.param:'';
+    // Inspect echoed text only to classify the field; never display or persist it.
+    const speedRejected=!usage&&[0,400,403].includes(status)&&(param==='service_tier'||['unsupported_service_tier','invalid_service_tier','service_tier_not_supported'].includes(code)||/\bservice[_ ]tier\b/i.test(typeof error.message==='string'?error.message:typeof error.detail==='string'?error.detail:''));
+    const safeCode=['subscription_sharing_usage_limit_exceeded','subscription_sharing_usage_unavailable','invalid_request_error','unsupported_parameter','invalid_value','context_length_exceeded'].includes(code)?code:'';
+    const diagnostic=[status?'HTTP '+status:'',param?'参数 '+param:'',safeCode?'代码 '+safeCode:''].filter(Boolean).join('；');
+    const message=usage?'ChatGPT 订阅额度已用完或暂不可用，请点击“管理用量”检查额度。':speedRejected?'当前账户或订阅接入不接受所选速度档位，请以标准模式重试；不需要重建对话。':status===401?'ChatGPT 登录已失效，请重新登录。':status===429?'ChatGPT 请求限流，请稍后重试。':status===403?'当前 ChatGPT 账户无权使用此模型或速度档位，请切回标准、刷新模型列表或检查授权。':status===400?'ChatGPT 不接受此请求，请检查模型、思考强度、速度档位及所选材料。':'ChatGPT 响应失败，请稍后重试。';
+    return Object.assign(new Error(message+(diagnostic?'（'+diagnostic+'）':'')),{safe:true,status,usageLimit:usage,speedRejected,param,code:safeCode});
   }
   function requestBody(messages,model){
     const instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');
@@ -38,7 +46,7 @@
       for(let attempt=0;attempt<2;attempt++){
         const token=await this.auth.accessToken(id,attempt===1),response=await this.fetch(ENDPOINT+path,{...options,redirect:'error',headers:{'Content-Type':'application/json',...options.headers,Authorization:'Bearer '+token}});
         if(response.status===401&&attempt===0){try{await response.body?.cancel();}catch{}continue;}
-        if(!response.ok){let code;try{const data=await response.json();code=data.error?.code;}catch{}throw failure(response.status,code);}return response;
+        if(!response.ok){let detail;try{const data=await response.json();detail=data.error||data;}catch{}throw failure(response.status,detail);}return response;
       }
     }
     async models(){
@@ -56,7 +64,7 @@
         if(!account?.model)throw Object.assign(new Error('请先选择 ChatGPT 模型。'),{safe:true});
         const model=account.models?.find(m=>m.slug===account.model)||{slug:account.model},levels=reasoningEfforts(model),requested=thinking?.type==='disabled'?'low':account.reasoningEffort,speed=thinking?.type==='disabled'?'default':account.speed||'default';
         if(!speedTiers(model).includes(speed))throw Object.assign(new Error('当前模型不支持所选速度档位，请切换为标准或刷新模型列表。'),{safe:true});
-        const body={...requestBody(messages,account.model),service_tier:speed,...(requested&&requested!=='default'&&levels.includes(requested)?{reasoning:{effort:requested}}:{})};
+        const body={...requestBody(messages,account.model),service_tier:speed==='fast'?'priority':speed,...(requested&&requested!=='default'&&levels.includes(requested)?{reasoning:{effort:requested}}:{})};
         const response=await this.request('/responses',{method:'POST',signal,headers:{Accept:'text/event-stream'},body:JSON.stringify(body)},id);
         if(!response.body?.getReader)throw Error();reader=response.body.getReader();const decoder=new this.Decoder('utf-8');let buffer='';const refusals=new Set();
         const consume=block=>{
@@ -69,7 +77,7 @@
             if(typeof text==='string'&&text){refusals.add(key);partial+=text;if(partial.length>1000000)throw Error();onDelta(text);}
           }
           else if(value.type==='response.completed'){completed=true;const tier=value.response?.service_tier;onServiceTier({requested:speed,actual:tier==='priority'?'fast':['default','fast','ultrafast'].includes(tier)?tier:null});}
-          else if(value.type==='response.failed'||value.type==='error')throw failure(0,value.response?.error?.code||value.error?.code||value.code);
+          else if(value.type==='response.failed'||value.type==='error')throw failure(0,value.response?.error||value.error||value);
           else if(value.type==='response.incomplete')throw Object.assign(new Error('ChatGPT 回答未完成，可继续追问或重试。'),{safe:true});
         };
         while(!completed){if(signal?.aborted)throw Error();const chunk=await reader.read();buffer+=chunk.done?decoder.decode():decoder.decode(chunk.value,{stream:true});if(buffer.length>2000000)throw Error();let match;

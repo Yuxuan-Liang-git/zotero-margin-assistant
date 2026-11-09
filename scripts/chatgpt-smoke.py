@@ -25,7 +25,7 @@ insertion = r'''
       const crypto=win.crypto,encoder=new win.TextEncoder(),keys=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
       const jwk=await crypto.subtle.exportKey('jwk',keys.publicKey);jwk.kid='native-qa';await phase('keys-ready');
       const encode=value=>auth.base64(encoder.encode(JSON.stringify(value)));
-      let nonce='',tokenCalls=0,requestBody,loopback=false,liveMathBeforeCompletion=false;
+      let nonce='',tokenCalls=0,requestBody,loopback=false,liveMathBeforeCompletion=false,rejectFast=false,responseCalls=0;
       const fakeFetch=async(url,options={})=>{
         const json=value=>new win.Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
         if(url.endsWith('openid-configuration'))return json({issuer:'https://auth.openai.com',authorization_endpoint:'https://auth.openai.com/api/accounts/authorize',token_endpoint:'https://auth.openai.com/api/accounts/oauth/token',jwks_uri:'https://auth.openai.com/.well-known/jwks.json',revocation_endpoint:'https://auth.openai.com/oauth/revoke'});
@@ -37,11 +37,13 @@ insertion = r'''
         }
         if(url.endsWith('/models'))return json({models:[{slug:'native-qa-model',display_name:'Native QA Model',visibility:'list',supported_reasoning_levels:[{effort:'low'},{effort:'medium'},{effort:'high'},{effort:'xhigh'},{effort:'max'},{effort:'ultra'}],service_tiers:[{id:'priority'},{id:'ultrafast'}]}]});
         if(url.endsWith('/responses')){
+          responseCalls++;
           requestBody=JSON.parse(options.body);if(requestBody.store!==false||requestBody.stream!==true||'max_output_tokens' in requestBody||!JSON.stringify(requestBody.input).includes('当前打开的 PDF'))throw new Error('Responses request lost automatic PDF context or SIWC constraints');
+          if(rejectFast&&requestBody.service_tier==='priority')return new win.Response(JSON.stringify({error:{code:null,param:'service_tier',message:'service_tier is not allowed; never-leak'}}),{status:400,headers:{'Content-Type':'application/json'}});
           const text='## Native QA\n\n答案：\\(x=1\\)。';
           return new win.Response(new win.ReadableStream({start(controller){
             controller.enqueue(encoder.encode('data: '+JSON.stringify({type:'response.output_text.delta',delta:text})+'\n\n'));
-            setTimeout(()=>{liveMathBeforeCompletion=!!panelForQA?.busy&&!!panelForQA.messages.lastElementChild?.querySelector('math');controller.enqueue(encoder.encode('data: '+JSON.stringify({type:'response.completed',response:{service_tier:'fast'}})+'\n\n'));controller.close();},700);
+            setTimeout(()=>{liveMathBeforeCompletion=!!panelForQA?.busy&&!!panelForQA.messages.lastElementChild?.querySelector('math');controller.enqueue(encoder.encode('data: '+JSON.stringify({type:'response.completed',response:{service_tier:requestBody.service_tier}})+'\n\n'));controller.close();},700);
           }}));
         }
         throw new Error('Unexpected synthetic endpoint');
@@ -62,9 +64,15 @@ insertion = r'''
         const panel=await host.panel(reader);panelForQA=panel;originalDraft=panel.conversation().draft;panel.showChat();if(panel.providerSelect.value!=='chatgpt'||panel.modelSelect.value!=='native-qa-model'||panel.reasoningSelect.value!=='xhigh'||panel.speedSelect.value!=='fast'||!Array.from(panel.reasoningSelect.options).some(o=>o.value==='max')||Array.from(panel.reasoningSelect.options).some(o=>o.value==='ultra'))throw new Error('Native provider/model picker not refreshed');
         panel.question.value='Summarize the current PDF (offline QA)';await phase('pdf-turn');await panel.send();await phase('pdf-turn-finished');
         const answer=panel.conversation().history.at(-1);if(answer.incomplete||answer.provider!=='chatgpt'||!requestBody||!panel.messages.lastElementChild.querySelector('math'))throw new Error('Native ChatGPT PDF turn or math rendering failed: '+panel.status.textContent);
-        if(!liveMathBeforeCompletion||requestBody.reasoning?.effort!=='xhigh'||requestBody.service_tier!=='fast'||!panel.status.textContent.includes('本轮档位：快速 Fast'))throw new Error('Live math or selected effort not applied');
+        if(!liveMathBeforeCompletion||requestBody.reasoning?.effort!=='xhigh'||requestBody.service_tier!=='priority'||!panel.status.textContent.includes('本轮档位：快速 Fast'))throw new Error('Live math or selected effort not applied');
+        rejectFast=true;panel.question.value='Retry Standard (offline QA)';const beforeReject=responseCalls;await panel.send();
+        const retry=panel.messages.lastElementChild.querySelector('.zma-retry-standard');
+        if(!retry||responseCalls!==beforeReject+1||!panel.status.textContent.includes('service_tier')||panel.status.textContent.includes('never-leak'))throw new Error('Speed rejection diagnostics or explicit retry missing');
+        retry.click();for(let n=0;n<200;n++){await new Promise(r=>setTimeout(r,50));if(!panel.busy&&responseCalls===beforeReject+2)break;}
+        if(panel.conversation().history.at(-1).incomplete||responseCalls!==beforeReject+2||requestBody.service_tier!=='default'||!panel.status.textContent.includes('本轮档位：标准'))throw new Error('Native Standard retry failed');
+        await host.setChatGPTSpeed('fast');
         if(!loopback)throw new Error('Actual native callback not used');
-        return {liveMathBeforeCompletion,selectedReasoningEffort:true,selectedFastTier:true,confirmedFastTier:true,reasoningRestored:seed.launch>1,speedRestored:seed.launch>1,officialFlowMocked:true,realLoopbackHttpServer:true,stateRejected:true,webcryptoSignatureValidated:true,encryptedOSKeyStore:true,serializedRefresh:true,accountModelPicker:true,automaticPdfContext:true,markdownAndMath:true,restoredAfterRestart:restored,coldRestart:seed.launch>1,noExternalApiCalls:true};
+        return {liveMathBeforeCompletion,selectedReasoningEffort:true,selectedFastTier:true,confirmedFastTier:true,speedRejectedRetry:true,reasoningRestored:seed.launch>1,speedRestored:seed.launch>1,officialFlowMocked:true,realLoopbackHttpServer:true,stateRejected:true,webcryptoSignatureValidated:true,encryptedOSKeyStore:true,serializedRefresh:true,accountModelPicker:true,automaticPdfContext:true,markdownAndMath:true,restoredAfterRestart:restored,coldRestart:seed.launch>1,noExternalApiCalls:true};
       }finally{auth.fetch=originalFetch;client.fetch=originalClientFetch;auth.openBrowser=originalOpen;if(panelForQA){panelForQA.conversation().draft=originalDraft;panelForQA.question.value=originalDraft;await panelForQA.persist();}}
     });
 '''

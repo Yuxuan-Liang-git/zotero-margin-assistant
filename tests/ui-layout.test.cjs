@@ -191,3 +191,10 @@ test('a missing main window during send does not leave the panel busy or the PDF
     const result=await page.evaluate(async()=>{const panel=await fixture.host.panel(fixture.reader);panel.question.value='保留问题';fixture.host.newAbortController=()=>{throw new Error('主窗口正在关闭');};let error;try{await panel.send();}catch(e){error=e.message;}return {error,busy:panel.busy,disabled:panel.sendButton.disabled,locks:fixture.host.activeRequests.size,draft:panel.question.value};});assert.match(result.error,/主窗口/);assert.equal(result.busy,false);assert.equal(result.disabled,false);assert.equal(result.locks,0);assert.equal(result.draft,'保留问题');
   }finally{await browser.close();}
 });
+test('speed rejection offers an explicit Standard retry without duplicating the failed question',async()=>{
+ const {browser,page}=await setup();try{
+  await page.evaluate(async()=>{const host=fixture.host;host.provider='chatgpt';globalThis.requestCount=0;globalThis.speed='fast';host.providerState=()=>({provider:'chatgpt',signedIn:true,model:'qa',models:[{slug:'qa',displayName:'QA'}],speed,speedTiers:['default','fast']});host.documentContext=async()=>({mode:'full-text',text:'PDF facts',pages:[1],totalPages:1,title:'QA'});host.setChatGPTSpeed=async value=>{speed=value;};host.selectedClient=()=>({generate:async()=>{requestCount++;if(speed==='fast')throw Object.assign(new Error('速度档位被拒绝，请使用标准模式。'),{safe:true,speedRejected:true});return '标准模式答案';}});globalThis.speedPanel=await host.panel(fixture.reader);speedPanel.showChat();speedPanel.question.value='解释 left-kernel';await speedPanel.send();});
+  assert.equal(await page.evaluate(()=>requestCount),1);assert.equal(await page.getByRole('button',{name:'以标准模式重试',exact:true}).count(),1);await page.getByRole('button',{name:'以标准模式重试',exact:true}).click();await page.waitForFunction(()=>!speedPanel.busy&&requestCount===2);
+  assert.equal(await page.evaluate(()=>speed),'default');assert.equal(await page.evaluate(()=>speedPanel.conversation().history.filter(m=>m.role==='user'&&m.content==='解释 left-kernel').length),1);assert.match(await page.locator('.zma-messages').innerText(),/标准模式答案/);
+ }finally{await browser.close();}
+});
