@@ -91,6 +91,29 @@ test('question panel explicitly sends two regions, restores failure, and separat
   }finally{await browser.close();}
 });
 
+test('long PDF chat compacts older turns without losing raw history and streams without repeated Markdown work',async()=>{
+  const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+  try{const page=await browser.newPage();await page.setContent('<main>Current PDF</main>');
+    for(const name of ['core','deepseek','panel'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});
+    const result=await page.evaluate(async()=>{
+      const state=ZMACore.emptyState(),chat=ZMACore.activeConversation(state);
+      for(let i=0;i<10;i++){chat.history.push({role:'user',content:`问题 ${i} `+'甲'.repeat(800),materials:[]},{role:'assistant',content:`回答 ${i} `+'乙'.repeat(800),materials:[],incomplete:false});}
+      let summaries=0,sent,renderCalls=0,saved;
+      const host={addon:{bridge:{renderMathPreview:(node,text)=>node.textContent=text}},load:async()=>state,save:async(_r,s)=>{saved=structuredClone(s);},capture:async()=>{throw new Error('no selected materials')},client:{summarize:async(previous,messages)=>{summaries++;return `摘要 ${summaries}：${messages.length} 条消息，前文定义 A。`;},generate:async(messages,{onDelta})=>{sent=messages;for(let i=0;i<120;i++)onDelta('x');return 'x'.repeat(120);}},newAbortController:()=>new AbortController()};
+      const panel=new ZMAPanel.Panel(host,{itemID:1},document);await panel.init();const original=panel.renderAnswer.bind(panel);panel.renderAnswer=(...args)=>{renderCalls++;return original(...args);};
+      panel.question.value='请继续解释';await panel.send();
+      return {summaries,renderCalls,raw:saved.conversations[0].history.length,checkpoint:saved.conversations[0].compactedThrough,summary:saved.conversations[0].summary,transmitted:sent.length,hasSummary:JSON.stringify(sent).includes('前文定义 A'),answer:saved.conversations[0].history.at(-1).content};
+    });
+    assert.ok(result.summaries>=1,result);
+    assert.ok(result.renderCalls<=3,result);
+    assert.equal(result.raw,22);
+    assert.ok(result.checkpoint>=2,result);
+    assert.match(result.summary,/前文定义 A/);
+    assert.ok(result.hasSummary);
+    assert.equal(result.answer,'x'.repeat(120));
+  }finally{await browser.close();}
+});
+
 test('reader assistant loads math stylesheet alongside its own styles',async()=>{
   const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
   try{const page=await browser.newPage();await page.setContent('<div/>');for(const name of ['core','deepseek','capture','host'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});

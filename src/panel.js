@@ -91,46 +91,69 @@
     renderMessages(){
       this.messages.replaceChildren();
       const conversation=this.conversation();this.activeLabel.textContent=`当前对话：${conversation.title||'新对话'}`;
-      conversation.history.forEach((m,i)=>{
-        const card=el(this.doc,'article',undefined,`zma-message zma-${m.role}`);card.append(el(this.doc,'strong',m.role==='user'?'问题':m.incomplete?'回答（未完成）':'回答'));
-        const text=el(this.doc,'div',undefined,'zma-answer');
-        if(m.role==='assistant')this.renderAnswer(text,m.content);else text.textContent=m.content;
-        card.append(text);
-        if(m.role==='assistant'&&m.content){const actions=el(this.doc,'div',undefined,'zma-actions');actions.append(button(this.doc,'复制',()=>this.host.copy(m.content)),button(this.doc,'保存为笔记',()=>this.saveAnswer(i,'note')),button(this.doc,'保存到批注',()=>this.saveAnswer(i,'comment')));card.append(actions);}
-        this.messages.append(card);
-      });
+      conversation.history.forEach((m,i)=>this.messages.append(this.messageCard(m,i)));
       if(!conversation.history.length)this.messages.append(el(this.doc,'p','直接问“当前这篇论文讲了什么”即可；助手会自动读取当前 PDF。也可框选内容或加入前文引用，进一步解释公式。','zma-empty-chat'));
       this.messages.scrollTop=this.messages.scrollHeight;
     }
+    messageCard(m,i){
+      const card=el(this.doc,'article',undefined,`zma-message zma-${m.role}`);card.append(el(this.doc,'strong',m.role==='user'?'问题':m.incomplete?'回答（未完成）':'回答'));
+      const text=el(this.doc,'div',undefined,'zma-answer');if(m.role==='assistant'){if(m.content)this.renderAnswer(text,m.content);}else text.textContent=m.content;
+      card.append(text);if(m.role==='assistant'&&m.content)this.addAnswerActions(card,m,i);return card;
+    }
+    addAnswerActions(card,m,i){
+      const actions=el(this.doc,'div',undefined,'zma-actions');actions.append(button(this.doc,'复制',()=>this.host.copy(m.content)),button(this.doc,'保存为笔记',()=>this.saveAnswer(i,'note')),button(this.doc,'保存到批注',()=>this.saveAnswer(i,'comment')));card.append(actions);
+    }
     renderAnswer(node,text){if(root.ZMAMarkdown)root.ZMAMarkdown.render(node,text,this.host.addon.bridge.renderMathPreview);else this.host.addon.bridge.renderMathPreview(node,text);}
+    async compactHistory(conversation,history,signal){
+      const target=C.compactionTarget({...conversation,history});let through=conversation.compactedThrough||0;
+      while(through<target){
+        let end=through,characters=0;
+        while(end<target&&end-through<8){
+          const pair=history.slice(end,end+2),size=pair.reduce((n,m)=>n+m.content.length+(m.materials||[]).reduce((total,s)=>total+(s.text?.length||0),0),0);
+          if(end>through&&characters+size>18000)break;
+          characters+=size;end+=2;
+        }
+        if(end===through||history[through]?.role!=='user'||history[end-1]?.role!=='assistant')throw new Error('历史对话格式异常，无法安全压缩；原始记录未改变');
+        if(!this.destroyed)this.status.textContent=`正在压缩较早对话：${end}/${target}…`;
+        const summary=await this.host.client.summarize(conversation.summary||'',history.slice(through,end),{signal});
+        if(!summary?.trim())throw new Error('历史对话摘要为空；原始记录未改变');
+        conversation.summary=summary;conversation.compactedThrough=end;through=end;
+      }
+    }
     async send(){
       if(this.busy)return;if(this.pendingMaterials.size)throw new Error('材料正在读取，请完成后再发送');const question=this.question.value.trim();if(!question)throw new Error('请输入问题');
       // A retry replaces the failed pair, rather than duplicating its user message.
       const conversation=this.conversation(),history=conversation.history.slice();
-      if(history.at(-1)?.incomplete&&history.at(-2)?.role==='user'&&history.at(-2).content===question)history.splice(-2);
+      const retry=history.at(-1)?.incomplete&&history.at(-2)?.role==='user'&&history.at(-2).content===question;
+      if(retry)history.splice(-2);
       const controller=this.host.newAbortController();this.host.claimRequest?.(this.reader);this.busy=true;this.sendButton.disabled=true;this.stopButton.disabled=false;this.renderMaterials();this.status.textContent='准备来源…';
-      this.controller=controller;const deadline=setTimeout(()=>this.controller?.abort(),180000);
-      let user,answer;
+      this.controller=controller;const deadline=setTimeout(()=>this.controller?.abort(),300000);
+      let user,answer,answerCard;
       try{
+        await this.compactHistory(conversation,history,this.controller.signal);
         const hydrated=[];
-        for(const m of history){
+        for(const m of history.slice(conversation.compactedThrough||0)){
           if(m.role==='assistant'){hydrated.push(m);continue;}
           const materials=[];for(const s of m.materials||[])materials.push(await this.host.capture(this.reader,s));
           hydrated.push({...m,materials});
         }
         const refreshed=[];for(const material of this.materials)refreshed.push(await this.host.capture(this.reader,material.source));
-        const baseMessages=D.buildMessages(hydrated,question,refreshed);
-        const context=await this.host.documentContext?.(this.reader,question,{budget:58000-D.textSize(baseMessages),signal:this.controller.signal,onProgress:(n,total)=>{if(!this.destroyed)this.status.textContent=`正在读取当前 PDF：${n}/${total} 页…`;}});
+        const baseMessages=D.buildMessages(hydrated,question,refreshed,undefined,conversation.summary||'');
+        const context=await this.host.documentContext?.(this.reader,question,{budget:Math.min(24000,58000-D.textSize(baseMessages)),signal:this.controller.signal,onProgress:(n,total)=>{if(!this.destroyed)this.status.textContent=`正在读取当前 PDF：${n}/${total} 页…`;}});
         if(context&&!this.destroyed)this.contextInfo.textContent=(context.mode==='full-text'?`本轮使用：${context.title} · 全文 ${context.totalPages} 页`:`本轮使用：${context.title} · ${context.mode==='current-page-image'?'当前页截图':'相关文字节选'}（PDF 第 ${context.pages.join('、')} 页）`)+(context.material&&context.mode!=='current-page-image'?`；当前页截图（PDF 第 ${context.material.source.pageIndex+1} 页）`:'');
-        const messages=D.buildMessages(hydrated,question,refreshed,context);
+        const messages=D.buildMessages(hydrated,question,refreshed,context,conversation.summary||'');
         if(this.controller.signal.aborted)throw new Error('生成已停止');
         const submitted=[...refreshed];if(context?.material&&submitted.length<8&&!submitted.some(m=>m.source.fullPage&&m.source.pageIndex===context.material.source.pageIndex))submitted.push(context.material);
         user={role:'user',content:question,materials:submitted.map(m=>({...C.pickSource(m.source),type:m.source.type,number:m.source.number,description:m.source.description})),incomplete:false};
         answer={role:'assistant',content:'',materials:[],incomplete:true};
-        conversation.history=[...history,user,answer];conversation.draft=this.question.value;C.touchConversation(conversation);await this.persist();this.renderMessages();this.renderConversationList();
+        conversation.history=[...history,user,answer];conversation.draft=this.question.value;C.touchConversation(conversation);await this.persist();
+        if(retry){this.messages.lastElementChild?.remove();this.messages.lastElementChild?.remove();}
+        this.messages.querySelector('.zma-empty-chat')?.remove();this.messages.append(this.messageCard(user,history.length),this.messageCard(answer,history.length+1));answerCard=this.messages.lastElementChild;this.messages.scrollTop=this.messages.scrollHeight;this.activeLabel.textContent=`当前对话：${conversation.title||'新对话'}`;this.renderConversationList();
         this.status.textContent='DeepSeek 正在回答…';
+        const streamText=this.messages.lastElementChild?.querySelector('.zma-answer');
+        const streamNode=this.doc.createTextNode('');streamText?.append(streamNode);let lastScroll=0;
         answer.content=await this.host.client.generate(messages,{signal:this.controller.signal,onDelta:delta=>{
-          answer.content+=delta;if(!this.destroyed){const follow=this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80;const last=this.messages.lastElementChild?.querySelector('.zma-answer');if(last)this.renderAnswer(last,answer.content);if(follow)this.messages.scrollTop=this.messages.scrollHeight;}
+          answer.content+=delta;if(!this.destroyed){const follow=this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80;streamNode.appendData(delta);const now=Date.now();if(follow&&now-lastScroll>=100){this.messages.scrollTop=this.messages.scrollHeight;lastScroll=now;}}
         }});
         answer.incomplete=false;if(this.question.value.trim()===question)this.question.value='';conversation.draft=this.question.value;C.touchConversation(conversation);this.status.textContent='回答完成，可追问或保存。';
       }catch(e){
@@ -138,7 +161,7 @@
         conversation.draft=this.question.value;C.touchConversation(conversation);this.error(e);
       }finally{
         clearTimeout(deadline);this.controller=null;this.busy=false;this.host.releaseRequest?.(this.reader);
-        if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();this.renderMessages();this.renderConversationList();await this.persist().catch(e=>this.error(e));}
+        if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();if(answerCard){const text=answerCard.querySelector('.zma-answer');if(text)this.renderAnswer(text,answer.content);const label=answerCard.querySelector('strong');if(label)label.textContent=answer.incomplete?'回答（未完成）':'回答';if(answer.content)this.addAnswerActions(answerCard,answer,conversation.history.length-1);this.messages.scrollTop=this.messages.scrollHeight;}else if(answer)this.renderMessages();this.renderConversationList();await this.persist().catch(e=>this.error(e));}
       }
     }
     async saveAnswer(index,kind){

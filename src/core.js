@@ -52,7 +52,7 @@
   function escapeHTML(v) {return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function storedLink(s,groupID) {return `<a href="${sourceLink(s,groupID)}">${escapeHTML(`${s.type||'来源'} (${s.number||s.annotationKey}) · 第 ${s.pageLabel} 页`)}</a>`;}
   const conversationID=/^[a-zA-Z0-9_-]{1,64}$/;
-  function blankConversation(id='default',now=Date.now()){return {id,title:'新对话',createdAt:now,updatedAt:now,history:[],draft:''};}
+  function blankConversation(id='default',now=Date.now()){return {id,title:'新对话',createdAt:now,updatedAt:now,history:[],draft:'',summary:'',compactedThrough:0};}
   function emptyState() {const conversation=blankConversation();return {version:2,sources:[],references:[],conversations:[conversation],activeConversationId:conversation.id,images:[],imageNoteKey:null};}
   function activeConversation(state,id=state.activeConversationId){const conversation=state.conversations?.find(c=>c.id===id);if(!conversation)throw new Error('对话不存在');return conversation;}
   function selectConversation(state,id){activeConversation(state,id);state.activeConversationId=id;return activeConversation(state);}
@@ -80,7 +80,20 @@
   }
   function cleanConversation(c){
     if(!c||!conversationID.test(c.id)||typeof c.title!=='string'||c.title.length>120||!Number.isSafeInteger(c.createdAt)||c.createdAt<0||!Number.isSafeInteger(c.updatedAt)||c.updatedAt<0||!Array.isArray(c.history)||typeof c.draft!=='string')throw new Error('对话数据损坏');
-    return {id:c.id,title:c.title,createdAt:c.createdAt,updatedAt:c.updatedAt,history:c.history.map(cleanMessage),draft:c.draft};
+    const summary=c.summary??'',compactedThrough=c.compactedThrough??0;
+    if(typeof summary!=='string'||summary.length>20000||!Number.isSafeInteger(compactedThrough)||compactedThrough<0||compactedThrough>c.history.length||compactedThrough%2||compactedThrough>0&&!summary.trim())throw new Error('对话摘要索引损坏');
+    return {id:c.id,title:c.title,createdAt:c.createdAt,updatedAt:c.updatedAt,history:c.history.map(cleanMessage),draft:c.draft,summary,compactedThrough};
+  }
+  function compactionTarget(conversation){
+    const history=conversation.history,from=conversation.compactedThrough||0,pending=history.slice(from);
+    const size=pending.reduce((n,m)=>n+m.content.length+(m.materials||[]).reduce((total,s)=>total+(s.text?.length||0),0),0);
+    if(pending.length<=12&&size<=16000)return from;
+    const starts=[];for(let i=from;i<history.length;i++)if(history[i].role==='user')starts.push(i);
+    if(starts.length<=1)return size>40000&&history.at(-1)?.role==='assistant'&&!history.at(-1).incomplete?history.length:from;
+    let keep=Math.max(0,starts.length-4);
+    while(keep<starts.length-1&&history.slice(starts[keep]).reduce((n,m)=>n+m.content.length,0)>12000)keep++;
+    const target=Math.max(from,starts[keep]);
+    return history.slice(target).reduce((n,m)=>n+m.content.length,0)>40000&&history.at(-1)?.role==='assistant'&&!history.at(-1).incomplete?history.length:target;
   }
   function cleanState(value) {
     if(!value||![1,2].includes(value.version)||!Array.isArray(value.sources)||!Array.isArray(value.references))throw new Error('数据损坏或版本不兼容');
@@ -121,6 +134,6 @@
     }
     async flush(){await Promise.all(this.queues.values());}
   }
-  const api={TYPES,scopeKey,normalizeNumber,validateSource,pickSource,ReferenceIndex,sourceLink,parseSourceLink,storedLink,escapeHTML,emptyState,activeConversation,selectConversation,createConversation,touchConversation,cleanState,LocalStore};
+  const api={TYPES,scopeKey,normalizeNumber,validateSource,pickSource,ReferenceIndex,sourceLink,parseSourceLink,storedLink,escapeHTML,emptyState,activeConversation,selectConversation,createConversation,touchConversation,compactionTarget,cleanState,LocalStore};
   root.ZMACore=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof _globalThis!=='undefined'?_globalThis:globalThis);

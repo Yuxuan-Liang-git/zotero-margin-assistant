@@ -56,3 +56,19 @@ test('conversation storage strips credentials and rejects invalid active IDs', (
   assert.throws(() => C.cleanState({ ...state, activeConversationId: 'missing' }), /对话/);
   assert.throws(() => C.createConversation(state, state.conversations[0].id, 1), /重复/);
 });
+test('per-PDF recap checkpoint survives persistence while all original messages remain',()=>{
+  const state=C.emptyState(),chat=C.activeConversation(state);
+  for(let i=0;i<9;i++)chat.history.push({role:i%2?'assistant':'user',content:`message-${i}`,materials:[]});
+  chat.summary='较早的对话：讨论了公式 6.30';chat.compactedThrough=4;
+  const restored=C.cleanState(JSON.parse(JSON.stringify(state)));
+  assert.equal(restored.conversations[0].history.length,9);
+  assert.equal(restored.conversations[0].summary,chat.summary);
+  assert.equal(restored.conversations[0].compactedThrough,4);
+  assert.throws(()=>C.cleanState({...state,conversations:[{...chat,compactedThrough:999}]}),/摘要|对话/);
+});
+test('one oversized completed turn can be summarized instead of blocking the next question',()=>{
+  const chat=C.activeConversation(C.emptyState());chat.history.push({role:'user',content:'解释整个推导',materials:[]},{role:'assistant',content:'长回答'.repeat(20000),materials:[],incomplete:false});
+  assert.equal(C.compactionTarget(chat),2);
+  chat.history[1].incomplete=true;
+  assert.equal(C.compactionTarget(chat),0);
+});

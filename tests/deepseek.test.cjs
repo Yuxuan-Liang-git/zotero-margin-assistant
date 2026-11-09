@@ -19,6 +19,28 @@ test('stream handles UTF8 splits and multiline network chunks',async()=>{
   assert.equal(result,'中文解释');assert.equal(seen,'中文解释');
   assert.equal(request.url,'https://api.deepseek.com/chat/completions');
   assert.equal(JSON.parse(request.options.body).model,'deepseek-flash');
+  assert.equal(JSON.parse(request.options.body).max_tokens,65536,'ordinary answers should have the current thinking-mode output allowance');
+});
+test('completed and partial answers remain available for a follow-up, with a saved recap',()=>{
+  const messages=D.buildMessages([{role:'user',content:'介绍方法',materials:[]},{role:'assistant',content:'第一段未完的推导',materials:[],incomplete:true}],'请继续',[],undefined,'较早的对话讨论了定义 A');
+  assert.match(messages[1].content,/较早的对话/);
+  assert.equal(messages[3].content,'第一段未完的推导');
+});
+test('summary request uses a small non-thinking budget and rejects truncated recaps',async()=>{
+  let body;
+  const client=new D.DeepSeekClient({getKey:()=> 'key',fetch:async(_url,options)=>{body=JSON.parse(options.body);return new Response('data: {"choices":[{"delta":{"content":"已定义 A，并推导出 B。"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');}});
+  const summary=await client.summarize('旧摘要',[{role:'user',content:'新的问题'},{role:'assistant',content:'新的回答'}]);
+  assert.match(summary,/推导出 B/);
+  assert.equal(body.thinking.type,'disabled');
+  assert.ok(body.max_tokens<=4096);
+  assert.ok(body.messages.at(-1).content.includes('新的问题'));
+});
+test('oversized old dialogue is summarized in bounded pieces',async()=>{
+  const requests=[];
+  const client=new D.DeepSeekClient({getKey:()=> 'key',fetch:async(_url,options)=>{requests.push(JSON.parse(options.body));return new Response('data: {"choices":[{"delta":{"content":"承接前面的摘要。"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');}});
+  await client.summarize('',[{role:'user',content:'问题'},{role:'assistant',content:'内容'.repeat(15000)}]);
+  assert.ok(requests.length>=2);
+  assert.ok(requests.every(r=>JSON.stringify(r.messages).length<30000));
 });
 test('HTTP errors are actionable and do not include keys or server echo',async()=>{
   assert.equal(typeof D.DeepSeekClient,'function');
