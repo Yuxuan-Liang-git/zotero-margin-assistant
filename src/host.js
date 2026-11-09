@@ -197,6 +197,7 @@
       if(this.cleanups.has(doc)||this.closedReaders.has(reader))return;
       this.installStyles(doc);
       const preview=root.ZMAReferencePreview?new root.ZMAReferencePreview.ReferencePreview(this,reader,doc):null;
+      const textMath=root.ZMATextMath?new root.ZMATextMath.TextMath(this,doc):null;
       const listener=event=>{
         const link=event.target?.closest?.('a[href]');if(!link||!C.parseSourceLink(link.getAttribute('href')))return;
         event.preventDefault();event.stopPropagation();
@@ -211,7 +212,7 @@
           await this.previewReference(reader,source,{annotationKey:targetKey});
         });
       };const unload=()=>{void this.closeReader(reader);},owner=reader._iframeWindow||doc.defaultView;doc.addEventListener('click',listener,true);owner?.addEventListener('unload',unload,{once:true});
-      this.cleanups.set(doc,{reader,preview,dispose:()=>{preview?.destroy();doc.removeEventListener('click',listener,true);owner?.removeEventListener('unload',unload);doc.querySelectorAll?.('#zma-styles,#zma-math-styles').forEach(n=>n.remove());}});
+      this.cleanups.set(doc,{reader,preview,textMath,dispose:()=>{textMath?.destroy();preview?.destroy();doc.removeEventListener('click',listener,true);owner?.removeEventListener('unload',unload);doc.querySelectorAll?.('#zma-styles,#zma-math-styles').forEach(n=>n.remove());}});
       const outer=reader._iframeWindow?.document;if(outer&&outer!==doc)this.bindReferences(reader,outer);
     }
     attachCard(session,runtime){

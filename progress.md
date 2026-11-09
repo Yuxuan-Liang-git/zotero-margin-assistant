@@ -161,3 +161,17 @@ v1隔离原生启动发现内容窗口不能读取特权脚本的observer option
 
 最终XPI SHA-256：99b9afeefeb9139c41e8cd51fe92826daee1b2bee5e471c9e440bbc09ad313c2，1128347字节。原始0.9.5 XPI与baseline保留。
 
+2026-10-25 0.13.4
+
+## 新增文字原位公式
+
+用户希望PDF原生新增文字支持LaTeX。读取本机reader.js，确认其使用customAnnotationLayer下的textarea.textAnnotation，以value保存comment，原生刷新会清理该层额外子节点。新增TextMath管理器，在同一PDF页的独立层显示MathML，保留原编辑对象及value/data-comment/style；只临时隐藏源文字颜色，focus恢复原编辑，blur显示新公式，原生点击/移动事件仍穿透。字号、颜色、位置、旋转和缩放跟随原字段，值不变时复用MathML，仅同步样式，原生页面层被清理后可复挂。普通文字和无效公式保留原样；不新增页边卡片。
+
+复用原安全MathML渲染，为bridge添加默认false的plain参数，新文字用plain=true，纯文本HTML标签不作为富文本解释。原始分隔符可复制，模型comment始终是LaTeX。停用或关闭后清理显示层/观察器并恢复原字段。没有新依赖、API、存储格式或PDF导出钩子；不自动改写批注几何，渲染高度可能超出原文字框。
+
+4项新增回归先全部失败后通过，text-math.png已目视检查。完整checkJs通过；最终npm test 190/190通过，126.1秒，evidence/ui-0134/tests-final.txt。首轮189/190，原有PDF气泡滚动等待偶发超时，单独复查通过，未修改该测试/滚动生产逻辑，最终全套重跑通过。
+
+隔离Zotero10.0.6首启/冷重启各18/18通过，evidence/zotero-0134-text-math-v3/report-1.json、report-2.json。真实新增文字、原生input写入数据库、focus/blur、字体/旋转/位置同步、无重复页边卡片和冷恢复均确认。v1焦点断言过早，等待原生焦点事件后v2通过；v2合成input冒泡选项跨窗口未读取，v3用现有cloneInto转换选项后原生保存通过。仅调整QA，无相关生产补丁。原17项继续通过；未操作真实用户文库/配置/原PDF，未调用外部API。
+
+最终XPI SHA-256：590abad3b6053b5c0b55a63ef4c87edca17140bc349cdb7257439c15d378796c，1130232字节。原始0.9.5 XPI与baseline保留。
+

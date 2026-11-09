@@ -36,6 +36,7 @@ def build():
     # Native free-text annotations already draw their content on the PDF page.
     # Do not duplicate them as margin cards, including explicitly revealed keys.
     text = replace_once(text, 'return forcedKeys.has(annotation.key) || annotation.type === "note" || annotation.comment.trim().length > 0;', 'return annotation.type !== "text" && (forcedKeys.has(annotation.key) || annotation.type === "note" || annotation.comment.trim().length > 0);')
+    text = replace_once(text, 'function renderMathPreview(root, value) {\n    renderStoredComment(root, value);', 'function renderMathPreview(root, value, plain = false) {\n    if (plain) root.textContent = value; else renderStoredComment(root, value);')
     text = replace_once(text, 'const markup = katex.renderToString(expression, {', 'const markup = katex.renderToString(_globalThis.ZMAMath?.normalizeDisplay(expression, delimiter.display) ?? expression, {')
     text = replace_once(text, '                strict: "error",', '                strict: _globalThis.ZMAMath?.strict ?? "error",')
     text = replace_once(text, '              fragment.append(doc.createTextNode(text2.slice(start, cursor)), template.content);', '              const renderedMath = template.content.querySelector("math");\n              if (renderedMath) renderedMath.setAttribute("data-zma-latex", text2.slice(cursor, next));\n              fragment.append(doc.createTextNode(text2.slice(start, cursor)), template.content);')
@@ -78,7 +79,7 @@ def build():
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
   Services.scriptloader.loadSubScript(rootURI + "content/vendor/marked/marked.umd.js", context);
-  for (const name of ["web", "core", "capture", "document", "references", "attachments", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "streaming", "clipboard", "panel", "margin-references", "reference-preview", "images", "host"]) {
+  for (const name of ["web", "core", "capture", "document", "references", "attachments", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "settings", "math", "markdown", "streaming", "clipboard", "panel", "margin-references", "reference-preview", "text-math", "images", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();
