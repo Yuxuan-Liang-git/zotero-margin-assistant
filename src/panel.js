@@ -124,7 +124,7 @@
       for(const [i,m]of this.materials.entries()){
         const card=el(this.doc,'div',undefined,'zma-material');const label=`${m.source.type||'区域'} ${m.source.number||''} 第 ${m.source.pageLabel} 页`;
         const remove=button(this.doc,'移除',()=>{if(this.busy)throw new Error('请先停止生成');this.materials.splice(i,1);this.renderMaterials();});remove.disabled=this.busy;
-        if(m.source.kind==='text')card.append(el(this.doc,'blockquote',m.text,'zma-material-text'));else{const img=el(this.doc,'img');img.src=m.dataURL;img.alt=label;card.append(img);}card.append(el(this.doc,'small',label),remove);this.materialList.append(card);
+        if(m.unavailable)card.append(el(this.doc,'small','来源已失效，本轮未发送。请移除后重新选择。','zma-invalid'));else if(m.source.kind==='text')card.append(el(this.doc,'blockquote',m.text,'zma-material-text'));else{const img=el(this.doc,'img');img.src=m.dataURL;img.alt=label;card.append(img);}card.append(el(this.doc,'small',label),remove);this.materialList.append(card);
       }
     }
     renderMessages(){
@@ -138,6 +138,7 @@
       const card=el(this.doc,'article',undefined,`zma-message zma-${m.role}`);card.append(el(this.doc,'strong',m.role==='user'?'问题':m.incomplete?'回答（未完成）':'回答'));
       const text=el(this.doc,'div',undefined,'zma-answer');text.tabIndex=0;if(m.role==='assistant'){if(m.content)this.renderAnswer(text,m.content);}else text.textContent=m.content;
       if(m.attachments?.length){const files=el(this.doc,'p',m.attachments.map(a=>a.name).join('、'),'zma-message-files');card.append(files);}
+      if(m.sourceWarnings?.length)card.append(el(this.doc,'small',m.sourceWarnings.join('\n'),'zma-invalid'));
       card.append(text);if(m.role==='assistant'&&m.content)this.addAnswerActions(card,m,i);return card;
     }
     addAnswerActions(card,m,i){
@@ -169,7 +170,9 @@
       const client=this.host.selectedClient?.()||this.host.client,provider=this.host.provider,model=this.host.providerState?.().model,label=this.host.providerLabel?.()||'DeepSeek';
       const controller=this.host.newAbortController();this.host.claimRequest?.(this.reader);this.busy=true;this.refreshProvider();this.sendButton.disabled=true;this.stopButton.disabled=false;this.renderMaterials();this.status.textContent='准备来源…';
       this.controller=controller;const deadline=setTimeout(()=>this.controller?.abort(),300000);
-      let user,answer,answerCard,readerMoved=false;
+      let user,answer,answerCard,readerMoved=false,unavailableCount=0;const currentWarnings=[];
+      const sourceWarning=(source,historical)=>{unavailableCount++;return `${historical?'历史引用':'当前材料'}（PDF 第 ${source.pageIndex+1} 页）已失效，本轮未发送或读取；原记录保留，需重新选择后才能读取。`;};
+      const canOmit=error=>!this.controller.signal.aborted&&['SOURCE_STALE','SOURCE_MISSING'].includes(error?.code);
       const readingEvents=['wheel','touchstart','pointerdown','keydown'];
       const reading=event=>{if(event.type==='keydown'&&!['ArrowUp','ArrowDown','PageUp','PageDown','Home','End'].includes(event.key))return;readerMoved=true;};
       for(const event of readingEvents)this.messages.addEventListener(event,reading,{passive:true});
@@ -178,19 +181,20 @@
         const hydrated=[];
         for(const m of history.slice(conversation.compactedThrough||0)){
           if(m.role==='assistant'){hydrated.push(m);continue;}
-          const materials=[];for(const s of m.materials||[])materials.push(s.automaticPage?{source:s}:await this.host.capture(this.reader,s));
-          const attachments=[];for(const file of m.attachments||[])attachments.push(await this.host.loadAttachment(this.reader,file));hydrated.push({...m,materials,attachments});
+          const materials=[],sourceWarnings=[...(m.sourceWarnings||[])];for(const s of m.materials||[]){try{materials.push(s.automaticPage?{source:s}:await this.host.capture(this.reader,s));}catch(e){if(!canOmit(e))throw e;sourceWarnings.push(sourceWarning(s,true));}}
+          const attachments=[];for(const file of m.attachments||[])attachments.push(await this.host.loadAttachment(this.reader,file));hydrated.push({...m,materials,attachments,sourceWarnings});
         }
-        const refreshed=[];for(const material of this.materials)refreshed.push(await this.host.capture(this.reader,material.source));
+        const refreshed=[];for(const material of this.materials){try{refreshed.push(await this.host.capture(this.reader,material.source));delete material.unavailable;}catch(e){if(!canOmit(e))throw e;material.unavailable=true;currentWarnings.push(sourceWarning(material.source,false));}}this.renderMaterials();
         const attachments=[];for(const file of conversation.draftAttachments||[])attachments.push(await this.host.loadAttachment(this.reader,file));
         if(this.host.provider==='deepseek'&&[...attachments,...hydrated.flatMap(m=>m.attachments||[])].some(a=>a.mime==='application/pdf'))throw new Error('PDF 附件当前请使用 ChatGPT；DeepSeek 可接收图片附件。');
-        const baseMessages=D.buildMessages(hydrated,question,refreshed,undefined,conversation.summary||'',attachments);
+        const baseMessages=D.buildMessages(hydrated,question,refreshed,undefined,conversation.summary||'',attachments,currentWarnings);
         const context=await this.host.documentContext?.(this.reader,question,{budget:Math.min(24000,58000-D.textSize(baseMessages)),imageLimit:Math.max(0,8-refreshed.length-attachments.length),imageBudget:Math.max(0,Math.min(4*1024*1024,12*1024*1024-JSON.stringify(baseMessages).length-100000)),signal:this.controller.signal,onProgress:(n,total)=>{if(!this.destroyed)this.status.textContent=`正在读取当前 PDF：${n}/${total} 页…`;}});
         const submitted=D.contextMaterials(refreshed,context,attachments);
         if(context&&!this.destroyed){const imagePages=submitted.filter(m=>m.source.fullPage).map(m=>m.source.pageIndex+1);this.contextInfo.textContent=(context.mode==='full-text'?`本轮使用：${context.title} · 完整文字层 ${context.totalPages} 页`:`本轮使用：${context.title} · ${context.mode==='current-page-image'?'无全文文字层':'相关文字节选'}（PDF 第 ${context.pages.join('、')} 页）`)+`；页面图片：${imagePages.length?'PDF 第 '+imagePages.join('、')+' 页':'未加入'}`+(context.scannedPages?.length?'；扫描页尚无全文识别索引':'')+(context.imageWarning?'；'+context.imageWarning:'');}
-        const messages=D.buildMessages(hydrated,question,refreshed,context,conversation.summary||'',attachments);
+        if(unavailableCount&&!this.destroyed)this.contextInfo.textContent+=`；${unavailableCount} 处引用已失效，本轮未发送，原记录保留`;
+        const messages=D.buildMessages(hydrated,question,refreshed,context,conversation.summary||'',attachments,currentWarnings);
         if(this.controller.signal.aborted)throw new Error('生成已停止');
-        user={role:'user',content:question,...(attachments.length?{attachments:attachments.map(C.pickAttachment)}:{}),materials:submitted.map(m=>({...C.pickSource(m.source),type:m.source.type,number:m.source.number,description:m.source.description})),incomplete:false};
+        user={role:'user',content:question,...(currentWarnings.length?{sourceWarnings:currentWarnings}:{}),...(attachments.length?{attachments:attachments.map(C.pickAttachment)}:{}),materials:submitted.map(m=>({...C.pickSource(m.source),type:m.source.type,number:m.source.number,description:m.source.description})),incomplete:false};
         answer={role:'assistant',content:'',materials:[],incomplete:true,...(provider?{provider,model}:{} )};
         conversation.history=[...history,user,answer];conversation.draft=this.question.value;C.touchConversation(conversation);await this.persist();
         if(retry){this.messages.lastElementChild?.remove();this.messages.lastElementChild?.remove();}
@@ -203,7 +207,7 @@
         let serviceTier;answer.content=await client.generate(messages,{signal:this.controller.signal,onServiceTier:info=>{serviceTier=info;},onDelta:delta=>{
           answer.content+=delta;if(!this.destroyed){if(this.liveRenderer)this.liveRenderer.append(delta);else{const follow=!readerMoved&&this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80;streamNode.appendData(delta);const now=Date.now();if(follow&&now-lastScroll>=100){this.messages.scrollTop=this.messages.scrollHeight;lastScroll=now;}}}
         }});
-        answer.incomplete=false;conversation.draftAttachments=[];this.renderMaterials();if(this.question.value.trim()===question)this.question.value='';conversation.draft=this.question.value;C.touchConversation(conversation);this.status.textContent='回答完成，可追问或保存。'+(serviceTier?(serviceTier.actual?` 本轮档位：${{default:'标准',fast:'快速 Fast',ultrafast:'极速 Ultrafast'}[serviceTier.actual]}${serviceTier.requested!==serviceTier.actual?'（与请求档位不同）':''}。`:' 已请求速度档位，服务端未确认实际档位。'):'');
+        answer.incomplete=false;conversation.draftAttachments=[];this.renderMaterials();if(this.question.value.trim()===question)this.question.value='';conversation.draft=this.question.value;C.touchConversation(conversation);this.status.textContent='回答完成，可追问或保存。'+(unavailableCount?` ${unavailableCount} 处引用已失效，本轮未发送，原记录保留。`:'')+(serviceTier?(serviceTier.actual?` 本轮档位：${{default:'标准',fast:'快速 Fast',ultrafast:'极速 Ultrafast'}[serviceTier.actual]}${serviceTier.requested!==serviceTier.actual?'（与请求档位不同）':''}。`:' 已请求速度档位，服务端未确认实际档位。'):'');
       }catch(e){
         if(answer){answer.content=e.partial??answer.content;answer.incomplete=true;}
         conversation.draft=this.question.value;C.touchConversation(conversation);this.error(e);

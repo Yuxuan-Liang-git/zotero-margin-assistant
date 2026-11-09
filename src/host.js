@@ -92,11 +92,11 @@
       if(query?.fullPage){source={...C.pickSource(query),fingerprint:await this.fingerprint(reader)};}
       else{
         const key=typeof query==='string'?query:query.annotationKey;const item=this.nativeAnnotation(reader,key);
-        if(!item||item.deleted||!['image','highlight','underline'].includes(item.annotationType))throw new Error('来源已失效：请重新选择文字或区域并关联');
+        if(!item||item.deleted||!['image','highlight','underline'].includes(item.annotationType))throw Object.assign(new Error('来源已失效：请重新选择文字或区域并关联'),{code:'SOURCE_MISSING'});
         let pos;try{pos=typeof item.annotationPosition==='string'?JSON.parse(item.annotationPosition):item.annotationPosition;}catch{throw new Error('来源坐标无效');}
         source={...scope,annotationKey:key,pageIndex:pos.pageIndex,pageLabel:String(item.annotationPageLabel||pos.pageIndex+1),rects:pos.rects,fingerprint:await this.fingerprint(reader),...(['highlight','underline'].includes(item.annotationType)?{kind:'text',text:String(item.annotationText||''),nextPageRects:pos.nextPageRects}:{} )};C.validateSource(source);
       }
-      if(typeof query==='object'&&(query.fingerprint&&query.fingerprint!==source.fingerprint||query.pageIndex!==source.pageIndex||JSON.stringify(query.rects)!==JSON.stringify(source.rects)||query.kind==='text'&&(query.text!==source.text||JSON.stringify(query.nextPageRects)!==JSON.stringify(source.nextPageRects))))throw new Error('来源需要重新定位：PDF 文件、文字或区域已经改变');
+      if(typeof query==='object'&&(query.fingerprint&&query.fingerprint!==source.fingerprint||query.pageIndex!==source.pageIndex||JSON.stringify(query.rects)!==JSON.stringify(source.rects)||query.kind==='text'&&(query.text!==source.text||JSON.stringify(query.nextPageRects)!==JSON.stringify(source.nextPageRects))))throw Object.assign(new Error('来源需要重新定位：PDF 文件、文字或区域已经改变'),{code:'SOURCE_STALE'});
       return {...(typeof query==='object'?query:{}),...source};
     }
     /** @param {any} reader @param {number|null} [requestedPage] */

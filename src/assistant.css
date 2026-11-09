@@ -11,7 +11,7 @@
 .zmc-card a[href^="zotero://open-pdf/"]{color:#176bb0;text-decoration:underline;cursor:pointer}.zma-insert-reference{font-size:11px;padding:1px 5px;margin-left:auto}.zma-toolbar{font-size:12px}
 /* Dock the chat beside the PDF instead of obscuring its content. */
 :root{--zma-assistant-width:min(var(--zma-assistant-user-width,420px),55vw)}
-body.zma-assistant-open #split-view{right:var(--zma-assistant-width)!important;width:auto!important}
+body.zma-assistant-open #split-view,body.zma-assistant-open .split-view{right:var(--zma-assistant-width)!important;width:auto!important}
 .zma-panel{right:0;top:40px;bottom:0;width:var(--zma-assistant-width);padding:12px;display:flex;flex-direction:column;overflow:hidden;border:0;border-left:1px solid #aaa;border-radius:0;box-shadow:none;background:Canvas;z-index:10000}
 .zma-panel>header,.zma-panel>nav,.zma-panel>.zma-status{flex:none}.zma-panel header strong{font-size:14px}.zma-panel header button{font-size:12px}
 .zma-resizer{position:absolute;left:0;top:0;bottom:0;width:6px;cursor:col-resize;touch-action:none}.zma-resizer:hover{background:#2980d955}

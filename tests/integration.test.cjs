@@ -32,7 +32,8 @@ test('source identity is taken from native image annotation and changes invalida
   const s=await host.resolveSource({itemID:1},'FORM0630');assert.equal(s.pageIndex,65);assert.equal(s.pageLabel,'60');assert.equal(s.fingerprint,'123:9');
   assert.equal((await host.resolveSource({itemID:1},s)).annotationKey,'FORM0630');
   annotation.annotationPosition=JSON.stringify({pageIndex:2,rects:[[10,20,90,50]]});
-  await assert.rejects(host.resolveSource({itemID:1},s),/重新定位/);
+  await assert.rejects(host.resolveSource({itemID:1},s),e=>e.code==='SOURCE_STALE'&&/重新定位/.test(e.message));
+  annotation.deleted=true;await assert.rejects(host.resolveSource({itemID:1},s),e=>e.code==='SOURCE_MISSING');
 });
 test('readonly comments cannot change; explicit save appends without overwriting prior text',async()=>{
   assert.equal(typeof H.Host,'function');const {host,annotation}=fixture();
