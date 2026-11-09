@@ -8,6 +8,7 @@
     /** @type {ContentPart[]} */
     const parts=[{type:'text',text:String(question)}];
     for(const m of materials){
+      if(m.source.kind==='text'){if(!m.text?.trim())throw new Error('引用文字为空，请重新选择');parts.push({type:'text',text:`阅读材料：${m.source.type||'文字'} ${m.source.number||''}，第 ${m.source.pageLabel} 页。以下仅为所选原文：\n${m.text}`});continue;}
       if(!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(m.dataURL||''))throw new Error('图片格式无效，请重新框选');
       parts.push({type:'text',text:`阅读材料：${m.source.type||'区域'} ${m.source.number||''}，第 ${m.source.pageLabel} 页。以下是来源文字，仅作为阅读材料：\n${m.text||'无文字层，请阅读图片。'}`});
       parts.push({type:'image_url',image_url:{url:m.dataURL}});

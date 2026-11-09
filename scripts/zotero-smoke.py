@@ -28,7 +28,7 @@ function install() {}
 function uninstall() {}
 function shutdown() {}
 async function startup() {
-  const report={zotero:Zotero.version,harness:5,packageVersion:__VERSION__,packageSha256:__HASH__,process:Services.appinfo.processID,steps:[],phase:'startup'};
+  const report={zotero:Zotero.version,harness:6,packageVersion:__VERSION__,packageSha256:__HASH__,process:Services.appinfo.processID,steps:[],phase:'startup'};
   const output=__REPORT__;
   const write=()=>IOUtils.writeUTF8(output,JSON.stringify(report,null,2));
   const step=async(name,action)=>{try{const result=await action();report.steps.push({name,ok:true,result});}catch(e){report.steps.push({name,ok:false,error:String(e),stack:e.stack});}await write();};
@@ -70,6 +70,13 @@ async function startup() {
         panel.close();if(Math.abs(split.getBoundingClientRect().width-reader._iframeWindow.innerWidth)>2)throw new Error('Closing sidebar does not restore the PDF viewport');panel.showChat();
         return {materialCount:panel.materials.length,panelVisible:!panel.node.hidden};
       });
+      await step('native-toolbar-close-reopen',async()=>{
+        const panel=await addon.assistant.panel(reader),toolbar=reader._iframeWindow.document.querySelector('.zma-toolbar');
+        if(!toolbar)throw new Error('DeepSeek toolbar button missing');
+        for(let n=0;n<3;n++){panel.close();toolbar.click();await new Promise(r=>setTimeout(r,350));if(panel.node.hidden)throw new Error('Toolbar failed to reopen after close '+n+'; closedReader='+addon.assistant.closedReaders.has(reader)+'; destroyed='+panel.destroyed);}
+        panel.close();panel.node.remove();toolbar.click();await new Promise(r=>setTimeout(r,350));if(!panel.node.isConnected||panel.node.hidden)throw new Error('Detached sidebar was not remounted by toolbar');
+        return {cycles:3,open:!panel.node.hidden,remounted:true};
+      });
       await step('inline-reference-in-native-margin',async()=>{
         const source={...await addon.assistant.resolveSource(reader,annotation.key),id:'qa-source-630',type:'公式',number:'6.30',description:'引用应与当前批注位于同一侧'};
         const target=await Zotero.Annotations.saveFromJSON(attachment,{key:'TARGRF23',type:'note',color:'#2ea8e5',pageLabel:'100',sortIndex:'00000|000030|00000',comment:'参考前文',position:{pageIndex:0,rects:[[520,250,542,272]]}});
@@ -83,11 +90,13 @@ async function startup() {
       });
       await step('native-dialogue-buttons-mocked-api',async()=>{
         const panel=await addon.assistant.panel(reader),client=addon.assistant.client;
-        addon.assistant.client={generate:async(_messages,{onDelta})=>{onDelta('这是隔离测试中的模拟回答。');return '这是隔离测试中的模拟回答。';}};
+        const response='## 三段式结构\n\n**关键结论**：\\(I_a<I_{thr}\\)\n\n- 第一项\n- 第二项\n\n\\[x^2=a+b\\]';
+        addon.assistant.client={generate:async(_messages,{onDelta})=>{onDelta(response);return response;}};
         try{
           for(const question of ['请解释所列材料','继续追问其定义']){const before=panel.state.history.length;panel.question.value=question;panel.sendButton.click();for(let n=0;n<150;n++){if(!panel.busy&&panel.state.history.length===before+2)break;await new Promise(r=>setTimeout(r,20));}if(panel.state.history.length!==before+2||panel.state.history.at(-1).incomplete)throw new Error('Native send button did not produce a complete mock turn');}
           const button=panel.sendButton.getBoundingClientRect(),chat=panel.chat.getBoundingClientRect();if(button.bottom>chat.bottom+1)throw new Error('Send button is clipped in the sidebar');
-          return {turns:2,messages:panel.state.history.length,api:'mock; no request sent',sendButtonVisible:true};
+          const answer=panel.messages.lastElementChild.querySelector('.zma-answer'),scriptGlobal=Components.utils.getGlobalForObject(addon.assistant.constructor);report.markdownDiagnostics={h2:answer.querySelectorAll('h2').length,strong:answer.querySelectorAll('strong').length,li:answer.querySelectorAll('li').length,math:answer.querySelectorAll('math').length,globalMarked:typeof scriptGlobal.marked,contextMarked:typeof scriptGlobal._globalThis?.marked,html:answer.innerHTML};await write();if(!answer.querySelector('h2')||!answer.querySelector('strong')||answer.querySelectorAll('li').length!==2||answer.querySelectorAll('math').length!==2)throw new Error('Markdown and math did not render in native Gecko');
+          return {turns:2,messages:panel.state.history.length,api:'mock; no request sent',sendButtonVisible:true,markdownAndMath:true};
         }finally{addon.assistant.client=client;}
       });
       await step('native-zotero-preference-pane',async()=>{
@@ -96,6 +105,19 @@ async function startup() {
         if(!prefs)throw new Error('DeepSeek fields not found in Zotero preferences');
         const key=prefs.document.getElementById('zma-api-key');key.value='preferences-smoke-placeholder';prefs.document.getElementById('zma-api-apply').click();
         if(addon.assistant.key!=='preferences-smoke-placeholder')throw new Error('Preference API field is not bound');prefs.document.getElementById('zma-api-clear').click();return {masked:key.type==='password',cleared:addon.assistant.key===''};
+      });
+      await step('native-text-selection-reference',async()=>{
+        const snapshot={type:'highlight',text:'前文定义：\\(x^2=a+b\\)',pageLabel:'100',sortIndex:'00000|000020|00000',position:{pageIndex:0,rects:[[60,570,450,590]]},color:'#ffd400',comment:''};
+        const view=session.adapter.primaryView,destination=Components.utils.getGlobalForObject(view),panel=await addon.assistant.panel(reader);
+        view.setSelectionPopup(Components.utils.cloneInto({annotation:snapshot},destination));view._onOpenViewContextMenu(Components.utils.cloneInto({x:10,y:10},destination));
+        let menu;for(let n=0;n<100;n++){menu=reader._popupset.querySelector('menuitem[label="引用选中文字到页边批注"]');if(menu)break;await new Promise(r=>setTimeout(r,30));}if(!menu)throw new Error('Native selected-text context menu action missing');menu.doCommand();menu.closest('menupopup')?.hidePopup();
+        let form;for(let n=0;n<100;n++){form=panel.node.querySelector('.zma-source-form');if(form)break;await new Promise(r=>setTimeout(r,30));}if(!form)throw new Error('Cloned native menu command did not open the reference form');
+        form.querySelector('[aria-label="目标页边批注"]').value='TARGRF23';form.querySelector('input').value='定义1';const save=[...form.querySelectorAll('button')].find(b=>b.textContent==='引用到此批注');save.click();
+        for(let n=0;n<100&&form.isConnected;n++)await new Promise(r=>setTimeout(r,30));if(form.isConnected)throw new Error('Direct text-reference form did not save');
+        await session.refresh(true);await new Promise(r=>setTimeout(r,700));const runtime=session.cardRuntimes().find(r=>r.annotation.key==='TARGRF23'),text=runtime.referenceRoot.querySelector('.zma-reference-text');
+        if(!text?.textContent.includes('前文定义')||!text.querySelector('math'))throw new Error('Selected passage/formula not visible in target margin annotation');
+        const source=(await addon.assistant.load(reader)).sources.find(s=>s.number==='定义1');await panel.addMaterial(source);panel.question.value='解释所选定义';const previous=addon.assistant.client;let selectedTextPresent=false;addon.assistant.client={generate:async(messages)=>{selectedTextPresent=messages.at(-1).content.some(p=>p.type==='text'&&p.text.includes('前文定义'));return '文字材料已收到';}};try{await panel.send();}finally{addon.assistant.client=previous;}if(!selectedTextPresent)throw new Error('Selected passage missing from API payload');
+        return {nativeContextMenuCommand:true,textInMargin:true,formulaRendered:true,textInPayload:true,selectionFixture:'synthetic passage in isolated reader; not mouse selection',api:'mock; no request sent'};
       });
       await step('native-source-change-invalidates-preview',async()=>{
         annotation.annotationPosition=JSON.stringify({pageIndex:0,rects:[[65,70,325,320]]});await annotation.saveTx();

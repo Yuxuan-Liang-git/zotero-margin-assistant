@@ -27,11 +27,11 @@
       if(query?.fullPage){source={...C.pickSource(query),fingerprint:await this.fingerprint(reader)};}
       else{
         const key=typeof query==='string'?query:query.annotationKey;const item=this.nativeAnnotation(reader,key);
-        if(!item||item.deleted||item.annotationType!=='image')throw new Error('来源已失效：请重新框选区域并关联');
+        if(!item||item.deleted||!['image','highlight','underline'].includes(item.annotationType))throw new Error('来源已失效：请重新选择文字或区域并关联');
         let pos;try{pos=typeof item.annotationPosition==='string'?JSON.parse(item.annotationPosition):item.annotationPosition;}catch{throw new Error('来源坐标无效');}
-        source={...scope,annotationKey:key,pageIndex:pos.pageIndex,pageLabel:String(item.annotationPageLabel||pos.pageIndex+1),rects:pos.rects,fingerprint:await this.fingerprint(reader)};C.validateSource(source);
+        source={...scope,annotationKey:key,pageIndex:pos.pageIndex,pageLabel:String(item.annotationPageLabel||pos.pageIndex+1),rects:pos.rects,fingerprint:await this.fingerprint(reader),...(['highlight','underline'].includes(item.annotationType)?{kind:'text',text:String(item.annotationText||''),nextPageRects:pos.nextPageRects}:{} )};C.validateSource(source);
       }
-      if(typeof query==='object'&&(query.fingerprint&&query.fingerprint!==source.fingerprint||query.pageIndex!==source.pageIndex||JSON.stringify(query.rects)!==JSON.stringify(source.rects)))throw new Error('来源需要重新定位：PDF 文件或区域已经改变');
+      if(typeof query==='object'&&(query.fingerprint&&query.fingerprint!==source.fingerprint||query.pageIndex!==source.pageIndex||JSON.stringify(query.rects)!==JSON.stringify(source.rects)||query.kind==='text'&&(query.text!==source.text||JSON.stringify(query.nextPageRects)!==JSON.stringify(source.nextPageRects))))throw new Error('来源需要重新定位：PDF 文件、文字或区域已经改变');
       return {...(typeof query==='object'?query:{}),...source};
     }
     async currentPage(reader){
@@ -41,6 +41,7 @@
     }
     async capture(reader,query){
       const source=await this.resolveSource(reader,query);const key=JSON.stringify(source);
+      if(source.kind==='text')return {source,text:source.text,width:0,height:0};
       if(this.cache.has(key))return this.cache.get(key);
       const session=await this.addon.controller.ensureSession(reader);if(!session)throw new Error('PDF 阅读器尚未就绪');
       const adapter=session.adapter;const renderer=adapter.primaryView?._pdfRenderer;
@@ -57,7 +58,9 @@
     newAbortController(){return new this.win.AbortController();}
     async panel(reader){
       if(!this.running||this.closedReaders.has(reader))throw new Error('阅读助手或窗口已关闭');
-      if(this.panels.has(reader))return this.panels.get(reader);
+      const cached=this.panels.get(reader),docNow=reader._iframeWindow?.document;
+      if(cached&&!cached.destroyed&&cached.doc===docNow){if(!cached.node.isConnected){this.installStyles(docNow);docNow.body.append(cached.node);}return cached;}
+      if(cached){this.panels.delete(reader);await cached.destroy();}
       if(this.pending.has(reader))return this.pending.get(reader);
       const task=(async()=>{
         const session=await this.addon.controller.ensureSession(reader);if(this.closedReaders.has(reader)||!this.running)throw new Error('窗口已关闭');if(!session)throw new Error('PDF 阅读器尚未就绪');
@@ -90,8 +93,8 @@
           if(!source)throw new Error('此设备没有该来源的索引，请在原文手动重新标记');
           await this.previewReference(reader,source,{annotationKey:targetKey});
         });
-      };const unload=()=>{void this.closeReader(reader);};doc.addEventListener('click',listener,true);doc.defaultView?.addEventListener('unload',unload,{once:true});
-      this.cleanups.set(doc,{reader,dispose:()=>{doc.removeEventListener('click',listener,true);doc.defaultView?.removeEventListener('unload',unload);doc.querySelectorAll?.('#zma-styles,#zma-math-styles').forEach(n=>n.remove());}});
+      };const unload=()=>{void this.closeReader(reader);},owner=reader._iframeWindow||doc.defaultView;doc.addEventListener('click',listener,true);owner?.addEventListener('unload',unload,{once:true});
+      this.cleanups.set(doc,{reader,dispose:()=>{doc.removeEventListener('click',listener,true);owner?.removeEventListener('unload',unload);doc.querySelectorAll?.('#zma-styles,#zma-math-styles').forEach(n=>n.remove());}});
     }
     attachCard(session,runtime){
       if(runtime.referenceRoot)return;
@@ -145,13 +148,32 @@
     settings(){
       this.Z.Utilities.Internal.openPreferences('margin-comments-preferences');
     }
+    selectionSnapshot(reader,params){
+      const internal=this.unwrap(reader._internalReader),raw=params?.annotation||internal?._lastView?._selectionPopup?.annotation||internal?._primaryView?._selectionPopup?.annotation;
+      if(!raw?.text?.trim()||!raw.position?.rects?.length)return null;
+      try{const position=JSON.parse(JSON.stringify(raw.position));C.validateSource({...this.scope(reader),annotationKey:'SELECT23',pageIndex:position.pageIndex,rects:position.rects});return {type:'highlight',text:String(raw.text),position,pageLabel:String(raw.pageLabel||position.pageIndex+1),sortIndex:String(raw.sortIndex||`${String(position.pageIndex).padStart(5,'0')}|000000|00000`),color:'#ffd400',comment:''};}catch{return null;}
+    }
+    async saveSelection(reader,snapshot){
+      if(this.isReadOnly(reader))throw new Error('此文献库为只读，不能建立文字引用');
+      const item=await this.Z.Annotations.saveFromJSON(this.Z.Items.get(Number(reader.itemID)),{...snapshot,key:this.Z.DataObjectUtilities.generateKey()});return this.resolveSource(reader,item.key);
+    }
+    referenceTargets(reader,exclude){
+      return (this.Z.Items.get(Number(reader.itemID)).getAnnotations()||[]).filter(a=>a.key!==exclude&&!a.deleted&&a.isEditable?.()!==false).map(a=>({annotationKey:a.key,label:`第 ${a.annotationPageLabel||'?'} 页 · ${String(a.annotationComment||a.annotationText||'空批注').replace(/<[^>]*>/g,'').slice(0,65)}`}));
+    }
+    onViewMenu=({reader,params,append})=>{
+      if(!this.isPDF(reader))return;const snapshot=this.selectionSnapshot(reader,params);if(!snapshot)return;
+      const disabled=this.isReadOnly(reader);
+      append({label:'引用选中文字到页边批注',disabled,onCommand:()=>this.guard(async()=>{const source=await this.saveSelection(reader,snapshot),panel=await this.panel(reader);await panel.markSource(source,true);})});
+      append({label:'标记选中文字为引用来源',disabled,onCommand:()=>this.guard(async()=>{const source=await this.saveSelection(reader,snapshot),panel=await this.panel(reader);await panel.markSource(source);})});
+      append({label:'向 DeepSeek 提问（选中文字）',disabled,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);panel.showChat();try{await panel.addMaterial(()=>this.saveSelection(reader,snapshot));}catch(e){panel.error(e);}})});
+    };
     onToolbar=event=>{
       if(!this.isPDF(event.reader))return;
-      const b=root.ZMAPanel.button(event.doc,'DeepSeek',async()=>{const panel=await this.panel(event.reader);panel.showChat();});b.className='zma-toolbar';b.title='打开 DeepSeek 文档提问侧边栏';event.append(b);
+      const reader=event.reader;const b=root.ZMAPanel.button(event.doc,'DeepSeek',async()=>{const panel=await this.panel(reader);panel.showChat();});b.className='zma-toolbar';b.title='打开 DeepSeek 文档提问侧边栏';event.append(b);
       this.guard(async()=>{const session=await this.addon.controller.ensureSession(event.reader);if(session){this.bindReferences(event.reader,session.adapter.document());this.decorateSession(session);}});
     };
     onMenu=({reader,params,append})=>{
-      if(!this.isPDF(reader))return;const keys=Array.isArray(params?.ids)?params.ids.map(String):[];const key=keys.length===1?keys[0]:null;const item=key&&this.nativeAnnotation(reader,key);const region=item?.annotationType==='image';
+      if(!this.isPDF(reader))return;const keys=Array.isArray(params?.ids)?params.ids.map(String):[];const key=keys.length===1?keys[0]:null;const item=key&&this.nativeAnnotation(reader,key);const region=item?.annotationType==='image'||['highlight','underline'].includes(item?.annotationType)&&!!item.annotationText?.trim();
       append({label:'向 DeepSeek 提问',disabled:!region,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);panel.showChat();try{await panel.addMaterial(()=>this.resolveSource(reader,key));}catch(e){panel.error(e);}})});
       append({label:'标记为引用来源',disabled:!region||item.isEditable?.()===false||this.isReadOnly(reader),onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);await panel.markSource(await this.resolveSource(reader,key));})});
       append({label:'插入前文引用',disabled:!item||item.isEditable?.()===false||this.isReadOnly(reader),onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);await panel.showDirectory({annotationKey:key});})});
@@ -159,6 +181,7 @@
     isPDF(reader){return reader?.type==='pdf'||reader?._type==='pdf';}
     async start(){
       this.running=true;this.Z.Reader.registerEventListener('renderToolbar',this.onToolbar,ID);this.Z.Reader.registerEventListener('createAnnotationContextMenu',this.onMenu,ID);
+      this.Z.Reader.registerEventListener('createViewContextMenu',this.onViewMenu,ID);
       for(const doc of this.addon.controller.preferenceDocuments||[])this.bindPreferencePaneWindow(doc.defaultView);
       this.observer=this.Z.Notifier.registerObserver({notify:(_event,type)=>{this.prune();if(type==='item')this.refreshReferenceCards(undefined,true);}},['tab','item'],ID);
       for(const reader of this.Z.Reader._readers||[])if(this.isPDF(reader))this.guard(async()=>{

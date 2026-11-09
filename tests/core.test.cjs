@@ -61,3 +61,7 @@ test('explicit whole-page material retains its identity and native page-only lin
   assert.equal(C.sourceLink(s),'zotero://open-pdf/library/items/ABCD1234?page=66');
   assert.equal(C.parseSourceLink('zotero://open-pdf/library/items/ABCD1234?page=66').fullPage,true);
 });
+
+test('highlight passage survives index and dialogue storage instead of becoming an image-only source',()=>{
+  const state=C.emptyState(),textSource={...source,kind:'text',text:'定义 x 为系统状态',type:'段落',number:'定义1'};new C.ReferenceIndex(state.sources).add(textSource);state.history=[{role:'user',content:'解释定义',materials:[textSource]}];const loaded=C.cleanState(state);assert.equal(loaded.sources[0].kind,'text');assert.equal(loaded.sources[0].text,'定义 x 为系统状态');assert.equal(loaded.history[0].materials[0].text,'定义 x 为系统状态');
+});

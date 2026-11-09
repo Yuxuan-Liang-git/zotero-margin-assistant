@@ -95,3 +95,17 @@ test('region menu also blocks sending while native source identity is resolving'
     await page.evaluate(()=>finishIdentity());await page.waitForTimeout(40);assert.equal(await page.locator('[data-zma="send"]').isEnabled(),true);
   }finally{await browser.close();}
 });
+
+test('toolbar reopens the sidebar after the reader detaches its previously mounted node',async()=>{
+  const {browser,page}=await setup();try{
+    await page.evaluate(async()=>{fixture.host.onToolbar({reader:fixture.reader,doc:document,append:b=>document.body.append(b)});const panel=await fixture.host.panel(fixture.reader);panel.showChat();panel.question.value='保留的追问';panel.close();panel.node.remove();});
+    await page.locator('.zma-toolbar').click();await page.waitForTimeout(40);assert.equal(await page.locator('.zma-panel').count(),1);assert.ok(await page.locator('.zma-panel').isVisible());assert.equal(await page.locator('[data-zma="question"]').inputValue(),'保留的追问');
+  }finally{await browser.close();}
+});
+
+test('text references render their actual passage in the margin card without a screenshot',async()=>{
+  const {browser,page}=await setup();try{
+    await page.evaluate(()=>{fixture.source.kind='text';fixture.source.text='前文定义：\\(x^2=a+b\\)';fixture.host.capture=async()=>({source:fixture.source,text:fixture.source.text,width:0,height:0});fixture.host.attachCard(fixture.session,fixture.runtime);});await page.waitForTimeout(80);
+    assert.match(await page.locator('.zma-inline-reference').innerText(),/前文定义/);assert.equal(await page.locator('.zma-inline-reference img').count(),0);
+  }finally{await browser.close();}
+});

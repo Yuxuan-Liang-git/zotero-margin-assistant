@@ -9,9 +9,9 @@
     const title=el(doc,'header');title.append(el(doc,'strong',`${source.type||'来源'} (${source.number||''}) · 第 ${source.pageLabel} 页`),button(doc,'收起',()=>{card.hidden=true;relayout(session,runtime);}));card.append(title);
     for(const eventName of ['pointerdown','mousedown','click','keydown'])card.addEventListener(eventName,e=>e.stopPropagation());
     const material=await host.capture(session.reader,source);
-    const img=el(doc,'img');img.src=material.dataURL;img.alt=`引用 ${source.number||''} 的原文截图`;img.addEventListener('load',()=>{if(runtime.card.isConnected)relayout(session,runtime);});
+    let content;if(source.kind==='text'){content=el(doc,'blockquote',undefined,'zma-reference-text');host.addon.bridge.renderMathPreview(content,material.text);}else{content=el(doc,'img');content.src=material.dataURL;content.alt=`引用 ${source.number||''} 的原文截图`;content.addEventListener('load',()=>{if(runtime.card.isConnected)relayout(session,runtime);});}
     const actions=el(doc,'div',undefined,'zma-reference-actions');actions.append(button(doc,'跳转原文',()=>host.jump(session.reader,source)),button(doc,'加入提问',async()=>{const panel=await host.panel(session.reader);panel.showChat();await panel.addMaterial(source);}));
-    card.append(img);if(source.description)card.append(el(doc,'p',source.description));card.append(actions);return card;
+    card.append(content);if(source.description)card.append(el(doc,'p',source.description));card.append(actions);return card;
   }
   async function sync(host,session,runtime,force=false){
     if(!runtime.referenceRoot)return;

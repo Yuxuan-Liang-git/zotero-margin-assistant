@@ -50,3 +50,16 @@ test('reader closed during assistant initialization cannot publish a stale panel
 test('DeepSeek settings command opens its native Zotero preferences without a separate dialog',()=>{
   const {host,Z}=fixture();let pane;Z.Utilities={Internal:{openPreferences:id=>{pane=id;}}};host.settings();assert.equal(pane,'margin-comments-preferences');
 });
+
+test('highlight sources use the selected native passage and reject changed text',async()=>{
+  const {host,annotation}=fixture();annotation.annotationType='highlight';annotation.annotationText='引用的前文定义';const source=await host.resolveSource({itemID:1},annotation.key);assert.equal(source.kind,'text');assert.equal(source.text,'引用的前文定义');const material=await host.capture({itemID:1},source);assert.equal(material.text,'引用的前文定义');assert.equal(material.dataURL,undefined);annotation.annotationText='改变后的定义';await assert.rejects(host.resolveSource({itemID:1},source),/重新定位/);
+});
+
+test('selected PDF text adds a right-click reference action with a stable selection snapshot',async()=>{
+  const {host,Z,events,attachment}=fixture();await host.start();assert.equal(typeof events.get('createViewContextMenu'),'function');
+  const selection={type:'highlight',text:'引用时选中的定义',pageLabel:'60',sortIndex:'00065|000020|00000',position:{pageIndex:65,rects:[[10,20,90,50]]}};
+  const reader={itemID:1,type:'pdf',_internalReader:{_lastView:{_selectionPopup:{annotation:selection}}}},menu=[];let saved;
+  Z.DataObjectUtilities={generateKey:()=> 'SELECT23'};Z.Annotations={saveFromJSON:async(a,json)=>{assert.equal(a,attachment);saved=json;return {key:json.key};}};
+  host.resolveSource=async(_r,key)=>({annotationKey:key});let marked;host.panel=async()=>({markSource:async(s,direct)=>{marked={s,direct};}});
+  events.get('createViewContextMenu')({reader,params:{},append:m=>menu.push(m)});const action=menu.find(m=>m.label==='引用选中文字到页边批注');assert.ok(action&&!action.disabled);selection.text='稍后选择已改变';action.onCommand();await new Promise(r=>setTimeout(r,15));assert.equal(saved.text,'引用时选中的定义');assert.equal(marked.direct,true);
+});

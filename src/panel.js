@@ -56,9 +56,9 @@
     renderMaterials(){
       this.materialList.replaceChildren();
       for(const [i,m]of this.materials.entries()){
-        const card=el(this.doc,'div',undefined,'zma-material');const img=el(this.doc,'img');img.src=m.dataURL;img.alt=`${m.source.type||'区域'} ${m.source.number||''} 第 ${m.source.pageLabel} 页`;
+        const card=el(this.doc,'div',undefined,'zma-material');const label=`${m.source.type||'区域'} ${m.source.number||''} 第 ${m.source.pageLabel} 页`;
         const remove=button(this.doc,'移除',()=>{if(this.busy)throw new Error('请先停止生成');this.materials.splice(i,1);this.renderMaterials();});remove.disabled=this.busy;
-        card.append(img,el(this.doc,'small',img.alt),remove);this.materialList.append(card);
+        if(m.source.kind==='text')card.append(el(this.doc,'blockquote',m.text,'zma-material-text'));else{const img=el(this.doc,'img');img.src=m.dataURL;img.alt=label;card.append(img);}card.append(el(this.doc,'small',label),remove);this.materialList.append(card);
       }
     }
     renderMessages(){
@@ -66,7 +66,7 @@
       this.state.history.forEach((m,i)=>{
         const card=el(this.doc,'article',undefined,`zma-message zma-${m.role}`);card.append(el(this.doc,'strong',m.role==='user'?'问题':m.incomplete?'回答（未完成）':'回答'));
         const text=el(this.doc,'div',undefined,'zma-answer');
-        if(m.role==='assistant')this.host.addon.bridge.renderMathPreview(text,m.content);else text.textContent=m.content;
+        if(m.role==='assistant')this.renderAnswer(text,m.content);else text.textContent=m.content;
         card.append(text);
         if(m.role==='assistant'&&m.content){const actions=el(this.doc,'div',undefined,'zma-actions');actions.append(button(this.doc,'复制',()=>this.host.copy(m.content)),button(this.doc,'保存为笔记',()=>this.saveAnswer(i,'note')),button(this.doc,'保存到批注',()=>this.saveAnswer(i,'comment')));card.append(actions);}
         this.messages.append(card);
@@ -74,6 +74,7 @@
       if(!this.state.history.length)this.messages.append(el(this.doc,'p','围绕当前 PDF 提问：添加当前页，或在 PDF 中框选区域后右键“向 DeepSeek 提问”。可加入前文引用，一起解释公式之间的关系。','zma-empty-chat'));
       this.messages.scrollTop=this.messages.scrollHeight;
     }
+    renderAnswer(node,text){if(root.ZMAMarkdown)root.ZMAMarkdown.render(node,text,this.host.addon.bridge.renderMathPreview);else this.host.addon.bridge.renderMathPreview(node,text);}
     async send(){
       if(this.busy)return;if(this.pendingMaterials.size)throw new Error('材料正在读取，请完成后再发送');const question=this.question.value.trim();if(!question)throw new Error('请输入问题');
       // A retry replaces the failed pair, rather than duplicating its user message.
@@ -97,7 +98,7 @@
         this.state.history=[...history,user,answer];this.state.draft=this.question.value;await this.persist();this.renderMessages();
         this.status.textContent='DeepSeek 正在回答…';
         answer.content=await this.host.client.generate(messages,{signal:this.controller.signal,onDelta:delta=>{
-          answer.content+=delta;if(!this.destroyed){const follow=this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80;const last=this.messages.lastElementChild?.querySelector('.zma-answer');if(last)last.textContent=answer.content;if(follow)this.messages.scrollTop=this.messages.scrollHeight;}
+          answer.content+=delta;if(!this.destroyed){const follow=this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80;const last=this.messages.lastElementChild?.querySelector('.zma-answer');if(last)this.renderAnswer(last,answer.content);if(follow)this.messages.scrollTop=this.messages.scrollHeight;}
         }});
         answer.incomplete=false;if(this.question.value.trim()===question)this.question.value='';this.state.draft=this.question.value;this.status.textContent='回答完成，可追问或保存。';
       }catch(e){
@@ -129,20 +130,24 @@
         }catch(e){save.disabled=false;this.error(e);}
       });form.append(save,button(doc,'取消',()=>form.remove()));this.chat.append(form);preview.focus();
     }
-    async markSource(source){
+    async markSource(source,direct=false){
       this.open();const doc=this.doc;const form=el(doc,'div',undefined,'zma-source-form');
       const number=el(doc,'input');number.placeholder='编号，例如 6.30';number.setAttribute('aria-label','来源编号');
       const type=el(doc,'select');C.TYPES.forEach(t=>type.append(el(doc,'option',t)));
+      if(source.kind==='text')type.value='段落';
       const description=el(doc,'textarea');description.placeholder='可选说明';
       const prior=this.state.sources.find(s=>s.id===(this.relinkID||source.id));
       if(prior){number.value=prior.number;type.value=prior.type;description.value=prior.description;}
-      const capture=await this.host.capture(this.reader,source);const img=el(doc,'img');img.src=capture.dataURL;img.alt='来源区域';
-      form.append(el(doc,'strong',prior?'重新关联来源':'标记引用来源'),img,number,type,description,button(doc,'保存标记',async()=>{
+      const capture=await this.host.capture(this.reader,source);let content;if(source.kind==='text'){content=el(doc,'blockquote',undefined,'zma-reference-text');this.host.addon.bridge.renderMathPreview(content,capture.text);}else{content=el(doc,'img');content.src=capture.dataURL;content.alt='来源区域';}
+      let target;
+      form.append(el(doc,'strong',direct?'引用内容到页边批注':prior?'重新关联来源':'标记引用来源'),content,number,type,description);
+      if(direct){target=el(doc,'select');target.setAttribute('aria-label','目标页边批注');const candidates=this.host.referenceTargets(this.reader,source.annotationKey);for(const a of candidates){const option=el(doc,'option',a.label);option.value=a.annotationKey;target.append(option);}if(!candidates.length)throw new Error('请先添加目标页边批注，再引用这段文字');form.append(el(doc,'p','选择要插入的页边批注：'),target);let n=1;while(this.state.sources.some(s=>s.number===`文字${n}`))n++;number.value=`文字${n}`;}
+      form.append(button(doc,direct?'引用到此批注':'保存标记',async()=>{
         if(this.host.isReadOnly?.(this.reader))throw new Error('此文献库为只读');
         const idx=new C.ReferenceIndex(this.state.sources);const record={...source,number:number.value,type:type.value,description:description.value};
-        if(prior){C.normalizeNumber(record.number);C.validateSource(record);Object.assign(prior,record,{number:C.normalizeNumber(record.number)});this.relinkID=null;}
-        else idx.add(record);
-        await this.persist();form.remove();await this.showDirectory();
+        const saved=idx.add({...record,...(prior?{id:prior.id}:{})});this.relinkID=null;
+        await this.persist();if(direct)await this.host.insertReference(this.reader,{annotationKey:target.value},saved,this.state);
+        form.remove();if(direct){this.close();this.status.textContent='引用内容已显示在目标页边批注。';}else await this.showDirectory();
       }),button(doc,'取消',()=>{form.remove();this.relinkID=null;}));this.node.append(form);number.focus();
     }
     async showDirectory(target){
@@ -159,8 +164,8 @@
           row.append(button(this.doc,'查看原文',()=>this.preview(s)));
           if(target)row.append(button(this.doc,'插入到此批注',async()=>{await this.host.insertReference(this.reader,target,s,this.state);this.status.textContent='引用已插入，点击链接即可在此处查看。';}));
           row.append(button(this.doc,'编辑编号/说明',()=>this.markSource(s)),button(this.doc,'重新关联',()=>{this.relinkID=s.id;this.status.textContent='请在正确位置框选新的区域，再右键“标记为引用来源”。';}),button(this.doc,'删除索引',async()=>{new C.ReferenceIndex(this.state.sources).remove(s.id);await this.persist();refresh();}));
-          const img=el(this.doc,'img');img.alt='来源缩略图';row.prepend(img);
-          this.host.capture(this.reader,s).then(m=>{if(row.isConnected)img.src=m.dataURL;}).catch(()=>{img.remove();row.prepend(el(this.doc,'p','来源已失效，需要重新定位','zma-invalid'));});
+          const preview=el(this.doc,s.kind==='text'?'blockquote':'img');if(s.kind!=='text')preview.alt='来源缩略图';row.prepend(preview);
+          this.host.capture(this.reader,s).then(m=>{if(row.isConnected){if(s.kind==='text')this.host.addon.bridge.renderMathPreview(preview,m.text);else preview.src=m.dataURL;}}).catch(()=>{preview.remove();row.prepend(el(this.doc,'p','来源已失效，需要重新定位','zma-invalid'));});
           list.append(row);
         }
       };

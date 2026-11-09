@@ -113,3 +113,17 @@ test('Zotero preferences provide session-only masked API entry without a PDF rea
     await page.locator('#zma-api-clear').click();assert.equal(await page.evaluate(()=>preferenceHost.key),'');
   }finally{await browser.close();}
 });
+
+test('answers render Markdown blocks and math without interpreting HTML or code as active content',async()=>{
+  const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+  try{const page=await browser.newPage();await page.setContent('<div id="answer"></div>');await page.evaluate(()=>{globalThis._globalThis=globalThis;globalThis.Zotero={};});
+    for(const name of ['core','references','markdown']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(require('node:fs').existsSync(file))await page.addScriptTag({path:file});}
+    const vendor=path.resolve(__dirname,'../content/vendor/marked/marked.umd.js');if(require('node:fs').existsSync(vendor))await page.addScriptTag({path:vendor});await page.addScriptTag({path:path.resolve(__dirname,'../build/content/scripts/margincomments.js')});
+    const result=await page.evaluate(()=>{const answer=document.getElementById('answer'),md='## 三段式结构\n\n**关键结论**：\\(I_a<I_{thr}\\)\n\n---\n\n- 第一项\n- 第二项\n\n| 参数 | 定义 |\n| --- | --- |\n| x | 状态 |\n\n\\[x_1^2=\\frac{a}{b}\\]\n\n```js\n**literal** \\(x^2\\)\n```\n\n<img src="https://example.com/private" onerror="alert(1)">\n\n[危险链接](javascript:alert(1))';if(!globalThis.ZMAMarkdown)return {missing:true};ZMAMarkdown.render(answer,md,Zotero.MarginComments.bridge.renderMathPreview);return {heading:answer.querySelector('h2')?.textContent,strong:answer.querySelector('strong')?.textContent,list:answer.querySelectorAll('li').length,table:!!answer.querySelector('table'),math:answer.querySelectorAll('math').length,code:answer.querySelector('pre code')?.textContent,codeMath:!!answer.querySelector('pre math'),active:answer.querySelectorAll('script,img,[onerror],a[href^="javascript:"]').length,hr:!!answer.querySelector('hr')};});
+    assert.ok(!result.missing,'Markdown renderer must exist');assert.equal(result.heading,'三段式结构');assert.equal(result.strong,'关键结论');assert.equal(result.list,2);assert.ok(result.table);assert.equal(result.math,2);assert.ok(result.hr);assert.match(result.code,/\*\*literal\*\*/);assert.equal(result.codeMath,false);assert.equal(result.active,0);
+  }finally{await browser.close();}
+});
+
+test('Markdown resolves its parser when script-loader context differs from the global object',async()=>{
+  const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});try{const page=await browser.newPage();await page.setContent('<div id="answer"></div>');await page.addScriptTag({path:path.resolve(__dirname,'../content/vendor/marked/marked.umd.js')});await page.evaluate(()=>{globalThis._globalThis={};});await page.addScriptTag({path:path.resolve(__dirname,'../src/markdown.js')});const heading=await page.evaluate(()=>{_globalThis.ZMAMarkdown.render(document.getElementById('answer'),'## 原生作用域测试',(n,t)=>n.textContent=t);return document.querySelector('h2')?.textContent;});assert.equal(heading,'原生作用域测试');}finally{await browser.close();}
+});

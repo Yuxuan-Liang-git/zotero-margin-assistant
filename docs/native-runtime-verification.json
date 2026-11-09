@@ -1,9 +1,9 @@
 {
   "zotero": "10.0.6",
-  "harness": 5,
-  "packageVersion": "0.10.3",
-  "packageSha256": "742365d119b62434e2121f9f876039a98c19b27b489061e128bf437a8a85115d",
-  "process": 53004,
+  "harness": 6,
+  "packageVersion": "0.10.4",
+  "packageSha256": "b82d82214296ffac1193de945d3dc11954c7f33acafaf29b6738b97da81c96e9",
+  "process": 20720,
   "steps": [
     {
       "name": "runtime-page-boundary",
@@ -47,6 +47,15 @@
       }
     },
     {
+      "name": "native-toolbar-close-reopen",
+      "ok": true,
+      "result": {
+        "cycles": 3,
+        "open": true,
+        "remounted": true
+      }
+    },
+    {
       "name": "inline-reference-in-native-margin",
       "ok": true,
       "result": {
@@ -64,7 +73,8 @@
         "turns": 2,
         "messages": 4,
         "api": "mock; no request sent",
-        "sendButtonVisible": true
+        "sendButtonVisible": true,
+        "markdownAndMath": true
       }
     },
     {
@@ -76,11 +86,23 @@
       }
     },
     {
+      "name": "native-text-selection-reference",
+      "ok": true,
+      "result": {
+        "nativeContextMenuCommand": true,
+        "textInMargin": true,
+        "formulaRendered": true,
+        "textInPayload": true,
+        "selectionFixture": "synthetic passage in isolated reader; not mouse selection",
+        "api": "mock; no request sent"
+      }
+    },
+    {
       "name": "native-source-change-invalidates-preview",
       "ok": true,
       "result": {
         "staleImageRemoved": true,
-        "notice": "来源需要重新定位：PDF 文件或区域已经改变"
+        "notice": "来源需要重新定位：PDF 文件、文字或区域已经改变段落 (定义1) · 第 100 页收起前文定义：x2=a+bx^2=a+b跳转原文加入提问"
       }
     }
   ],
@@ -96,6 +118,15 @@
     "viewportWidth": 1000,
     "viewportHeight": 527,
     "stylesheetReady": true
+  },
+  "markdownDiagnostics": {
+    "h2": 1,
+    "strong": 1,
+    "li": 2,
+    "math": 2,
+    "globalMarked": "object",
+    "contextMarked": "undefined",
+    "html": "<h2><span>三段式结构</span></h2><p><strong><span>关键结论</span></strong><span class=\"zmc-math-preview\">：<span class=\"katex\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\"><semantics><mrow><msub><mi>I</mi><mi>a</mi></msub><mo>&lt;</mo><msub><mi>I</mi><mrow><mi>t</mi><mi>h</mi><mi>r</mi></mrow></msub></mrow><annotation encoding=\"application/x-tex\">I_a&lt;I_{thr}</annotation></semantics></math></span></span></p><ul><li><p><span>第一项</span></p></li><li><p><span>第二项</span></p></li></ul><p><span class=\"zmc-math-preview\"><span class=\"katex\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><semantics><mrow><msup><mi>x</mi><mn>2</mn></msup><mo>=</mo><mi>a</mi><mo>+</mo><mi>b</mi></mrow><annotation encoding=\"application/x-tex\">x^2=a+b</annotation></semantics></math></span></span></p>"
   },
   "done": true
 }

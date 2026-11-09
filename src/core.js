@@ -18,7 +18,8 @@
   }
   function pickSource(s) {
     validateSource(s);
-    return { libraryID:s.libraryID,attachmentKey:s.attachmentKey,annotationKey:s.annotationKey,pageIndex:s.pageIndex,pageLabel:String(s.pageLabel||s.pageIndex+1),rects:s.rects.map(r=>r.slice()),fingerprint:String(s.fingerprint||''),...(s.fullPage?{fullPage:true}:{}) };
+    if(s.kind==='text'&&(typeof s.text!=='string'||!s.text.trim()))throw new Error('来源文字为空');
+    return { libraryID:s.libraryID,attachmentKey:s.attachmentKey,annotationKey:s.annotationKey,pageIndex:s.pageIndex,pageLabel:String(s.pageLabel||s.pageIndex+1),rects:s.rects.map(r=>r.slice()),fingerprint:String(s.fingerprint||''),...(s.fullPage?{fullPage:true}:{}),...(s.kind==='text'?{kind:'text',text:s.text,nextPageRects:s.nextPageRects?.map(r=>r.slice())}:{} ) };
   }
   class ReferenceIndex {
     constructor(records) { this.records=records; }
