@@ -1,6 +1,8 @@
-# Margin Comments + DeepSeek + ChatGPT 0.18.1
+# Margin Comments + DeepSeek + ChatGPT 0.18.2
 
 面向 Zotero 10.0.x，在用户提供的 LaTeX custom 0.9.5 上增加 DeepSeek API / ChatGPT 订阅文档提问和手动编号引用。保留页边批注、自动保存、原公式预览、类型筛选及便签图标设置。
+
+0.18.2 修正 ChatGPT 登录前读取授权配置失败时的笼统提示。现在区分连接失败、超时、HTTP 状态、无效 JSON 和具体配置校验字段，临时读取失败时自动重试一次。覆盖安装后完全重启 Zotero，在“设置→页边批注→ChatGPT 订阅”点击“Continue with ChatGPT”重试。[排查结果与验证范围](docs/2026-11-05-chatgpt-auth-recovery-release.md)
 
 0.18.1 支持在页边批注中按 Ctrl+V 粘贴截图，也可把一张或多张本地图片拖入对应批注。图片随即显示在该批注下方，并保存到 PDF 专用的 Zotero 图片笔记和 PDF 同目录的 `margin-comments-images/`。支持 PNG、JPEG、GIF、WebP，每张最多10 MiB，批注底部显示导入结果。仅含图片的空白批注也能在重新打开 PDF 后恢复。覆盖安装后完全重启 Zotero。[使用说明与验收](docs/2026-11-05-margin-image-input-release.md)
 
@@ -86,7 +88,7 @@ PDF 内用“添加文本”写的文字仍在原页面，不再重复生成页�
 
 ## 安装与使用
 
-1. Zotero → 工具 → 插件 → 右上角齿轮 → 从文件安装插件，选择 `dist/margin-comments-deepseek-0.18.1.xpi`，覆盖升级后重启 Zotero，无需先卸载旧版。这是同一插件的升级包；原始 XPI 保留。此功能无需安装 Edge Zotero Connector。
+1. Zotero → 工具 → 插件 → 右上角齿轮 → 从文件安装插件，选择 `dist/margin-comments-deepseek-0.18.2.xpi`，覆盖升级后重启 Zotero，无需先卸载旧版。这是同一插件的升级包；原始 XPI 保留。此功能无需安装 Edge Zotero Connector。
 2. Zotero → 设置 → 页边批注 → **DeepSeek 区域提问**。填写 API Key，点击“应用设置”；模型默认 `deepseek-flash`。阅读器工具栏“DeepSeek / ChatGPT”打开右侧文档助手，其“设置”按钮也打开这页。密钥经 Zotero 的系统密钥库加密后保存在本机，重启后自动恢复；设置页留空并应用只调整模型，点击“清除密钥”会删除已保存密钥。连接测试只获取模型列表，不发送 PDF。
 3. 打开 PDF 后点击工具栏“DeepSeek / ChatGPT”，直接输入问题即可。ChatGPT 对不超过 20 页、原文件不超过 6 MiB、编码后能放入本轮剩余空间的短文档，每轮自动附带完整原始 PDF，侧栏和问题卡片显示“已附带完整 PDF 文件”。自动材料预算上限约 4 MiB，包含编码膨胀，实际允许文件可能小于 6 MiB。超过限制或使用 DeepSeek 时回退为完整文字层/相关文字片段，加上当前页及少量相关页截图（最多 3 页），明确显示范围与省略原因。图片公式不一定存在于文字层；整份 PDF 会携带全部页面；片段模式只能依据实际附带的页面图像。回退页图优先当前页、明确 PDF 页码和文字匹配页；长扫描件尚无全文 OCR 索引，远处公式请翻到目标页、指定 PDF 页码或手动框选。
 

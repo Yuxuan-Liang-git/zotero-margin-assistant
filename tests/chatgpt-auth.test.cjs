@@ -76,3 +76,49 @@ test('changing models clears only unsupported saved speed and reasoning controls
  const f=await fixture();await f.login();const models=[{slug:'a',reasoningEfforts:['low','max'],speedTiers:['default','fast']},{slug:'b',reasoningEfforts:['low'],speedTiers:['default']}];
  await f.auth.setModels(f.auth.state.activeID,models);await f.auth.setReasoning('max');await f.auth.setSpeed('fast');await f.auth.setModel('b');assert.equal(f.auth.active().speed,'default');assert.equal(f.auth.active().reasoningEffort,'default');
 });
+
+test('discovery retries a transient read once, shares concurrent requests, and leaves tokens untouched',async()=>{
+  const f=await fixture();await f.login();const credentials=f.prefs.get(f.A.PREF),account=f.auth.active();
+  let reads=0;f.auth.config=null;f.auth.fetch=async(url,options)=>{
+    if(url.endsWith('openid-configuration')&&++reads===1)throw Error('private proxy diagnostics');
+    return f.options.fetch(url,options);
+  };
+  const [first,second]=await Promise.all([f.auth.discovery(),f.auth.discovery()]);
+  assert.equal(first.issuer,f.A.ISSUER);assert.equal(first,second);assert.equal(reads,2);
+  assert.equal(f.prefs.get(f.A.PREF),credentials);assert.equal(f.auth.active(),account);
+});
+
+test('discovery preserves safe failure categories, resets its cache, and never includes raw service details',async()=>{
+  const f=await fixture();
+  const cases=[
+    {fetch:async()=>{throw Error('private network value');},code:'auth_network',message:/连接/},
+    {fetch:async()=>new Response('<html>private service value</html>',{status:403}),code:'auth_http',status:403,message:/HTTP 403/},
+    {fetch:async()=>Response.json({error:'private service value'},{status:503}),code:'auth_http',status:503,message:/HTTP 503/},
+    {fetch:async()=>new Response('<html>private service value</html>'),code:'auth_response',message:/有效的 JSON/},
+  ];
+  for(const scenario of cases){
+    const auth=new f.A.AuthManager({...f.options,fetch:scenario.fetch});
+    await assert.rejects(auth.discovery(),error=>{
+      assert.equal(error.safe,true);assert.equal(error.code,scenario.code);assert.equal(error.status,scenario.status);
+      assert.match(error.message,scenario.message);assert.doesNotMatch(error.message,/private/);return true;
+    });
+    assert.equal(auth.config,null);auth.fetch=f.options.fetch;
+    assert.equal((await auth.discovery()).issuer,f.A.ISSUER);
+  }
+});
+
+test('invalid discovery fields identify the failed check and are rejected without retrying',async()=>{
+  const f=await fixture(),valid=await f.auth.discovery();
+  for(const [field,value] of [['issuer','https://other.invalid'],['token_endpoint',null],['jwks_uri','https://other.invalid/keys'],['authorization_endpoint','https://user:secret@auth.openai.com/login']]){
+    let reads=0;const auth=new f.A.AuthManager({...f.options,fetch:async()=>{reads++;return Response.json({...valid,[field]:value});}});
+    await assert.rejects(auth.discovery(),error=>error.code==='auth_config'&&error.message.includes(field)&&!error.message.includes('secret'));
+    assert.equal(reads,1);
+  }
+});
+
+test('token exchange errors retain invalid_grant and do not retry POST requests',async()=>{
+  const f=await fixture();let posts=0;
+  f.auth.fetch=async()=>{posts++;return Response.json({error:'invalid_grant'},{status:400});};
+  await assert.rejects(f.auth.json(f.A.ISSUER+'/api/accounts/oauth/token',{method:'POST'}),error=>error.code==='invalid_grant'&&error.status===400);
+  assert.equal(posts,1);
+});

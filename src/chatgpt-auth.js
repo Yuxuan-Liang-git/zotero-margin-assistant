@@ -31,16 +31,45 @@
     async json(url,options={}){
       const Abort=this.platform.AbortController||globalThis.AbortController,controller=new Abort(),parent=options.signal,abort=()=>controller.abort();parent?.addEventListener('abort',abort,{once:true});if(parent?.aborted)controller.abort();
       const timer=setTimeout(abort,20000);
-      try{const response=await this.fetch(url,{...options,signal:controller.signal,redirect:'error'});let data;try{data=await response.json();}catch{throw safe('ChatGPT 返回了无效响应，请重试。');}
-        if(!response.ok){const code=typeof data.error==='string'?data.error:data.error?.code;throw safe(response.status===400&&code==='invalid_grant'?'ChatGPT 登录已过期或被撤销，请重新登录。':'ChatGPT 授权请求失败，请稍后重试。',code==='invalid_grant'?'invalid_grant':'auth_http');}return data;
-      }catch(e){if(e.safe)throw e;throw safe(parent?.aborted?'ChatGPT 登录已取消。':'无法连接 ChatGPT 授权服务，请检查网络后重试。');}
+      try{
+        const response=await this.fetch(url,{...options,signal:controller.signal,redirect:'error'});
+        let data;
+        try{data=await response.json();}
+        catch{if(response.ok)throw safe('ChatGPT 授权服务未返回有效的 JSON，请检查网络或代理后重试。','auth_response');}
+        if(!response.ok){
+          const code=typeof data?.error==='string'?data.error:data?.error?.code;
+          const invalidGrant=response.status===400&&code==='invalid_grant';
+          throw Object.assign(safe(invalidGrant?'ChatGPT 登录已过期或被撤销，请重新登录。':'ChatGPT 授权服务返回 HTTP '+response.status+'，请检查网络或稍后重试。',invalidGrant?'invalid_grant':'auth_http'),{status:response.status});
+        }
+        return data;
+      }catch(error){
+        if(error.safe)throw error;
+        if(parent?.aborted)throw safe('ChatGPT 登录已取消。','auth_cancelled');
+        if(controller.signal.aborted)throw safe('读取 ChatGPT 授权服务超时，请检查 Zotero 的网络或代理后重试。','auth_timeout');
+        throw safe('无法连接 ChatGPT 授权服务，请检查 Zotero 的网络或代理后重试。','auth_network');
+      }
       finally{clearTimeout(timer);parent?.removeEventListener('abort',abort);}
     }
     async discovery(){
-      if(!this.config)this.config=this.json(ISSUER+'/.well-known/openid-configuration').then(data=>{
-        if(data.issuer!==ISSUER)throw safe('ChatGPT 授权配置无效');
-        for(const key of ['authorization_endpoint','token_endpoint','jwks_uri','revocation_endpoint'])if((key!=='revocation_endpoint'||data[key])&&new this.platform.URL(data[key]).origin!==ISSUER)throw safe('ChatGPT 授权配置无效');return data;
-      }).catch(()=>{this.config=null;throw safe('ChatGPT 授权配置无法验证，请重试。');});return this.config;
+      if(!this.config)this.config=(async()=>{
+        let data;
+        for(let attempt=0;attempt<2;attempt++){
+          try{data=await this.json(ISSUER+'/.well-known/openid-configuration');break;}
+          catch(error){
+            const retryable=['auth_network','auth_timeout'].includes(error.code)||error.code==='auth_http'&&[408,500,502,503,504].includes(error.status);
+            if(attempt===1||!retryable)throw error;
+            await new Promise(resolve=>setTimeout(resolve,300));
+          }
+        }
+        if(data?.issuer!==ISSUER)throw safe('ChatGPT 授权配置中的 issuer 校验失败，请稍后重试。','auth_config');
+        for(const field of ['authorization_endpoint','token_endpoint','jwks_uri','revocation_endpoint']){
+          if(field==='revocation_endpoint'&&!data[field])continue;
+          let endpoint;
+          try{endpoint=new this.platform.URL(data[field]);}catch{throw safe('ChatGPT 授权配置缺少有效的 '+field+'，请稍后重试。','auth_config');}
+          if(endpoint.origin!==ISSUER||endpoint.username||endpoint.password||endpoint.hash)throw safe('ChatGPT 授权配置中的 '+field+' 地址校验失败，请稍后重试。','auth_config');
+        }
+        return data;
+      })().catch(error=>{this.config=null;throw error.safe?error:safe('ChatGPT 授权配置无法验证，请重试。','auth_config');});return this.config;
     }
     async verifyIdentity(token,clientID,nonce=undefined){
       try{

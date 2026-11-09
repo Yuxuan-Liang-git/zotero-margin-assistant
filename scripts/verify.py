@@ -15,8 +15,9 @@ parser.add_argument('--native-run',default='zotero-0106-native-final')
 parser.add_argument('--restart-run',default='zotero-0105-final')
 parser.add_argument('--conversation-run',default='zotero-0106-conversation-qa')
 parser.add_argument('--upgrade-run',default='zotero-0106-upgrade')
-parser.add_argument('--clipboard-run',default='zotero-0181-images-v6')
-parser.add_argument('--test-output',default='evidence/images-0181/tests-final.txt')
+parser.add_argument('--clipboard-run',default='zotero-0182-auth-final')
+parser.add_argument('--test-output',default='evidence/auth-0182/tests-final.txt')
+parser.add_argument('--auth-discovery-run',default='auth-0182-discovery-final')
 args=parser.parse_args()
 version=json.loads((PROJECT/'package.json').read_text(encoding='utf-8'))['version']
 package=PROJECT/f'dist/margin-comments-deepseek-{version}.xpi'
@@ -160,6 +161,12 @@ margin_image_flags=['nativePaste','nativeDrop','clipboardFallback','onePasteOneI
 margin_images_ok=clipboard_ok and all(any(s.get('name')=='margin-images-native' and s.get('ok') and all(s.get('result',{}).get(key) for key in margin_image_flags) for s in r['steps']) for r in clipboard_reports) and any(s.get('name')=='margin-images-native' and s.get('result',{}).get('coldRestored') for s in (clipboard_reports[1] or {}).get('steps',[]))
 report['native_margin_images']='passed: isolated Zotero first launch and cold restart; synthetic card paste/drop, controlled clipboard fallback, real embedded-image note, matching PDF sibling bytes, plain LaTeX delegation, readonly rejection, visible file button, card refresh and empty highlight restoration; no system clipboard reads or writes, no external AI calls' if margin_images_ok else 'not passed or not run'
 report['margin_image_limits']={'image_bytes':10*1024*1024,'formats':['PNG','JPEG','GIF','WebP'],'sibling_directory':'margin-comments-images','native_storage':'one PDF-specific Zotero note with embedded image attachments','clipboard_scope':'test fixture callback; no user clipboard access'}
+discovery_path=PROJECT/'evidence'/args.auth_discovery_run/'report.json'
+discovery=json.loads(discovery_path.read_text(encoding='utf-8')) if discovery_path.exists() else None
+discovery_steps=['public-discovery-fetch','production-auth-discovery','production-discovery-recovery','production-discovery-safe-error']
+discovery_ok=bool(discovery and discovery.get('done') and discovery.get('version')==version and discovery.get('packageSha256')==package_hash and discovery.get('credentialsAbsent') and all(any(s.get('name')==name and s.get('ok') for s in discovery.get('steps',[])) for name in discovery_steps))
+report['native_auth_discovery']='passed: isolated Zotero public HTTPS metadata and production AuthManager validation; one simulated connection failure followed by a real public metadata read; concurrent requests share the retry; HTTP 403 has a safe status message and one attempt; no account credentials or paid inference used' if discovery_ok else 'not passed or not run'
+report['auth_failure_scope']='The user later reported that the issue had resolved and suspected the VPN had not been connected. The original failure was not reproduced; installed 0.18.1 and 0.18.2 both read valid public metadata during investigation. Fixed the catch that masked connection, HTTP, response and metadata-validation errors, and added one retry for transient discovery GET failures.'
 report['automated_tests']=report['reading_summary_automated_tests']
 report['native_run_scope']='first ten admission/clipboard/context checks, reading-summary-native, notion-sidebar-native, custom-prompt-native, cross-paper-memory-native, personal-library-memory-native and margin-images-native; 16 checks on each of two launches; actual five-page unread PDF uses native Worker/SDT, real embedded image note and sibling bytes; clipboard callbacks and events are fixtures, inference mocked; broader later multi-PDF/performance chain not run'
 (PROJECT/'dist/verification-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
