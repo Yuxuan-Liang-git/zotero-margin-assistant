@@ -26,6 +26,35 @@
     return terms.filter(term => !stopWords.has(term));
   }
 
+  // Index tokens stay unchanged so existing local indexes remain usable.
+  // Only complete question phrases are removed: scientific words such as
+  // 条件数 and the electrical term "current" must remain searchable.
+  const queryStopWords = new Set(['is', 'does', 'do', 'of', 'to', 'in', 'it', 'its', 'on', 'at', 'as', 'by',
+    'me', 'my', 'you', 'your', 'tell', 'about', 'please', 'explain', 'summarize', 'summarise', 'describe',
+    'introduce', 'overview', 'paper', 'article', 'document', 'key', 'main', 'contribution',
+    'contributions', 'method', 'methods', 'result', 'results', 'conclusion', 'conclusions', 'following', 'meaning']);
+  const genericTopicWords = new Set(tokens('主要 核心 内容 贡献 创新点 特点 方法 结果 结论 问题 原理 背景 局限 限制 意义 条件 公式 式子 图表 符号 论文 文章 文献 文档 材料 解释公式 解释式子 解释方程 eq equation equations formula formulas fig figure figures'));
+  function queryTokens(text) {
+    const normalized = String(text).normalize('NFKC').toLowerCase();
+    // Strip deictic document references before making Chinese bigrams, avoiding
+    // the cross-boundary fragments in "这篇论文讲了啥" (篇论, 文讲, 了啥).
+    const topic = normalized
+      .replace(/^(?:\s*what\s+does\s+)(.+?)\s+mean\s*[?.!]*$/u, '$1')
+      .replace(/(?:这|那|该|本)(?:一)?(?:篇|份|个)?(?:论文|文章|文献|文档|材料)|\b(?:this|that|the|current)\s+(?:paper|article|document)\b/gu, ' ')
+      .replace(/(?:这|那|该|上|下)(?:一)?(?:个|幅|条)?(?:公式|式子|方程|符号|图)(?:中)?/gu, ' ')
+      .replace(/(?:中|里|里面|其中)的(?=(?:公式|式子|方程|符号|图))/gu, ' ')
+      .replace(/\bin\s+(?:chinese|mandarin|english)\b|用(?:中文|汉语|英文|英语)/gu, ' ')
+      .replace(/主要(?:讲|说|研究)(?:了)?(?:什么|啥)|(?:讲|说)(?:了)?(?:什么|啥)|是什么意思|什么意思|是啥|怎么理解|如何理解|怎样理解/gu, ' ')
+      .trim()
+      .replace(/^(?:请(?:帮我)?|帮我|给我)(?:详细|具体|简要|简单|通俗)?地?(?:解释|讲解|介绍|总结|概括|分析|比较|讨论)?(?:一下)?/u, ' ')
+      .replace(/^(?:解释|讲解|介绍|总结|概括|分析|比较|讨论)(?:一下|\s+)/u, ' ');
+    const words = tokens(topic).filter(term => !queryStopWords.has(term) && !/^\d/.test(term));
+    const identifiers = normalized.match(/\b10\.\d{4,9}\/[^\s]+/g) || [];
+    // Numeric equation numbers and generic headings alone are local references.
+    // Keep complete scientific compounds if any of their terms carry a topic.
+    return identifiers.length || words.some(term => !genericTopicWords.has(term)) ? words.concat(identifiers) : [];
+  }
+
   function frequencies(text) {
     const terms = Object.create(null);
     const words = tokens(text);
@@ -153,7 +182,8 @@
   }
 
   function rankDocuments(documents, query) {
-    const words = [...new Set(tokens(query))];
+    const words = [...new Set(queryTokens(query))];
+    if (!words.length) return [];
     const normalized = String(query).normalize('NFKC').toLowerCase();
     const average = documents.reduce((sum, doc) => sum + doc.length, 0) / (documents.length || 1) || 1;
     const frequency = Object.create(null);
@@ -314,7 +344,7 @@
     }).join('\n');
   }
 
-  const api = { MAX_TEXT, MAX_FRAGMENT, MAX_CONTEXT, signature, tokens, frequencies, splitText, buildDocument, rankDocuments, selectSources, mergeSources, kindLabel, cleanSources, sourceCurrent, appendContext, annotatedText, exportNotes };
+  const api = { MAX_TEXT, MAX_FRAGMENT, MAX_CONTEXT, signature, tokens, queryTokens, frequencies, splitText, buildDocument, rankDocuments, selectSources, mergeSources, kindLabel, cleanSources, sourceCurrent, appendContext, annotatedText, exportNotes };
   root.ZMAMemoryCore = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof _globalThis !== 'undefined' ? _globalThis : globalThis);

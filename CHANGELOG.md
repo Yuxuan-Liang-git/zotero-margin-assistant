@@ -1,10 +1,18 @@
 # 更新日志
 
-这里记录各版本带来的功能、修复和行为变化。当前推荐版本为 [v0.19.1](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.1)，安装和操作见 [使用指南](docs/user-guide.md)。
+这里记录各版本带来的功能、修复和行为变化。当前推荐版本为 [v0.19.2](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.2)，安装和操作见 [使用指南](docs/user-guide.md)。
 
 现有44个历史版本于2026年11月9日从保留的源码 ZIP 和 XPI 整理入库，覆盖0.10.0至0.19.0。Git 提交和归档发布日期表示整理时间，原始逐次开发提交未保存在这些 ZIP 中。版本说明依据归档 README、开发记录及源码差异整理；现有资料缺少0.13.9的完整归档，因此没有创建对应标签。
 
 各版 Releases 保留原始 XPI、源码 ZIP 和 SHA-256 校验文件。机器可读目录见 [versions.json](releases/versions.json)，后续提交与发布规范见 [版本管理](docs/version-management.md)。
+
+### v0.19.2 · 拦截通用问法造成的跨论文误召回
+
+修复“这篇论文讲了啥”、纯符号和公式编号追问因匹配其他论文旧问题而带入无关材料的问题。查询先识别完整文档指代和通用问法，无有效主题词时跳过全库检索；保留“条件数”、电流 `current`、明确科学主题及题名和 DOI 的检索能力。原有索引分词、会话文件和阅读摘要保持兼容。
+
+405 项完整回归及类型检查通过，聚焦回归 27/27。最终安装包的真实记录只读重放显示：所报告通用问题的检索来源从 3 条变为 0 条；既有摘要的三个主章节保留，未找到给定无关论文标记。
+
+[下载与说明](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.2) · [修复范围](docs/2026-11-09-memory-query-relevance-release.md)
 
 ### v0.19.1 · 修复 Notion 网页进程失效后无法重开
 

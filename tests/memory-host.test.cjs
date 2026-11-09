@@ -102,3 +102,20 @@ test('enabling after a disabled startup backfills other papers without a manual 
     assert.ok(sources.some(source => source.attachmentKey === 'BBBB1111'));
   } finally { await memory.stop(); }
 });
+
+test('a generic current-PDF question skips cross-paper lookup even when the expanded query contains a paper title', async () => {
+  const f = fixture();
+  f.state.conversations[0].history[0].content = '这篇论文讲了啥？';
+  f.state.conversations[0].history[1].content = '持续激励条件要求信息矩阵正定。';
+  f.files.set('/data/margin-comments-assistant/1-BBBB1111.json', JSON.stringify(f.state));
+  const memory = MH.create(f.host);
+  try {
+    await memory.rebuild(1);
+    const sources = await memory.retrieve({ libraryID: 1, attachmentKey: 'AAAA1111' },
+      '这篇论文讲了啥？\nB论文的激励条件', { question: '这篇论文讲了啥？', conversationId: 'default' });
+    assert.deepEqual(sources, []);
+    const topical = await memory.retrieve({ libraryID: 1, attachmentKey: 'AAAA1111' },
+      '激励条件', { question: '激励条件', conversationId: 'default' });
+    assert.ok(topical.some(source => source.attachmentKey === 'BBBB1111'));
+  } finally { await memory.stop(); }
+});

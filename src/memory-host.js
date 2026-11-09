@@ -113,6 +113,9 @@
     manager.rebuild = async libraryID => { await Promise.all([history.rebuild(libraryID), papers?.rebuild()]); };
     manager.stop = async () => { await Promise.all([history.stop(), papers?.stop()]); };
     manager.retrieve = async (scope, query, options = {}) => {
+      // A title or old question in the expanded context must not turn a local
+      // overview/symbol question into an automatic search of unrelated papers.
+      if (!M.queryTokens(options.question || query).length) return [];
       const previous = await history.retrieve(scope, query, options);
       for (const source of previous) {
         const item = Z.Items.getByLibraryAndKey(source.libraryID, source.attachmentKey);
