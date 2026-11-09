@@ -41,9 +41,15 @@
         this.chatgpt=new GPT.ChatGPTClient({auth:this.auth,fetch:(...args)=>this.runtimeWindow().fetch(...args),TextDecoder:win?.TextDecoder,getWebOptions:()=>this.webState()});
       }
       this.readingAuto=Z.Prefs?.get('margincomments.readingSummaryAuto')!==false;
-      this.readingSummary=Reading?new Reading.Manager({key:r=>C.scopeKey(this.scope(r)),load:r=>this.load(r),save:(r,s)=>this.save(r,s),publish:(r,text,record,force)=>this.publishReadingSummary(r,text,record,force),client:()=>this.selectedClient(),controller:()=>this.newAbortController(),foreground:()=>this.activeRequests.size>0||this.transferTasks.size>0,enabled:()=>this.running&&this.readingAuto&&(this.provider==='chatgpt'?!!this.auth?.active()?.accessToken:!!this.key),notify:(r)=>{const key=C.scopeKey(this.scope(r));for(const p of this.panels.values())if(C.scopeKey(this.scope(p.reader))===key)p.refreshReadingSummary?.();}}):null;
+      this.readingSummary=Reading?new Reading.Manager({key:r=>C.scopeKey(this.scope(r)),load:r=>this.load(r),save:(r,s)=>this.save(r,s),publish:(r,text,record,force)=>this.publishReadingSummary(r,text,record,force),context:r=>this.readingSummaryContext(r),client:()=>this.selectedClient(),controller:()=>this.newAbortController(),foreground:()=>this.activeRequests.size>0||this.transferTasks.size>0,enabled:()=>this.running&&this.readingAuto&&(this.provider==='chatgpt'?!!this.auth?.active()?.accessToken:!!this.key),notify:(r)=>{const key=C.scopeKey(this.scope(r));for(const p of this.panels.values())if(C.scopeKey(this.scope(p.reader))===key)p.refreshReadingSummary?.();}}):null;
     }
     readingSummaryAPI(){return {state:()=>({enabled:this.readingAuto}),set:async value=>{this.readingAuto=!!value;this.Z.Prefs?.set('margincomments.readingSummaryAuto',this.readingAuto);if(!this.readingAuto)this.readingSummary?.cancelAutomatic();else for(const p of this.panels.values())this.readingSummary?.schedule(p.reader);}};}
+    readingSummaryContext(reader){
+      const attachment=this.Z.Items.get(Number(reader.itemID)),parent=attachment?.parentID?this.Z.Items.get(attachment.parentID):attachment;
+      const field=(item,name)=>{try{return String(item?.getField?.(name)||'').slice(0,500);}catch{return '';}};
+      const attachmentTitle=String(attachment?.getDisplayTitle?.()||field(attachment,'title')||this.scope(reader).attachmentKey).slice(0,500);
+      return {title:field(parent,'title')||attachmentTitle,year:/\d{4}/.exec(field(parent,'date'))?.[0]||'',doi:field(parent,'DOI'),attachmentTitle};
+    }
     async publishReadingSummary(reader,text,record,forceNew=false){
       const attachment=this.Z.Items.get(Number(reader.itemID)),scope=this.scope(reader);if(attachment?.isEditable?.()===false)throw new Error('文献库为只读，摘要候选已保留');
       const marker=`zma-summary://${scope.libraryID}/${scope.attachmentKey}`,title='阅读摘要 · '+(attachment.getDisplayTitle?.()||attachment.getField?.('title')||scope.attachmentKey);

@@ -15,7 +15,7 @@ parser.add_argument('--native-run',default='zotero-0106-native-final')
 parser.add_argument('--restart-run',default='zotero-0105-final')
 parser.add_argument('--conversation-run',default='zotero-0106-conversation-qa')
 parser.add_argument('--upgrade-run',default='zotero-0106-upgrade')
-parser.add_argument('--clipboard-run',default='zotero-0140-summary-v2')
+parser.add_argument('--clipboard-run',default='zotero-0141-note-v2')
 args=parser.parse_args()
 version=json.loads((PROJECT/'package.json').read_text(encoding='utf-8'))['version']
 package=PROJECT/f'dist/margin-comments-deepseek-{version}.xpi'
@@ -128,9 +128,15 @@ performance_ok=clipboard_ok and all(s and s['ok'] and s['result']['stream']['too
 report['native_performance']='passed: first launch and cold restart; 60 streamed DOM batches cause zero toolbar recovery scans; four unchanged-reference draft saves cause zero reference refreshes. PDF scroll, native editing, streaming, clipboard and chat transfer also exercised. Isolated fixture does not reproduce every user-specific freeze' if performance_ok else 'not passed or not run'
 composer_ok=clipboard_ok and all(any(s.get('name')=='composer-input-height' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['growsUpward','shrinksDownward','withinAvailableSpace','draftAndCaretPreserved','reopenPreservesHeight','controlsVisible','keyboardResize','collapsesCompletely','collapsedReopenPreserved','doubleClickRestoresDefault','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports)
 report['native_composer_resize']='passed: native Gecko reader on first launch and cold restart; input grows/shrinks, collapses fully to its handle, remains collapsed on reopen, and double-click restores font-aware default size with draft/caret intact. Pointer/double-click events are synthetic; real mouse dragging and double-click are covered in browser regression' if composer_ok else 'not passed or not run'
-reading_summary_ok=clipboard_ok and all(any(s.get('name')=='reading-summary-native' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['crossConversation','incrementalTextOnly','unchangedSkipsInference','idleUpdate','nativeNote','nativeMathSource','sidebarMath','manualEditProtected','newVersionRetainsOriginal','canonicalPublicationRecovery','reopenUsesLocal','openedNativeNote','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports) and any(s.get('name')=='reading-summary-native' and s.get('result',{}).get('coldRestored') for s in (clipboard_reports[1] or {}).get('steps',[]))
-report['native_reading_summary']='passed: isolated Zotero '+str((clipboard_reports[0] or {}).get('zotero',''))+' first launch and cold restart; cross-conversation incremental text-only Responses, idle scheduling, no-change skip, actual note math HTML and sidebar MathML, manual-edit protection/new version, canonical publication recovery and local reopen; OAuth/inference mocked, daily profile unchanged' if reading_summary_ok else 'not passed or not run'
-report['reading_summary_automated_tests']='252/252 complete regression suite; all src JavaScript checkJs passed; browser light/dark previews inspected; no real AI inference in this release verification'
+reading_summary_ok=clipboard_ok and all(any(s.get('name')=='reading-summary-native' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['legacyReorganized','directMarkdown','crossConversation','incrementalTextOnly','unchangedSkipsInference','idleUpdate','nativeNote','nativeMathSource','sidebarMath','manualEditProtected','newVersionRetainsOriginal','canonicalPublicationRecovery','reopenUsesLocal','openedNativeNote','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports) and any(s.get('name')=='reading-summary-native' and s.get('result',{}).get('coldRestored') for s in (clipboard_reports[1] or {}).get('steps',[]))
+report['native_reading_summary']='passed: isolated Zotero '+str((clipboard_reports[0] or {}).get('zotero',''))+' first launch and cold restart; legacy consumed-summary reorganization, direct Markdown with thematic sections, cross-conversation incremental text-only Responses, idle scheduling, no-change skip, actual note math HTML and sidebar MathML, manual-edit protection/new version, canonical publication recovery and local reopen; OAuth/inference mocked, daily profile unchanged' if reading_summary_ok else 'not passed or not run'
+test_output=PROJECT/'evidence/ui-0141/tests-final.txt'
+test_text=test_output.read_text(encoding='utf-8',errors='replace') if test_output.exists() else ''
+import re
+passed=re.search(r'(?:ℹ|#) pass (\d+)',test_text)
+failed=re.search(r'(?:ℹ|#) fail (\d+)',test_text)
+report['reading_summary_automated_tests']=(passed[1]+' passed; full src JavaScript checkJs recorded separately; browser light/dark previews inspected; no real AI inference in this release verification') if passed and failed and failed[1]=='0' else 'not passed or not run'
+
 report['native_run_scope']='first ten admission/clipboard/context checks plus reading-summary-native; 11 checks on each of two launches; later multi-PDF/performance checks not run in this focused native probe'
 (PROJECT/'dist/verification-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(report))
