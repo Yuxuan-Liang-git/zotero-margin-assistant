@@ -63,3 +63,8 @@ test('normal plugin shutdown waits for refresh rotation to reach encrypted stora
   const f=await fixture();await f.login();f.auth.active().expiresAt=0;const refresh=f.auth.accessToken();await new Promise(r=>setTimeout(r,2));await f.auth.stop();await refresh;
   const restored=new f.A.AuthManager(f.options);await restored.load();assert.equal(restored.active().refreshToken,'refresh-2');
 });
+
+test('reasoning effort validates the selected model and survives encrypted restart',async()=>{
+  const f=await fixture();await f.login();await f.auth.setModels(f.auth.state.activeID,[{slug:'qa',displayName:'QA',reasoningEfforts:['low','medium','high']}]);assert.equal(typeof f.auth.setReasoning,'function');await f.auth.setReasoning('high');
+  const restored=new f.A.AuthManager(f.options);await restored.load();assert.equal(restored.active().reasoningEffort,'high');await assert.rejects(restored.setReasoning('max'),/支持/);await restored.setReasoning('default');assert.equal(restored.active().reasoningEffort,'default');
+});

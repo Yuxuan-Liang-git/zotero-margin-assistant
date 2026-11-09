@@ -28,3 +28,8 @@ test('refusal streams display their text once instead of returning an empty succ
     const f=fixture([...parts,event({type:'response.completed'})]),deltas=[];assert.equal(await f.client.generate([{role:'user',content:'q'}],{onDelta:d=>deltas.push(d)}),'无法回答');assert.equal(deltas.join(''),'无法回答');
   }
 });
+
+test('selected reasoning effort reaches Responses and account model capabilities filter unsupported levels',async()=>{
+  const f=fixture([event({type:'response.completed'})]);f.auth.active=()=>({id:'account',model:'gpt-6.1-sol',reasoningEffort:'high',models:[{slug:'gpt-6.1-sol',reasoningEfforts:['low','medium','high']}]});await f.client.generate([{role:'user',content:'derive'}]);assert.deepEqual(JSON.parse(f.calls[0].options.body).reasoning,{effort:'high'});
+  f.client.fetch=async()=>Response.json({models:[{slug:'gpt-6.1-sol',display_name:'Sol',visibility:'list',supported_reasoning_levels:[{effort:'low'},{effort:'high'},{effort:'unknown'}]}]});assert.deepEqual((await f.client.models())[0].reasoningEfforts,['low','high']);
+});

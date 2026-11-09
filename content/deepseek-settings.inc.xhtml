@@ -9,6 +9,8 @@
       <html:select id="zma-chatgpt-account"></html:select>
       <html:label for="zma-chatgpt-model">ChatGPT 模型</html:label>
       <html:select id="zma-chatgpt-model"></html:select>
+      <html:label for="zma-chatgpt-reasoning">思考强度（越高通常越慢、用量越多）</html:label>
+      <html:select id="zma-chatgpt-reasoning"></html:select>
       <html:div style="display:flex;gap:6px;flex-wrap:wrap">
         <html:button id="zma-chatgpt-login" type="button">Continue with ChatGPT</html:button>
         <html:button id="zma-chatgpt-add" type="button">添加其他账户</html:button>
@@ -18,7 +20,7 @@
         <html:button id="zma-chatgpt-usage" type="button">管理用量</html:button>
       </html:div>
       <html:p id="zma-chatgpt-status" role="status" style="white-space:pre-wrap"></html:p>
-      <html:p>使用 ChatGPT 订阅时，发送问题会把自动读取的当前 PDF 内容、所选材料及本地对话上下文发给 OpenAI。此插件内的对话保存在 PDF 同目录，不会读取 ChatGPT 网页中的聊天历史。额度由 ChatGPT 账户及此应用的用量设置决定。</html:p>
+      <html:p>使用 Codex / ChatGPT Work 的共享订阅用量，不会额外获得网页聊天额度。发送问题会把自动读取的当前 PDF 内容、所选材料及本地对话上下文发给 OpenAI。此插件内的对话保存在 PDF 同目录，不会读取 ChatGPT 网页中的聊天历史。可通过“管理用量”调整此应用的上限。</html:p>
       <html:h3>DeepSeek API</html:h3>
       <html:p>服务地址：https://api.deepseek.com</html:p>
       <html:label for="zma-api-key">API Key（加密保存在本机）</html:label>

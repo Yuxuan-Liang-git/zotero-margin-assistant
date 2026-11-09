@@ -26,7 +26,7 @@
       });this.writeQueue=operation.catch(()=>{});return operation;
     }
     active(){return this.state.accounts.find(a=>a.id===this.state.activeID);}
-    accounts(){return this.state.accounts.map((a,i)=>({id:a.id,subject:a.subject,label:`${a.email||a.name||'ChatGPT 账户'} · ${i+1}`,signedIn:!!a.accessToken,model:a.model||'',models:a.models||[]}));}
+    accounts(){return this.state.accounts.map((a,i)=>({id:a.id,subject:a.subject,label:`${a.email||a.name||'ChatGPT 账户'} · ${i+1}`,signedIn:!!a.accessToken,model:a.model||'',models:a.models||[],reasoningEffort:a.reasoningEffort||'default'}));}
     async select(id){if(this.signingOut||this.stopping)throw safe('ChatGPT 正在退出或关闭，请稍后重试。');if(!this.state.accounts.some(a=>a.id===id))throw safe('ChatGPT 账户不存在');this.cancelSignIn();await this.update(s=>({...s,activeID:id}));}
     async json(url,options={}){
       const Abort=this.platform.AbortController||globalThis.AbortController,controller=new Abort(),parent=options.signal,abort=()=>controller.abort();parent?.addEventListener('abort',abort,{once:true});if(parent?.aborted)controller.abort();
@@ -111,6 +111,7 @@
     }
     async setModels(id,models){await this.update(s=>({...s,accounts:s.accounts.map(a=>a.id===id?{...a,models,model:models.some(m=>m.slug===a.model)?a.model:models[0]?.slug||''}:a)}));}
     async setModel(model){const account=this.active();if(!account?.models?.some(m=>m.slug===model))throw safe('此模型不在当前 ChatGPT 账户列表中，请刷新列表。');await this.update(s=>({...s,accounts:s.accounts.map(a=>a.id===account.id?{...a,model}:a)}));}
+    async setReasoning(value){const account=this.active(),model=account?.models?.find(m=>m.slug===account.model);if(!account||value!=='default'&&!model?.reasoningEfforts?.includes(value))throw safe('当前模型不支持此思考强度，请刷新模型列表。');await this.update(s=>({...s,accounts:s.accounts.map(a=>a.id===account.id?{...a,reasoningEffort:value}:a)}));}
     async signOut(){
       this.cancelSignIn();if(this.signingOut)throw safe('ChatGPT 正在退出。');this.signingOut=true;
       try{const id=this.state.activeID,refresh=this.refreshes.get(id);if(refresh)await refresh.catch(()=>{});const account=this.state.accounts.find(a=>a.id===id);if(!account)return '';

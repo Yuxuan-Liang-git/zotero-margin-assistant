@@ -63,7 +63,7 @@ test('ChatGPT provider/model picker routes PDF context and local history to the 
       globalThis.providerPanel=await host.panel(fixture.reader);providerPanel.showChat();
     });
     const selector=page.getByRole('combobox',{name:'AI 服务',exact:true});assert.equal(await selector.count(),1);await selector.selectOption('chatgpt');
-    assert.equal(await page.getByRole('combobox',{name:'ChatGPT 模型',exact:true}).inputValue(),'qa-model');assert.match(await page.locator('.zma-provider-info').innerText(),/ChatGPT 订阅/);
+    assert.equal(await page.getByRole('combobox',{name:'ChatGPT 模型',exact:true}).inputValue(),'qa-model');assert.match(await page.locator('.zma-provider-info').innerText(),/Codex.*ChatGPT Work/);
     await page.getByRole('textbox',{name:'问题',exact:true}).fill('解释当前文档');await page.getByRole('button',{name:'发送',exact:true}).click();
     await page.waitForFunction(()=>!!globalThis.chatgptInput);assert.match(JSON.stringify(await page.evaluate(()=>chatgptInput)),/current PDF facts/);
     assert.match(await page.locator('.zma-messages').innerText(),/ChatGPT 文档答案/);assert.equal(await page.evaluate(()=>providerPanel.conversation().history.at(-1).provider),'chatgpt');
