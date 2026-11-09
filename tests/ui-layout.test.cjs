@@ -19,6 +19,40 @@ async function setup(){
   },fs.readFileSync(path.resolve(__dirname,'../src/assistant.css'),'utf8'));
   return {browser,page};
 }
+
+test('reader focus navigation leaves composer caret, selection, multiline editing and IME to the browser',async()=>{
+  const {browser,page}=await setup();try{
+    await page.evaluate(async()=>{
+      globalThis.readerMoves=0;globalThis.sent=0;
+      // Zotero 10 FocusManager's capture-phase guard omits textarea.
+      window.addEventListener('keydown',event=>{
+        if(event.key.startsWith('Arrow')&&!event.target.closest('[contenteditable], input[type="text"], .preview-popup')){
+          event.preventDefault();readerMoves++;
+        }
+      },true);
+      globalThis.caretPanel=await fixture.host.panel(fixture.reader);caretPanel.showChat();caretPanel.send=async()=>{sent++;};
+    });
+    const input=page.getByRole('textbox',{name:'问题',exact:true});await input.fill('甲🙂乙\nabc def');
+    const selection=()=>input.evaluate(node=>({start:node.selectionStart,end:node.selectionEnd}));
+    await input.evaluate(node=>node.setSelectionRange(4,4));
+    await input.press('ArrowLeft');assert.deepEqual(await selection(),{start:3,end:3});
+    await input.press('ArrowLeft');assert.deepEqual(await selection(),{start:1,end:1},'native editing must skip a whole emoji');
+    await input.press('Shift+ArrowRight');assert.deepEqual(await selection(),{start:1,end:3});
+    await input.press('Shift+ArrowLeft');assert.deepEqual(await selection(),{start:1,end:1});
+    await input.press('ArrowRight');assert.deepEqual(await selection(),{start:3,end:3});
+    await input.press('Control+End');await input.press('Home');assert.deepEqual(await selection(),{start:5,end:5});
+    await input.press('End');assert.deepEqual(await selection(),{start:12,end:12});
+    await input.press('ArrowUp');assert.ok((await selection()).start<5);
+    await input.press('ArrowDown');assert.ok((await selection()).start>=5);
+    await input.press('Control+End');await input.press('Control+Shift+ArrowLeft');assert.deepEqual(await selection(),{start:9,end:12});
+    assert.equal(await page.evaluate(()=>readerMoves),0,'editing arrows must not trigger PDF focus navigation');
+    await input.press('Control+End');await input.press('Shift+Enter');assert.equal(await input.inputValue(),'甲🙂乙\nabc def\n');
+    await input.evaluate(node=>node.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true,cancelable:true})));
+    assert.equal(await page.evaluate(()=>sent),0);await input.press('Enter');assert.equal(await page.evaluate(()=>sent),1);
+    await page.evaluate(()=>document.getElementById('split-view').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true})));
+    assert.equal(await page.evaluate(()=>readerMoves),1,'reader shortcuts outside the composer still work');
+  }finally{await browser.close();}
+});
 test('references render automatically inside the corresponding margin card without opening chat',async()=>{
   const {browser,page}=await setup();try{
     await page.evaluate(()=>fixture.host.attachCard(fixture.session,fixture.runtime));

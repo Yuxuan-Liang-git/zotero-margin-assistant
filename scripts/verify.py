@@ -15,7 +15,7 @@ parser.add_argument('--native-run',default='zotero-0106-native-final')
 parser.add_argument('--restart-run',default='zotero-0105-final')
 parser.add_argument('--conversation-run',default='zotero-0106-conversation-qa')
 parser.add_argument('--upgrade-run',default='zotero-0106-upgrade')
-parser.add_argument('--clipboard-run',default='zotero-0109-clipboard-v4')
+parser.add_argument('--clipboard-run',default='zotero-01010-caret-v1')
 args=parser.parse_args()
 version=json.loads((PROJECT/'package.json').read_text(encoding='utf-8'))['version']
 package=PROJECT/f'dist/margin-comments-deepseek-{version}.xpi'
@@ -81,9 +81,11 @@ clipboard_dir=PROJECT/'evidence'/args.clipboard_run
 clipboard_reports=[json.loads((clipboard_dir/f'report-{n}.json').read_text(encoding='utf-8')) if (clipboard_dir/f'report-{n}.json').exists() else None for n in [1,2]]
 clipboard_installed=clipboard_dir/'profile/extensions/margin-comments@local.zotero.xpi'
 clipboard_ok=clipboard_installed.exists() and hashlib.sha256(clipboard_installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r.get('launch')==n and r.get('packageSha256')==package_hash and len(r.get('steps',[]))==4 and all(s['ok'] for s in r['steps']) for n,r in enumerate(clipboard_reports,1)) and len({r['process'] for r in clipboard_reports if r})==2
+editing_keys_ok=clipboard_ok and all(any(s.get('name')=='sidebar-clipboard-and-latex' and s.get('result',{}).get('editingKeysNotCancelled') and s['result'].get('editingFocusRetained') and s['result'].get('editingEventCombinations')==24 for s in r['steps']) for r in clipboard_reports)
 probe_path=PROJECT/'evidence/chatgpt-plan-probe/report.json'
 probe=json.loads(probe_path.read_text(encoding='utf-8')) if probe_path.exists() else {}
 probe_ok=probe.get('stage')=='completed' and probe.get('verified') and probe.get('id_token_validated') and probe.get('credentials_persisted') is False
 report={'date':'2026-10-18','xpi_sha256':package_hash,'xpi_size':package.stat().st_size,'baseline_verified_against_original':baseline_verified,'changed_baseline_files':changed,'resource_and_syntax_checks':'passed','source_zip':str(source_zip),'real_api_test':'DeepSeek not run; ChatGPT subscription probe reported separately','chatgpt_subscription_probe':'passed: official OAuth ID token verified; account model list fetched; one test Responses inference completed; no credentials persisted; not integrated in XPI' if probe_ok else 'not passed or not run','native_clipboard':'passed: isolated Gecko first launch and cold restart; formula LaTeX, reader copy override, input copy/paste, draft and context menu; synthetic events and mocked system clipboard preserve user clipboard' if clipboard_ok else 'not passed or not run','native_zotero_smoke':native_smoke,'native_cold_restart_and_images':restart_smoke,'native_conversation_cold_restart':conversation_smoke,'native_upgrade':upgrade_smoke,'current_user_profile_gui_test':'not run; existing profile/library unchanged'}
+report['native_editing_keys']='passed: isolated Gecko first launch and cold restart; all 24 synthetic arrow/Home/End with Shift/Ctrl combinations retain input focus and native default action' if editing_keys_ok else 'not passed or not run'
 (PROJECT/'dist/verification-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(report))

@@ -1,7 +1,11 @@
 (function(root){
   'use strict';
   const C=root.ZMACore,D=root.ZMADeepSeek;
-  function el(doc,tag,text,className){const node=doc.createElementNS('http://www.w3.org/1999/xhtml',tag);if(text!==undefined)node.textContent=text;if(className)node.setAttribute('class',className);return node;}
+  function el(doc,tag,text,className){const node=doc.createElementNS('http://www.w3.org/1999/xhtml',tag);if(text!==undefined)node.textContent=text;if(className)node.setAttribute('class',className);
+    // Zotero 10's window-capture focus/shortcut handlers omit textarea but
+    // recognize this marker. Keep native textarea editing, including Unicode,
+    // selection, word navigation and IME, instead of emulating caret movement.
+    if(tag==='textarea')node.setAttribute('contenteditable','true');return node;}
   function button(doc,label,action){const b=el(doc,'button',label);b.type='button';b.addEventListener('click',()=>Promise.resolve().then(action).catch(e=>doc.defaultView?.alert?.(e.message)));return b;}
   class Panel{
     /** @type {(()=>void)|undefined} */

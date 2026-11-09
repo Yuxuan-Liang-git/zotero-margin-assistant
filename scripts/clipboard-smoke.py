@@ -37,12 +37,19 @@ insertion = r'''
         if(question.value!==String.raw`old \(x^2\)`||chat.draft!==question.value)throw new Error('Paste or draft update failed');
         question.select();question.dispatchEvent(new win.KeyboardEvent('keydown',{key:'c',ctrlKey:true,bubbles:true,cancelable:true}));
         if(writes.at(-1)!==question.value)throw new Error('Composer Ctrl C failed');
+        question.setSelectionRange(2,2);
+        for(const key of ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End']){
+          for(const modifiers of [{},{shiftKey:true},{ctrlKey:true},{ctrlKey:true,shiftKey:true}]){
+            const event=new win.KeyboardEvent('keydown',{key,...modifiers,bubbles:true,cancelable:true});question.dispatchEvent(event);
+            if(event.defaultPrevented||doc.activeElement!==question)throw new Error('Reader intercepted composer editing key: '+key+' '+JSON.stringify(modifiers));
+          }
+        }
         math.dispatchEvent(new win.MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:30,clientY:80}));
         const button=Array.from(panel.node.querySelectorAll('.zma-clipboard-menu button')).find(b=>b.textContent==='复制公式 LaTeX');
         if(!button)throw new Error('Formula context menu missing');button.click();
         if(writes.at(-1)!==latex)throw new Error('Context menu formula copy failed');
         if(win.getComputedStyle(answer).userSelect!=='text')throw new Error('Text selection still disabled');
-        return {readerEventOverride:true,partialFormulaToFullLatex:true,multilineSource:true,ctrlCopy:true,ctrlPaste:true,draftUpdated:true,contextMenu:true,coldRestart:seed.launch>1,systemClipboard:'mocked to preserve user clipboard'};
+        return {readerEventOverride:true,partialFormulaToFullLatex:true,multilineSource:true,ctrlCopy:true,ctrlPaste:true,draftUpdated:true,contextMenu:true,editingKeysNotCancelled:true,editingFocusRetained:true,editingEventCombinations:24,coldRestart:seed.launch>1,systemClipboard:'mocked to preserve user clipboard'};
       }finally{host.copy=copy;host.readClipboard=read;chat.draft=originalDraft;panel.question.value=originalDraft;}
     });
 '''

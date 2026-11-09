@@ -1,6 +1,16 @@
 # 验收记录
 
-日期：2026-10-18。交付版本：0.10.9。目标 Zotero：10.0.x。下方旧版本记录保留为历史验收证据。
+日期：2026-10-18。交付版本：0.10.10。目标 Zotero：10.0.x。下方旧版本记录保留为历史验收证据。
+
+## 0.10.10：助手输入框方向键与选字
+
+本机 Zotero 10.0.6 的 `resource/reader/reader.js` 中，`FocusManager._handleKeyDown` 在 window capture 阶段拦截方向键，其排除条件只有 `[contenteditable], input[type="text"], .preview-popup`，遗漏了 textarea；`isTextBox` 同样不识别 textarea。给助手创建的多行输入框添加其识别的 `contenteditable="true"` 标记，保留原生 textarea 的输入、选区、IME 和浏览器默认按键行为，不模拟光标移动，不更改阅读器全局处理函数。预览编辑和引用说明的多行框共用此修复。
+
+新增真实浏览器按键回归，使用同样的阅读器 capture 拦截条件：修复前 ArrowLeft 后选区仍为 4，预期为 3，测试失败；修复后左右键、Shift 选区、emoji 跨字符移动、Ctrl+Shift 按词选区、上下行、Home/End、Shift+Enter 换行及 IME/Enter 发送均通过，输入框外的阅读器事件仍保留。
+
+完整自动回归：94/94 项通过、0 失败，耗时 223.5 秒。完整 JavaScript 类型检查、最终包资源与语法检查通过；原始 XPI 与 baseline 字节保持一致。
+
+最终 XPI SHA-256：`bbc7c0a00ec99d654b1dfc4d6a99b903ef17fdc94a093480626cf5cc3fca581d`。完整 JavaScript 类型检查通过。同一最终 XPI 在独立 Zotero 配置中首次启动、冷重启，各通过 4 项检查；`evidence/zotero-01010-caret-v1/report-1.json` 与 `report-2.json` 分别记录 24 种方向键/Home/End 与 Shift/Ctrl 组合事件均未被取消、焦点保持，以及剪贴板、草稿、历史切换、工具栏及设置检查。原生 Zotero 按键检查使用合成事件，实际光标移动和选区由 Chrome 的真实按键回归验证；系统剪贴板桥使用替身，未修改用户正式文库或配置。
 
 ## 0.10.9：文档助手剪贴板与公式 LaTeX
 
