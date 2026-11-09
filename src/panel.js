@@ -273,14 +273,22 @@
         if(m.unavailable)card.append(el(this.doc,'small','来源已失效，本轮未发送。请移除后重新选择。','zma-invalid'));else if(m.source.kind==='text')card.append(el(this.doc,'blockquote',m.text,'zma-material-text'));else{const img=el(this.doc,'img');img.src=m.dataURL;img.alt=label;card.append(img);}card.append(el(this.doc,'small',label),remove);this.materialList.append(card);
       }
     }
-    renderMessages(start){
+    renderMessages(start,end){
       this.messages.replaceChildren();
       const conversation=this.conversation();this.activeLabel.textContent=`当前对话：${conversation.title||'新对话'}`;
       const first=Number.isSafeInteger(start)?Math.max(0,start):Math.max(0,conversation.history.length-20);
-      if(first)this.messages.append(button(this.doc,'显示更早消息',()=>{const height=this.messages.scrollHeight,top=this.messages.scrollTop;this.renderMessages(Math.max(0,first-20));this.messages.scrollTop=this.messages.scrollHeight-height+top;}));
-      conversation.history.slice(first).forEach((m,i)=>this.messages.append(this.messageCard(m,i+first)));
+      const last=Number.isSafeInteger(end)?Math.min(conversation.history.length,end):conversation.history.length;
+      if(first)this.messages.append(button(this.doc,'显示更早消息',()=>{const height=this.messages.scrollHeight,top=this.messages.scrollTop;this.renderMessages(Math.max(0,first-20),last);this.messages.scrollTop=this.messages.scrollHeight-height+top;}));
+      conversation.history.slice(first,last).forEach((m,i)=>this.messages.append(this.messageCard(m,i+first)));
+      if(last<conversation.history.length)this.messages.append(button(this.doc,'显示后续消息',()=>this.renderMessages(first,Math.min(conversation.history.length,last+20))));
       if(!conversation.history.length)this.messages.append(el(this.doc,'p','直接问“当前这篇论文讲了什么”即可；助手会自动读取当前 PDF。也可框选内容或加入前文引用，进一步解释公式。','zma-empty-chat'));
       this.messages.scrollTop=this.messages.scrollHeight;this.quotes?.render();
+    }
+    revealMessage(index){
+      this.showChat();
+      this.renderMessages(Math.max(0,index-4),Math.min(this.conversation().history.length,index+7));
+      const target=this.messages.querySelector(`[data-message-index="${index}"]`);
+      if(target){this.messages.scrollTop+=target.getBoundingClientRect().top-this.messages.getBoundingClientRect().top;target.classList.add('zma-memory-highlight');target.querySelector('.zma-answer')?.focus({preventScroll:true});}
     }
     messageCard(m,i){
       const card=el(this.doc,'article',undefined,`zma-message zma-${m.role}`);card.dataset.messageIndex=String(i);card.append(el(this.doc,'strong',m.role==='user'?'问题':m.incomplete?'回答（未完成）':'回答'));
@@ -288,10 +296,45 @@
       if(m.attachments?.length){const files=el(this.doc,'p',m.attachments.map(a=>a.name).join('、'),'zma-message-files');card.append(files);}
       if(m.pdfContext?.mode==='full-pdf')card.append(el(this.doc,'small',`本轮已附带完整 PDF：${m.pdfContext.fileName}（${m.pdfContext.totalPages} 页）`,'zma-message-files'));
       if(m.sourceWarnings?.length)card.append(el(this.doc,'small',m.sourceWarnings.join('\n'),'zma-invalid'));
-      card.append(text);if(m.role==='assistant'){this.renderWeb(card,m);if(m.content)this.addAnswerActions(card,m,i);}return card;
+      card.append(text);if(m.role==='assistant'){this.renderWeb(card,m);this.renderMemorySources(card,m);if(m.content)this.addAnswerActions(card,m,i);}return card;
     }
     citedAnswer(m){return root.ZMAWeb&&m.web?root.ZMAWeb.citedText(m.content,m.web):m.content;}
-    answerExport(m){return this.citedAnswer(m)+(m.web?.images?.length?'\n\n网络配图来源：\n'+m.web.images.map(i=>`${i.caption}：${i.source}`).join('\n'):'');}
+    answerExport(m){const text=this.citedAnswer(m)+(m.web?.images?.length?'\n\n网络配图来源：\n'+m.web.images.map(i=>`${i.caption}：${i.source}`).join('\n'):'');return root.ZMAMemoryCore?root.ZMAMemoryCore.annotatedText(text,m.memorySources):text;}
+    renderMemorySources(card,message){
+      const sources=message.memorySources||[];
+      if(!sources.length)return;
+      const open=async(source,status)=>{try{if(!this.host.memory)throw new Error('研究记忆模块尚未就绪，请重启Zotero');await this.host.memory.openSource(source);}catch(error){status.textContent=error.message;status.closest('details').open=true;}};
+      let details=card.querySelector('.zma-memory-sources');
+      if(!details){
+        details=el(this.doc,'details',undefined,'zma-memory-sources');
+        const count=new Set(sources.map(source=>source.libraryID+'-'+source.attachmentKey)).size;
+        details.append(el(this.doc,'summary',`参考过的阅读记录 · ${count}篇`));
+        const status=el(this.doc,'p','','zma-memory-status');status.setAttribute('role','status');details.append(status);
+        details.addEventListener('toggle',()=>{
+          if(!details.open||details.dataset.loaded)return;
+          details.dataset.loaded='true';
+          for(const source of sources){
+            const row=el(this.doc,'section',undefined,'zma-memory-source');
+            const kind=source.kind==='summary'?'阅读摘要':'历史问答';
+            row.append(button(this.doc,source.title+' · '+source.label+' · '+kind,()=>open(source,status)));
+            row.append(el(this.doc,'small',source.updatedAt?(source.kind==='summary'?'摘要更新 ':'会话更新 ')+new Date(source.updatedAt).toLocaleString('zh-CN'):'记录时间未知'));
+            const excerpt=el(this.doc,'blockquote',undefined,'zma-memory-excerpt');this.renderAnswer(excerpt,source.text);row.append(excerpt);details.append(row);
+          }
+        });
+        card.insertBefore(details,card.querySelector('.zma-message-actions'));
+      }
+      const answer=card.querySelector('.zma-answer'),walker=this.doc.createTreeWalker(answer,4),nodes=[];
+      while(walker.nextNode())if(!walker.currentNode.parentElement.closest('a,button,code,pre,math,annotation'))nodes.push(walker.currentNode);
+      for(const node of nodes){
+        const text=node.textContent,fragment=this.doc.createDocumentFragment();let start=0;
+        for(const match of text.matchAll(/\[(阅读[1-9]\d?)\]/g)){
+          const source=sources.find(source=>source.label===match[1]);if(!source)continue;
+          fragment.append(this.doc.createTextNode(text.slice(start,match.index)));
+          const cite=button(this.doc,match[0],()=>open(source,details.querySelector('.zma-memory-status')));cite.className='zma-memory-cite';cite.title=source.title;fragment.append(cite);start=match.index+match[0].length;
+        }
+        if(start){fragment.append(this.doc.createTextNode(text.slice(start)));node.replaceWith(fragment);}
+      }
+    }
     renderWeb(card,m){
       const W=root.ZMAWeb;if(!W||!m.web)return;const data=W.clean(m.web),signature=JSON.stringify(data);if(this.webSignatures.get(card)===signature)return;this.webSignatures.set(card,signature);card.querySelector('.zma-web-result')?.remove();
       const section=el(this.doc,'section',undefined,'zma-web-result'),cited=W.citedSources(data),link=(url,title)=>{const a=el(this.doc,'a',title);a.href=url;a.rel='noopener noreferrer';return a;};
@@ -354,10 +397,20 @@
         if(context&&!this.destroyed){const imagePages=submitted.filter(m=>m.source.fullPage).map(m=>m.source.pageIndex+1);this.contextInfo.textContent=wholePDF?`本轮使用：${context.title} · 已附带完整 PDF 文件（共 ${context.totalPages} 页，含正文与图像公式）`:(context.mode==='full-text'?`本轮使用：${context.title} · 完整文字层 ${context.totalPages} 页`:`本轮使用：${context.title} · ${context.mode==='current-page-image'?'无全文文字层':'相关文字节选'}（PDF 第 ${context.pages.join('、')} 页）`)+`；页面图片：${imagePages.length?'PDF 第 '+imagePages.join('、')+' 页':'未加入'}`+(context.scannedPages?.length?'；扫描页尚无全文识别索引':'')+(context.imageWarning?'；'+context.imageWarning:'');}
         if(context&&!this.destroyed){const images=submitted.filter(m=>m.source.fullPage).length;this.contextSummary.textContent=wholePDF?`完整 PDF · ${context.totalPages} 页`:context.mode==='full-text'?`文档文字层 · ${images} 页图像`:`文档节选 · ${images} 页图像`;const limited=!!context.imageWarning||unavailableCount>0;this.contextDetails.classList.toggle('zma-context-warning',limited);if(limited)this.contextSummary.textContent+=' · 部分材料未加入';}
         if(unavailableCount&&!this.destroyed)this.contextInfo.textContent+=`；${unavailableCount} 处引用已失效，本轮未发送，原记录保留`;
-        const messages=D.buildMessages(hydrated,question,refreshed,context,conversation.summary||'',attachments,currentWarnings);
+        let messages=D.buildMessages(hydrated,question,refreshed,context,conversation.summary||'',attachments,currentWarnings);
+        let memorySources=[];
+        if(this.host.memory&&root.ZMAMemoryCore){
+          const budget=Math.max(0,Math.min(6000,58000-D.textSize(messages)-(this.host.customPrompt?.length||0)));
+          const serializedBudget=Math.max(0,12*1024*1024-JSON.stringify(messages).length);
+          if(budget>=500&&serializedBudget>=500){
+            const query=[question,context?.title,this.host.readingSummaryContext?.(this.reader)?.title,conversation.summary?.slice(0,800),...history.filter(m=>m.role==='user').slice(-2).map(m=>m.content.slice(0,400))].filter(Boolean).join('\n');
+            try{const sources=await this.host.memory.retrieve(this.host.scope(this.reader),query,{conversationId:conversation.id,signal:this.controller.signal});const prepared=root.ZMAMemoryCore.appendContext(messages,sources,budget,serializedBudget);messages=prepared.messages;memorySources=prepared.sources;}
+            catch(error){if(this.controller.signal.aborted)throw error;this.contextInfo.textContent+='；研究记忆本轮未就绪，可在设置中检查索引状态';}
+          }
+        }
         if(this.controller.signal.aborted)throw new Error('生成已停止');
         user={role:'user',content:question,...(wholePDF?{pdfContext:{mode:'full-pdf',fileName:context.file.name,fileSize:context.file.size,totalPages:context.totalPages}}:{}),...(currentWarnings.length?{sourceWarnings:currentWarnings}:{}),...(attachments.length?{attachments:attachments.map(C.pickAttachment)}:{}),materials:submitted.map(m=>({...C.pickSource(m.source),type:m.source.type,number:m.source.number,description:m.source.description})),incomplete:false};
-        answer={role:'assistant',content:'',materials:[],incomplete:true,...(provider?{provider,model}:{} )};
+        answer={role:'assistant',content:'',materials:[],incomplete:true,...(memorySources.length?{memorySources}:{}),...(provider?{provider,model}:{} )};
         conversation.history=[...history,user,answer];conversation.draft=this.question.value;C.touchConversation(conversation);await this.persist();
         if(retry){this.messages.lastElementChild?.remove();this.messages.lastElementChild?.remove();}
         this.messages.querySelector('.zma-empty-chat')?.remove();this.messages.append(this.messageCard(user,history.length),this.messageCard(answer,history.length+1));answerCard=this.messages.lastElementChild;this.messages.scrollTop=this.messages.scrollHeight;this.activeLabel.textContent=`当前对话：${conversation.title||'新对话'}`;this.renderConversationList();
@@ -396,7 +449,7 @@
         clearTimeout(this.webRenderTimer);this.webRenderTimer=null;
         for(const event of readingEvents)this.messages.removeEventListener(event,reading);
         this.liveRenderer?.finish();this.liveRenderer=null;clearTimeout(deadline);this.controller=null;this.busy=false;this.host.releaseRequest?.(this.reader);this.refreshProvider();
-        if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();if(answerCard){const readingPosition=this.messages.scrollTop,selection=this.doc.defaultView.getSelection(),keepPosition=readerMoved||answer.incomplete||!!(selection&&!selection.isCollapsed&&(answerCard.contains(selection.anchorNode)||answerCard.contains(selection.focusNode)));const text=answerCard.querySelector('.zma-answer');if(text)this.renderAnswer(text,this.citedAnswer(answer));this.renderWeb(answerCard,answer);const label=answerCard.querySelector('strong');if(label)label.textContent=answer.incomplete?'回答（未完成）':'回答';if(answer.content)this.addAnswerActions(answerCard,answer,conversation.history.length-1);this.messages.scrollTop=keepPosition?readingPosition:Math.max(0,this.messages.scrollTop+answerCard.getBoundingClientRect().top-this.messages.getBoundingClientRect().top-this.messages.clientTop);}else if(answer)this.renderMessages();this.renderConversationList();await this.persist().catch(e=>this.error(e));if(answer&&!answer.incomplete)this.host.readingSummary?.schedule(this.reader);}
+        if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();if(answerCard){const readingPosition=this.messages.scrollTop,selection=this.doc.defaultView.getSelection(),keepPosition=readerMoved||answer.incomplete||!!(selection&&!selection.isCollapsed&&(answerCard.contains(selection.anchorNode)||answerCard.contains(selection.focusNode)));const text=answerCard.querySelector('.zma-answer');if(text)this.renderAnswer(text,this.citedAnswer(answer));this.renderWeb(answerCard,answer);this.renderMemorySources(answerCard,answer);const label=answerCard.querySelector('strong');if(label)label.textContent=answer.incomplete?'回答（未完成）':'回答';if(answer.content)this.addAnswerActions(answerCard,answer,conversation.history.length-1);this.messages.scrollTop=keepPosition?readingPosition:Math.max(0,this.messages.scrollTop+answerCard.getBoundingClientRect().top-this.messages.getBoundingClientRect().top-this.messages.clientTop);}else if(answer)this.renderMessages();this.renderConversationList();await this.persist().catch(e=>this.error(e));if(answer&&!answer.incomplete)this.host.readingSummary?.schedule(this.reader);}
       }
     }
     async saveAnswer(index,kind){

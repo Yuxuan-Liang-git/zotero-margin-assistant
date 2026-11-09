@@ -12,7 +12,20 @@
     if(container.querySelector('#zma-font-size'))bindAppearance(container,api.appearance);
     if(container.querySelector('#zma-web-mode'))bindWeb(container,api.web);
     if(container.querySelector('#zma-custom-prompt'))bindPrompt(container,api.prompt);
+    if(container.querySelector('#zma-memory-enabled'))bindMemory(container,api.memory);
     const auto=container.querySelector('#zma-reading-auto'),summaryStatus=container.querySelector('#zma-reading-status');if(auto){auto.checked=api.readingSummary?.state().enabled??false;auto.disabled=!api.readingSummary;auto.addEventListener('change',async()=>{auto.disabled=true;try{await api.readingSummary.set(auto.checked);summaryStatus.textContent=auto.checked?'自动摘要已开启，空闲后检查新增问答。':'自动摘要已关闭，可在阅读摘要中手动更新。';}catch(e){summaryStatus.textContent=e.message;}finally{auto.checked=api.readingSummary.state().enabled;auto.disabled=false;}});}
+  }
+  function bindMemory(container,api){
+    const enabled=container.querySelector('#zma-memory-enabled'),rebuild=container.querySelector('#zma-memory-rebuild'),exportButton=container.querySelector('#zma-memory-export'),status=container.querySelector('#zma-memory-status');
+    let working=false;
+    const render=()=>{
+      const state=api?.state();enabled.checked=!!state?.enabled;enabled.disabled=working||!api;rebuild.disabled=exportButton.disabled=working||!state?.enabled;
+      if(!working)status.textContent=state?`当前文献库已索引${state.indexed}篇，待处理${state.pending}篇`+(state.partial?`，${state.partial}篇包含部分记录`:'')+(state.skipped?`，${state.skipped}项需要检查。`+state.errors.join('。'):'。')+(['scanning','indexing'].includes(state.phase)?'正在后台分批更新。':''):'研究记忆模块尚未就绪，请重启Zotero。';
+    };
+    const run=async action=>{working=true;render();status.textContent='正在处理研究记忆…';try{await action();}catch(error){status.textContent=error.message;return;}finally{working=false;enabled.disabled=!api;rebuild.disabled=exportButton.disabled=!api?.state().enabled;}render();};
+    enabled.addEventListener('change',()=>{const value=enabled.checked;void run(()=>api.set(value));});
+    rebuild.addEventListener('click',()=>void run(()=>api.rebuild()));exportButton.addEventListener('click',()=>void run(()=>api.export()));
+    const dispose=api?.watch(render);if(dispose)container.ownerDocument.defaultView?.addEventListener('unload',dispose,{once:true});render();
   }
   function bindPrompt(container,api){
     const field=container.querySelector('#zma-custom-prompt'),save=container.querySelector('#zma-prompt-save'),reset=container.querySelector('#zma-prompt-reset'),status=container.querySelector('#zma-prompt-status');

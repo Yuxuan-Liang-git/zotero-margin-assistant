@@ -135,3 +135,12 @@ body.zma-docks-open .split-view {
 .zma-panel .zma-status:empty { display: none; }
 .zma-reader-dock-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; }
 .zma-reader-dock-button svg { width: 16px; height: 16px; }
+.zma-memory-sources { margin: 9px 0; padding: 8px 10px; border: 1px solid var(--zma-line); border-radius: 8px; font-size: .9em; }
+.zma-memory-sources > summary { cursor: pointer; color: var(--zma-muted); }
+.zma-memory-status:empty { display: none; }
+.zma-memory-source { margin-top: 10px; }
+.zma-panel .zma-memory-source > button { border: 0; padding: 0; background: transparent; color: var(--zma-accent); text-align: left; font: inherit; cursor: pointer; }
+.zma-memory-source > small { display: block; color: var(--zma-muted); }
+.zma-memory-excerpt { margin: 6px 0; padding-left: 10px; border-left: 2px solid var(--zma-line); max-height: 240px; overflow: auto; overflow-wrap: anywhere; }
+.zma-panel .zma-memory-cite { display: inline; padding: 0 2px; border: 0; background: transparent; color: var(--zma-accent); font: inherit; cursor: pointer; text-decoration: underline; }
+.zma-memory-highlight { box-shadow: inset 3px 0 var(--zma-accent); padding-left: 10px; }

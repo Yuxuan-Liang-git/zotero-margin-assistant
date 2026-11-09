@@ -1,6 +1,7 @@
 (function(root){
   'use strict';
   const C=root.ZMACore||(typeof require!=='undefined'?require('./core.js'):null);
+  const Memory=root.ZMAMemoryCore||(typeof require!=='undefined'?require('./memory-core.js'):null);
   const MAX_FILE=16*1024*1024,MAX_TEXT=2*1024*1024,MAX_MESSAGE=100000,MAX_TOTAL=1000000,MAX_MESSAGES=200;
   const titleOf=value=>typeof value==='string'&&value.trim()?Array.from(value.trim()).slice(0,120).join(''):'导入对话';
   const mediaWarning='原对话的附件、图片和 PDF 引用材料未随文字导入；如需使用请重新添加。';
@@ -15,8 +16,9 @@
       total+=m.content.length;if(total>MAX_TOTAL)throw new Error('对话正文超过 1000000 字符，请分段导入');
       if(!m.content.trim()&&!(preserveEmptyAnswers&&m.role==='assistant'))continue;
       const last=history.at(-1);
-      if(last?.role===m.role){last.content+='\n\n'+m.content;last.incomplete=!!m.incomplete;if(last.content.length>MAX_MESSAGE)throw new Error('合并后的单条消息超过 100000 字符');}
-      else history.push({role:m.role,content:m.content,incomplete:!!m.incomplete,materials:[]});
+      const memorySources=m.memorySources&&Memory?Memory.cleanSources(m.memorySources):undefined;
+      if(last?.role===m.role){last.content=Memory?Memory.annotatedText(last.content,last.memorySources)+'\n\n'+Memory.annotatedText(m.content,memorySources):last.content+'\n\n'+m.content;delete last.memorySources;last.incomplete=!!m.incomplete;if(last.content.length>MAX_MESSAGE)throw new Error('合并后的单条消息超过 100000 字符');}
+      else history.push({role:m.role,content:m.content,incomplete:!!m.incomplete,materials:[],...(memorySources?.length?{memorySources}:{})});
     }
     if(typeof draft!=='string'||draft.length>MAX_MESSAGE)throw new Error('草稿无效或超过 100000 字符');
     if(!history.length&&!draft.trim())throw new Error('没有可导入的用户/助手文字消息');
@@ -35,7 +37,7 @@
     const warnings=[...(Array.isArray(c.warnings)?c.warnings:[])];
     if(c.draftAttachments?.length||c.draftQuotes?.length||c.history.some(m=>m.materials?.length||m.attachments?.length||m.pdfContext))warnings.push(mediaWarning);
     const W=root.ZMAWeb||(typeof require!=='undefined'?require('./web.js'):null);
-    return normalize(c.history.map(m=>({role:m.role,content:m.role==='assistant'&&m.web&&W?W.citedText(m.content,m.web):m.content,incomplete:m.incomplete})),{...c,warnings,preserveEmptyAnswers:true});
+    return normalize(c.history.map(m=>({role:m.role,content:m.role==='assistant'&&m.web&&W?W.citedText(m.content,m.web):m.content,incomplete:m.incomplete,memorySources:m.memorySources})),{...c,warnings,preserveEmptyAnswers:true});
   }
   function parseJSON(raw){
     bounded(raw,MAX_FILE);let value;try{value=JSON.parse(raw.replace(/^\uFEFF/,''));}catch{throw new Error('JSON 无法解析，请选择解压后的 conversations.json 或插件导出的 JSON');}
@@ -96,11 +98,11 @@
     if(!Array.isArray(c?.history)||typeof c.draft!=='string')throw new Error('对话结构无效');
     const W=root.ZMAWeb||(typeof require!=='undefined'?require('./web.js'):null),warnings=[];
     if(c.draftAttachments?.length||c.draftQuotes?.length||c.history.some(m=>m.materials?.length||m.attachments?.length||m.pdfContext))warnings.push(mediaWarning);
-    const history=c.history.map(m=>{if(!['user','assistant'].includes(m.role)||typeof m.content!=='string')throw new Error('对话角色或正文无效');return {role:m.role,content:m.role==='assistant'&&m.web&&W?W.citedText(m.content,m.web):m.content,incomplete:!!m.incomplete};});
+    const history=c.history.map(m=>{if(!['user','assistant'].includes(m.role)||typeof m.content!=='string')throw new Error('对话角色或正文无效');return {role:m.role,content:m.role==='assistant'&&m.web&&W?W.citedText(m.content,m.web):m.content,incomplete:!!m.incomplete,...(m.memorySources?.length&&Memory?{memorySources:Memory.cleanSources(m.memorySources)}:{})};});
     return {title:titleOf(c.title),createdAt:c.createdAt,updatedAt:c.updatedAt,history,draft:c.draft,warnings};
   }
   function exportJSON(c){return JSON.stringify({format:'zma-conversation',version:1,conversation:portable(c)},null,2)+'\n';}
-  function exportMarkdown(c){const p=portable(c);return `# ${p.title}\n\n`+p.history.map(m=>`## ${m.role==='user'?'用户':'助手'}${m.incomplete?'（未完成）':''}\n\n${m.content}\n\n`).join('')+(p.draft?`## 未发送草稿\n\n${p.draft}\n\n`:'')+(p.warnings.length?'---\n\n'+p.warnings.join('\n\n')+'\n':'');}
+  function exportMarkdown(c){const p=portable(c);return `# ${p.title}\n\n`+p.history.map(m=>`## ${m.role==='user'?'用户':'助手'}${m.incomplete?'（未完成）':''}\n\n${Memory?Memory.annotatedText(m.content,m.memorySources):m.content}\n\n`).join('')+(p.draft?`## 未发送草稿\n\n${p.draft}\n\n`:'')+(p.warnings.length?'---\n\n'+p.warnings.join('\n\n')+'\n':'');}
   function importState(state,prepared){
     const p=normalize(prepared.history,{...prepared,preserveEmptyAnswers:true}),copy=C.cleanState(state),c=C.createConversation(copy);
     Object.assign(c,{title:p.title,createdAt:p.createdAt,updatedAt:Date.now(),history:p.history,draft:p.draft});return C.cleanState(copy);

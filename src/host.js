@@ -13,6 +13,7 @@
   const Docks=root.ZMADocks||(typeof require!=='undefined'?require('./docks.js'):null);
   const Notion=root.ZMANotion||(typeof require!=='undefined'?require('./notion.js'):null);
   const Instructions=root.ZMAInstructions||(typeof require!=='undefined'?require('./instructions.js'):null);
+  const MemoryHost=root.ZMAMemoryHost||(typeof require!=='undefined'?require('./memory-host.js'):null);
   const ID='margin-comments-assistant@local.zotero';
   const referenceStateSignature=state=>JSON.stringify({sources:state?.sources||[],references:state?.references||[],images:state?.images||[]});
   class Host{
@@ -48,6 +49,7 @@
       }
       this.readingAuto=Z.Prefs?.get('margincomments.readingSummaryAuto')!==false;
       this.readingSummary=Reading?new Reading.Manager({key:r=>C.scopeKey(this.scope(r)),load:r=>this.load(r),save:(r,s)=>this.save(r,s),publish:(r,text,record,force)=>this.publishReadingSummary(r,text,record,force),context:r=>this.readingSummaryContext(r),prepareMessages:messages=>this.prepareMessages(messages),client:()=>this.selectedClient(),controller:()=>this.newAbortController(),foreground:()=>this.activeRequests.size>0||this.transferTasks.size>0,enabled:()=>this.running&&this.readingAuto&&(this.provider==='chatgpt'?!!this.auth?.active()?.accessToken:!!this.key),notify:(r)=>{const key=C.scopeKey(this.scope(r));for(const p of this.panels.values())if(C.scopeKey(this.scope(p.reader))===key)p.refreshReadingSummary?.();}}):null;
+      this.memory=MemoryHost?.create(this);
     }
     dockLayoutAPI(){
       return {
@@ -126,10 +128,10 @@
       if((await this.IO.stat(path)).size>16*1024*1024)throw new Error('JSON 文件超过 16 MiB，请仅导出需要的对话后再导入');
       return this.IO.readUTF8(path);
     }
-    async writeConversationFile(text,extension,title){
+    async writeConversationFile(text,extension,title,options={}){
       if(!this.chooseConversationFile)throw new Error('对话文件选择器不可用，请安装新版并重启 Zotero');if(!['json','md'].includes(extension))throw new Error('导出扩展名无效');
       const name=(title||'对话').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').replace(/[. ]+$/g,'').slice(0,80)||'对话';
-      const path=await this.chooseConversationFile(this.runtimeWindow(),{save:true,extension,name:'对话-'+name+'.'+extension});if(!path)return false;
+      const path=await this.chooseConversationFile(this.runtimeWindow(),{save:true,extension,title:options.research?'导出研究笔记':undefined,name:(options.research?'研究笔记-':'对话-')+name+'.'+extension});if(!path)return false;
       const normalized=(this.P.normalize?.(path)||path).replace(/\\/g,'/'),file=normalized.split('/').at(-1).toLowerCase();
       if(!file.endsWith('.'+extension))throw new Error('导出文件扩展名必须为 .'+extension);
       if(file.startsWith('margin-comments-')||/\/margin-comments-assistant\//i.test(normalized)||/\/margin-comments-(?:images|attachments)\//i.test(normalized))throw new Error('不能覆盖插件的本地历史或材料，请使用其他文件名/目录');
@@ -233,7 +235,7 @@
     }
     referenceStateSignature(state){return referenceStateSignature(state);}
     load(reader){this.referenceSignatures??=new Map();const scope=this.scope(reader),key=C.scopeKey(scope);if(!this.states.has(key))this.states.set(key,(async()=>{const state=await this.store.load(scope);this.referenceSignatures.set(key,referenceStateSignature(state));try{await this.ensureHistoryNote(reader);}catch(e){this.Z.logError?.(e);}return state;})());return this.states.get(key);}
-    async save(reader,state){this.referenceSignatures??=new Map();const scope=this.scope(reader),key=C.scopeKey(scope);while(this.transferTasks?.has(key))await this.transferTasks.get(key).catch(()=>{});const previous=this.referenceSignatures.get(key),signature=referenceStateSignature(state);await this.store.save(scope,state);this.referenceSignatures.set(key,signature);if(previous===undefined||previous!==signature)this.refreshReferenceCards(reader);}
+    async save(reader,state){this.referenceSignatures??=new Map();const scope=this.scope(reader),key=C.scopeKey(scope);while(this.transferTasks?.has(key))await this.transferTasks.get(key).catch(()=>{});const previous=this.referenceSignatures.get(key),signature=referenceStateSignature(state);await this.store.save(scope,state);this.referenceSignatures.set(key,signature);this.memory?.schedule(scope);if(previous===undefined||previous!==signature)this.refreshReferenceCards(reader);}
     importConversation(reader,prepared){
       const scope=this.scope(reader),key=C.scopeKey(scope);this.transferTasks??=new Map();
       const task=(this.transferTasks.get(key)||Promise.resolve()).catch(()=>{}).then(async()=>{
@@ -242,12 +244,12 @@
         await this.store.save(scope,next);
         // Publish only the addition. Other windows may have edited existing
         // drafts during the write; replacing their objects would lose edits.
-        state.conversations.push(conversation);state.activeConversationId=conversation.id;this.readingSummary?.schedule(reader);return conversation;
+        state.conversations.push(conversation);state.activeConversationId=conversation.id;this.readingSummary?.schedule(reader);this.memory?.schedule(scope);return conversation;
       });
       this.transferTasks.set(key,task);const clear=()=>{if(this.transferTasks.get(key)===task)this.transferTasks.delete(key);if(!this.transferTasks.size&&!this.activeRequests.size)this.readingSummary?.resume();};task.then(clear,clear);return task;
     }
-    claimRequest(reader){const key=C.scopeKey(this.scope(reader));if(this.activeRequests.has(key)||this.transferTasks?.has(key))throw new Error('此 PDF 已在另一窗口正在生成，请先停止或等待完成');this.readingSummary?.pause();this.activeRequests.add(key);}
-    releaseRequest(reader){this.activeRequests.delete(C.scopeKey(this.scope(reader)));if(!this.activeRequests.size)this.readingSummary?.resume();}
+    claimRequest(reader){const key=C.scopeKey(this.scope(reader));if(this.activeRequests.has(key)||this.transferTasks?.has(key))throw new Error('此 PDF 已在另一窗口正在生成，请先停止或等待完成');this.readingSummary?.pause();this.memory?.pause();this.activeRequests.add(key);}
+    releaseRequest(reader){this.activeRequests.delete(C.scopeKey(this.scope(reader)));if(!this.activeRequests.size){this.readingSummary?.resume();void this.memory?.resume().catch(e=>this.Z.logError?.(e));}}
     isGenerating(reader){const key=C.scopeKey(this.scope(reader));return this.activeRequests.has(key)||!!this.transferTasks?.has(key);}
     runtimeWindow(){const win=this.Z.getMainWindow?.()||this.win;if(!win||win.closed)throw new Error('Zotero 主窗口尚未就绪，请稍后重试');return win;}
     newAbortController(){return new (this.runtimeWindow().AbortController)();}
@@ -256,6 +258,7 @@
     unbindHistoryPane(win){const entry=this.historyPanes.get(win);if(!entry)return;if(entry.pane.viewItems===entry.wrapped)entry.pane.viewItems=entry.original;this.historyPanes.delete(win);}
     async panel(reader){
       if(!this.running||this.closedReaders.has(reader))throw new Error('阅读助手或窗口已关闭');
+      this.memory?.forReader(reader);
       const cached=this.panels.get(reader),docNow=reader._iframeWindow?.document;
       if(cached&&!cached.destroyed&&cached.doc===docNow){if(!cached.node.isConnected){this.installStyles(docNow);docNow.body.append(cached.node);}if(cached.notion&&!cached.notion.destroyed&&!cached.notion.node.isConnected)docNow.body.append(cached.notion.node);cached.refreshDocks?.();return cached;}
       if(cached){this.panels.delete(reader);await cached.destroy();}
@@ -363,7 +366,7 @@
       if(!this.credentials)throw new Error('当前 Zotero 不支持安全保存密钥');
       await this.credentials.save(key,model);
       if(key.trim())this.key=key.trim();this.model=model.trim();this.credentialError='';this.providersChanged();
-    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),appearance:this.appearanceAPI(),web:this.webAPI(),readingSummary:this.readingSummaryAPI(),prompt:this.promptAPI(),chatgpt:this.chatGPTAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
+    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),appearance:this.appearanceAPI(),web:this.webAPI(),readingSummary:this.readingSummaryAPI(),memory:this.memory?.settingsAPI(),prompt:this.promptAPI(),chatgpt:this.chatGPTAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
     async restoreCredentials(){
       if(!this.credentials){this.credentialError='当前 Zotero 不支持安全保存密钥';return;}
       try{const saved=await this.credentials.load();this.key=saved.key;this.model=saved.model;this.credentialError='';}
@@ -460,6 +463,7 @@
     restoreReaders(){
       if(!this.running)return;for(const reader of this.Z.Reader._readers||[])if(this.isPDF(reader)&&!this.closedReaders.has(reader))this.guard(async()=>{
         await reader._initPromise;if(!this.running||this.closedReaders.has(reader))return;const doc=reader._iframeWindow?.document;if(!doc)return;
+        this.memory?.forReader(reader);
         this.watchToolbar(reader,doc);this.ensureToolbar(reader,doc);
         const session=await this.addon.controller.ensureSession(reader);if(session&&!this.closedReaders.has(reader)){this.decorateSession(session);this.bindReferences(reader,session.adapter.document());}
       });
@@ -486,7 +490,7 @@
     async closeReader(reader){this.readingSummary?.forget(reader);this.closedReaders.add(reader);for(const [doc,entry]of this.toolbarObservers)if(entry.reader===reader){entry.observer?.disconnect();entry.parentObserver?.disconnect();entry.discoveryObserver?.disconnect();this.toolbarObservers.delete(doc);}const panel=this.panels.get(reader);this.panels.delete(reader);for(const [doc,entry]of this.cleanups)if(entry.reader===reader){entry.dispose();this.cleanups.delete(doc);}if(panel)await panel.destroy();}
     prune(){const live=new Set(this.Z.Reader._readers||[]);const readers=new Set([...this.panels.keys(),...[...this.cleanups.values()].map(x=>x.reader),...[...this.toolbarObservers.values()].map(x=>x.reader)]);for(const reader of readers)if(!live.has(reader))void this.closeReader(reader);}
     async stop(){
-      this.running=false;await this.readingSummary?.stop();this.key='';for(const panel of this.panels.values())panel.controller?.abort();await this.auth?.stop();this.providerListeners.clear();this.appearanceListeners.clear();this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
+      this.running=false;await this.memory?.stop();await this.readingSummary?.stop();this.key='';for(const panel of this.panels.values())panel.controller?.abort();await this.auth?.stop();this.providerListeners.clear();this.appearanceListeners.clear();this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
       for(const win of [...this.historyPanes.keys()])this.unbindHistoryPane(win);
       for(const {observer,parentObserver,discoveryObserver}of this.toolbarObservers.values()){observer?.disconnect();parentObserver?.disconnect();discoveryObserver?.disconnect();}this.toolbarObservers.clear();
       await Promise.allSettled(this.pending.values());await Promise.allSettled([...this.panels.values()].map(p=>p.destroy()));this.panels.clear();
