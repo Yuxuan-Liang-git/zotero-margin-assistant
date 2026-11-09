@@ -3,7 +3,7 @@
   "importedOn": "2026-11-09",
   "historySource": "Preserved release source ZIP snapshots; import dates are not original development dates.",
   "archivedVersions": 44,
-  "latest": "0.19.1",
+  "latest": "0.19.2",
   "unavailableSnapshots": [
     "0.13.9"
   ],
@@ -1147,6 +1147,36 @@
       "sourceCommit": "18681867da254872b7d3fafb96e04fa7d0119263",
       "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.1",
       "commitSubject": "fix(notion): 恢复网页进程失效后的侧栏加载 (v0.19.1)"
+    },
+    {
+      "version": "0.19.2",
+      "tag": "v0.19.2",
+      "summary": "修复通用论文概述和符号、编号追问匹配其他论文旧问题导致的误召回；保留明确科学主题、题名、DOI和原索引兼容，阅读摘要继续按主题独立整理。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.19.2.xpi",
+          "bytes": 1421871,
+          "sha256": "c271a80c487d02b6462fdb656ffc5010e6692d9744f7cd7cd2ea30bda09054ea"
+        },
+        {
+          "name": "margin-comments-deepseek-0.19.2-source.zip",
+          "bytes": 3306589,
+          "sha256": "74b4100ca1b4dae0e8e3f5ca9c14c8a2d6e6e1737cb0f5adf395bf91c276dc59"
+        },
+        {
+          "name": "verification-report-0.19.2.json",
+          "bytes": 2280,
+          "sha256": "768ed19c09838b052894da687f4610fb37c822c5d092cf96fc2c2852eb860fc7"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 309,
+          "sha256": "36cde0ed9f80ae7af586ec52e36d950980ee812aa6eba8808f64e43ae4c4bfff"
+        }
+      ],
+      "sourceCommit": "2819385df26b658b69de1d9aa4d432fb8f4ea211",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.2",
+      "commitSubject": "fix(memory): 拦截通用提问造成的跨论文误召回 (v0.19.2)"
     }
   ]
 }
