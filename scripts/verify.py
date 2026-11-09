@@ -11,8 +11,10 @@ PROJECT=Path(__file__).resolve().parent.parent
 parser=argparse.ArgumentParser()
 parser.add_argument('--node',default=os.environ.get('ZMA_NODE','node'))
 parser.add_argument('--baseline-xpi',default='C:/Users/HP/Downloads/margin-comments-latex-custom-0.9.5.xpi')
-parser.add_argument('--native-run',default='zotero-0105-native-final')
+parser.add_argument('--native-run',default='zotero-0106-native-final')
 parser.add_argument('--restart-run',default='zotero-0105-final')
+parser.add_argument('--conversation-run',default='zotero-0106-conversation-qa')
+parser.add_argument('--upgrade-run',default='zotero-0106-upgrade')
 args=parser.parse_args()
 version=json.loads((PROJECT/'package.json').read_text(encoding='utf-8'))['version']
 package=PROJECT/f'dist/margin-comments-deepseek-{version}.xpi'
@@ -25,7 +27,7 @@ with zipfile.ZipFile(package) as archive:
     assert manifest['applications']['zotero']['strict_max_version']=='10.0.*'
     assert manifest['applications']['zotero']['id']=='margin-comments@local.zotero'
     assert manifest['applications']['zotero']['update_url']=='https://updates.invalid/margin-comments-deepseek/update.json'
-    for name in ['bootstrap.js','content/scripts/core.js','content/scripts/capture.js','content/scripts/document.js','content/scripts/references.js','content/scripts/deepseek.js','content/scripts/settings.js','content/scripts/math.js','content/scripts/images.js','content/scripts/markdown.js','content/scripts/panel.js','content/scripts/margin-references.js','content/scripts/host.js','content/scripts/assistant-settings.js','content/assistant-settings.xhtml','content/assistant.css','content/vendor/katex/katex.min.css','content/vendor/marked/marked.umd.js','content/vendor/marked/LICENSE.md']:
+    for name in ['bootstrap.js','content/scripts/core.js','content/scripts/capture.js','content/scripts/document.js','content/scripts/references.js','content/scripts/deepseek.js','content/scripts/credentials.js','content/scripts/settings.js','content/scripts/math.js','content/scripts/images.js','content/scripts/markdown.js','content/scripts/panel.js','content/scripts/margin-references.js','content/scripts/host.js','content/scripts/assistant-settings.js','content/assistant-settings.xhtml','content/assistant.css','content/vendor/katex/katex.min.css','content/vendor/marked/marked.umd.js','content/vendor/marked/LICENSE.md']:
         assert name in names,name
     for path in (PROJECT/'build').rglob('*.js'):
         subprocess.run([args.node,'--check',str(path)],check=True,capture_output=True)
@@ -63,6 +65,16 @@ restart_reports=[json.loads((restart_dir/f'report-launch-{n}.json').read_text(en
 installed=restart_dir/'profile/extensions/margin-comments@local.zotero.xpi'
 restart_ok=installed.exists() and hashlib.sha256(installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r['launch']==n and len(r['steps'])==(6 if n==1 else 5) and all(s['ok'] for s in r['steps']) and r.get('packageSha256')==package_hash for n,r in enumerate(restart_reports,1))
 restart_smoke='passed: first launch and two cold restarts with unchanged installed XPI; automatic text PDF/current scan page, Enter, toolbar reopen, two-line MathML, native image note, local copy and persisted image restoration' if restart_ok else 'not passed or not run'
-report={'date':'2026-10-14','xpi_sha256':package_hash,'xpi_size':package.stat().st_size,'baseline_verified_against_original':baseline_verified,'changed_baseline_files':changed,'resource_and_syntax_checks':'passed','source_zip':str(source_zip),'real_api_test':'not run; user key not configured','native_zotero_smoke':native_smoke,'native_cold_restart_and_images':restart_smoke,'current_user_profile_gui_test':'not run; existing profile/library unchanged'}
+conversation_dir=PROJECT/'evidence'/args.conversation_run
+conversation_reports=[json.loads((conversation_dir/f'report-{n}.json').read_text(encoding='utf-8')) if (conversation_dir/f'report-{n}.json').exists() else None for n in [1,2,3]]
+conversation_installed=conversation_dir/'profile/extensions/margin-comments@local.zotero.xpi'
+conversation_ok=conversation_installed.exists() and hashlib.sha256(conversation_installed.read_bytes()).hexdigest()==package_hash and all(r and r.get('done') and r.get('launch')==n and r.get('packageSha256')==package_hash and len(r.get('steps',[]))==3 and all(step['ok'] for step in r['steps']) for n,r in enumerate(conversation_reports,1)) and len({r['process'] for r in conversation_reports if r})==3
+conversation_smoke='passed: v1 dialogue migrated with byte-preserving backup; two PDF conversations and drafts switch and survive two cold restarts; encrypted DeepSeek key/model, toolbar and preferences survive' if conversation_ok else 'not passed or not run'
+upgrade_dir=PROJECT/'evidence'/args.upgrade_run
+upgrade_reports=[json.loads((upgrade_dir/f'report-{n}.json').read_text(encoding='utf-8')) if (upgrade_dir/f'report-{n}.json').exists() else None for n in [1,2]]
+upgrade_first,upgrade_second=upgrade_reports
+upgrade_ok=bool(upgrade_first and upgrade_second and upgrade_first.get('done') and upgrade_second.get('done') and upgrade_first.get('install',{}).get('errorAfter')==0 and upgrade_first['steps'][0].get('addon',{}).get('version')=='0.10.5' and upgrade_first['steps'][-1].get('addon',{}).get('version')==version and upgrade_first['steps'][-1]['addon'].get('isActive') and upgrade_second['steps'][-1].get('addon',{}).get('version')==version and upgrade_second['steps'][-1]['addon'].get('isActive') and upgrade_second.get('preference',{}).get('api') and upgrade_second.get('preference',{}).get('visible'))
+upgrade_smoke='passed: AddonManager upgraded active 0.10.5 to active 0.10.6 beside Notero; API preferences visible after restart' if upgrade_ok else 'not passed or not run'
+report={'date':'2026-10-14','xpi_sha256':package_hash,'xpi_size':package.stat().st_size,'baseline_verified_against_original':baseline_verified,'changed_baseline_files':changed,'resource_and_syntax_checks':'passed','source_zip':str(source_zip),'real_api_test':'not run; user key not configured','native_zotero_smoke':native_smoke,'native_cold_restart_and_images':restart_smoke,'native_conversation_cold_restart':conversation_smoke,'native_upgrade':upgrade_smoke,'current_user_profile_gui_test':'not run; existing profile/library unchanged'}
 (PROJECT/'dist/verification-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(report))

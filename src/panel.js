@@ -8,27 +8,28 @@
     disposeMath;
     constructor(host,reader,doc){this.host=host;this.reader=reader;this.doc=doc;this.materials=[];this.pendingMaterials=new Set();this.destroyed=false;this.busy=false;this.relinkID=null;}
     async init(){
-      this.state=await this.host.load(this.reader);const d=this.doc;
+      this.state=await this.host.load(this.reader);this.conversationId=this.state.activeConversationId;const d=this.doc;
       this.node=el(d,'aside',undefined,'zma-panel');this.node.setAttribute('aria-label','区域阅读助手');this.node.hidden=true;
       const header=el(d,'header');header.append(el(d,'strong','DeepSeek · 文档助手'),button(d,'设置',()=>this.host.settings()),button(d,'关闭',()=>this.close()));
-      this.tabs=el(d,'nav');this.chat=el(d,'section');this.directory=el(d,'section');this.directory.hidden=true;
-      this.tabs.append(button(d,'提问',()=>this.showChat()),button(d,'引用目录',()=>this.showDirectory()));
+      this.tabs=el(d,'nav');this.chat=el(d,'section');this.directory=el(d,'section');this.directory.hidden=true;this.conversationList=el(d,'section',undefined,'zma-conversations');this.conversationList.hidden=true;
+      this.tabs.append(button(d,'提问',()=>this.showChat()),button(d,'对话记录',()=>this.showConversations()),button(d,'引用目录',()=>this.showDirectory()));
       const info=el(d,'p','自动读取当前 PDF，发送时提供文档背景；可附加框选材料。','zma-info');
+      this.activeLabel=el(d,'strong',undefined,'zma-active-conversation');
       this.materialList=el(d,'div',undefined,'zma-materials');
       this.messages=el(d,'div',undefined,'zma-messages');
-      this.question=el(d,'textarea');this.question.dataset.zma='question';this.question.placeholder='例如：公式 (7.41) 如何由 (6.30) 推出？';this.question.setAttribute('aria-label','问题');this.question.value=this.state.draft;
-      this.question.addEventListener('input',()=>{this.state.draft=this.question.value;clearTimeout(this.draftTimer);this.draftTimer=setTimeout(()=>this.persist().catch(e=>this.error(e)),500);});
+      this.question=el(d,'textarea');this.question.dataset.zma='question';this.question.placeholder='例如：公式 (7.41) 如何由 (6.30) 推出？';this.question.setAttribute('aria-label','问题');this.question.value=this.conversation().draft;
+      this.question.addEventListener('input',()=>{const conversation=this.conversation();conversation.draft=this.question.value;C.touchConversation(conversation);clearTimeout(this.draftTimer);this.draftTimer=setTimeout(()=>this.persist().catch(e=>this.error(e)),500);});
       this.question.addEventListener('keydown',e=>{if(e.key!=='Enter'||e.shiftKey||e.ctrlKey||e.altKey||e.metaKey||e.isComposing||e.keyCode===229)return;e.preventDefault();if(!this.busy)void this.send().catch(error=>this.error(error));});
       this.sendButton=button(d,'发送',()=>this.send());this.sendButton.dataset.zma='send';
       this.stopButton=button(d,'停止生成',()=>this.controller?.abort());this.stopButton.disabled=true;
-      const actions=el(d,'div',undefined,'zma-actions');actions.append(this.sendButton,this.stopButton,button(d,'添加当前页',()=>this.addMaterial(()=>this.host.currentPage(this.reader))),button(d,'新会话',async()=>{if(this.busy||this.host.isGenerating?.(this.reader))throw new Error('请先停止生成');this.state.history=[];this.state.draft='';this.question.value='';await this.persist();this.renderMessages();}));
+      const actions=el(d,'div',undefined,'zma-actions');actions.append(this.sendButton,this.stopButton,button(d,'添加当前页',()=>this.addMaterial(()=>this.host.currentPage(this.reader))),button(d,'新会话',()=>this.newConversation()));
       this.contextInfo=el(d,'p','文档背景：自动使用当前 PDF。','zma-context-info');
       this.status=el(d,'p','Enter 发送，Shift+Enter 换行。','zma-status');this.status.setAttribute('role','status');
-      const composer=el(d,'div',undefined,'zma-composer');composer.append(this.question,actions);this.chat.className='zma-chat';this.chat.append(info,this.contextInfo,this.materialList,this.messages,composer);
+      const composer=el(d,'div',undefined,'zma-composer');composer.append(this.question,actions);this.chat.className='zma-chat';this.chat.append(this.activeLabel,info,this.contextInfo,this.materialList,this.messages,composer);
       this.previewArea=el(d,'section',undefined,'zma-previews');
-      this.node.append(header,this.tabs,this.previewArea,this.chat,this.directory,this.status);d.body.append(this.node);
+      this.node.append(header,this.tabs,this.previewArea,this.chat,this.conversationList,this.directory,this.status);d.body.append(this.node);
       this.directory.className='zma-directory';this.installResizeHandle();
-      this.renderMaterials();this.renderMessages();return this;
+      this.renderMaterials();this.renderMessages();this.renderConversationList();return this;
     }
     installResizeHandle(){
       const handle=el(this.doc,'div',undefined,'zma-resizer');handle.setAttribute('role','separator');handle.setAttribute('aria-label','调整文档助手宽度');handle.setAttribute('aria-orientation','vertical');this.node.prepend(handle);
@@ -37,7 +38,31 @@
     }
     open(){this.node.hidden=false;this.doc.body.classList.add('zma-assistant-open');}
     close(){this.node.hidden=true;this.doc.body.classList.remove('zma-assistant-open');}
-    showChat(){this.open();this.chat.hidden=false;this.directory.hidden=true;}
+    conversation(){return C.activeConversation(this.state,this.conversationId);}
+    showChat(){this.open();this.chat.hidden=false;this.directory.hidden=true;this.conversationList.hidden=true;}
+    showConversations(){this.open();this.chat.hidden=true;this.directory.hidden=true;this.conversationList.hidden=false;this.renderConversationList();}
+    renderConversationList(){
+      this.conversationList.replaceChildren(button(this.doc,'新会话',()=>this.newConversation()));
+      for(const conversation of [...this.state.conversations].sort((a,b)=>b.updatedAt-a.updatedAt)){
+        const row=el(this.doc,'div',undefined,'zma-conversation-row');
+        if(conversation.id===this.conversationId)row.classList.add('zma-current');
+        const label=conversation.title||'新对话';
+        const open=button(this.doc,label,()=>this.switchConversation(conversation.id));open.title=label;
+        row.append(open,el(this.doc,'small',conversation.updatedAt?new Date(conversation.updatedAt).toLocaleString():'旧版对话'));
+        this.conversationList.append(row);
+      }
+    }
+    async switchConversation(id){
+      if(this.busy||this.pendingMaterials.size||this.host.isGenerating?.(this.reader))throw new Error('请先等待当前操作完成');
+      C.selectConversation(this.state,id);this.conversationId=id;this.materials=[];this.question.value=this.conversation().draft;
+      this.contextInfo.textContent='文档背景：自动使用当前 PDF。';this.renderMaterials();this.renderMessages();this.renderConversationList();this.showChat();await this.persist();
+    }
+    async newConversation(){
+      if(this.busy||this.pendingMaterials.size||this.host.isGenerating?.(this.reader))throw new Error('请先等待当前操作完成');
+      const current=this.conversation();
+      const next=current.history.length||current.draft.trim()?C.createConversation(this.state):current;
+      await this.switchConversation(next.id);this.question.focus();
+    }
     error(e){if(!this.destroyed)this.status.textContent=e.message||String(e);}
     async persist(){if(this.destroyed)return;await this.host.save(this.reader,this.state);}
     async addMaterial(source){
@@ -65,7 +90,8 @@
     }
     renderMessages(){
       this.messages.replaceChildren();
-      this.state.history.forEach((m,i)=>{
+      const conversation=this.conversation();this.activeLabel.textContent=`当前对话：${conversation.title||'新对话'}`;
+      conversation.history.forEach((m,i)=>{
         const card=el(this.doc,'article',undefined,`zma-message zma-${m.role}`);card.append(el(this.doc,'strong',m.role==='user'?'问题':m.incomplete?'回答（未完成）':'回答'));
         const text=el(this.doc,'div',undefined,'zma-answer');
         if(m.role==='assistant')this.renderAnswer(text,m.content);else text.textContent=m.content;
@@ -73,14 +99,14 @@
         if(m.role==='assistant'&&m.content){const actions=el(this.doc,'div',undefined,'zma-actions');actions.append(button(this.doc,'复制',()=>this.host.copy(m.content)),button(this.doc,'保存为笔记',()=>this.saveAnswer(i,'note')),button(this.doc,'保存到批注',()=>this.saveAnswer(i,'comment')));card.append(actions);}
         this.messages.append(card);
       });
-      if(!this.state.history.length)this.messages.append(el(this.doc,'p','直接问“当前这篇论文讲了什么”即可；助手会自动读取当前 PDF。也可框选内容或加入前文引用，进一步解释公式。','zma-empty-chat'));
+      if(!conversation.history.length)this.messages.append(el(this.doc,'p','直接问“当前这篇论文讲了什么”即可；助手会自动读取当前 PDF。也可框选内容或加入前文引用，进一步解释公式。','zma-empty-chat'));
       this.messages.scrollTop=this.messages.scrollHeight;
     }
     renderAnswer(node,text){if(root.ZMAMarkdown)root.ZMAMarkdown.render(node,text,this.host.addon.bridge.renderMathPreview);else this.host.addon.bridge.renderMathPreview(node,text);}
     async send(){
       if(this.busy)return;if(this.pendingMaterials.size)throw new Error('材料正在读取，请完成后再发送');const question=this.question.value.trim();if(!question)throw new Error('请输入问题');
       // A retry replaces the failed pair, rather than duplicating its user message.
-      const history=this.state.history.slice();
+      const conversation=this.conversation(),history=conversation.history.slice();
       if(history.at(-1)?.incomplete&&history.at(-2)?.role==='user'&&history.at(-2).content===question)history.splice(-2);
       const controller=this.host.newAbortController();this.host.claimRequest?.(this.reader);this.busy=true;this.sendButton.disabled=true;this.stopButton.disabled=false;this.renderMaterials();this.status.textContent='准备来源…';
       this.controller=controller;const deadline=setTimeout(()=>this.controller?.abort(),180000);
@@ -101,23 +127,23 @@
         const submitted=[...refreshed];if(context?.material&&submitted.length<8&&!submitted.some(m=>m.source.fullPage&&m.source.pageIndex===context.material.source.pageIndex))submitted.push(context.material);
         user={role:'user',content:question,materials:submitted.map(m=>({...C.pickSource(m.source),type:m.source.type,number:m.source.number,description:m.source.description})),incomplete:false};
         answer={role:'assistant',content:'',materials:[],incomplete:true};
-        this.state.history=[...history,user,answer];this.state.draft=this.question.value;await this.persist();this.renderMessages();
+        conversation.history=[...history,user,answer];conversation.draft=this.question.value;C.touchConversation(conversation);await this.persist();this.renderMessages();this.renderConversationList();
         this.status.textContent='DeepSeek 正在回答…';
         answer.content=await this.host.client.generate(messages,{signal:this.controller.signal,onDelta:delta=>{
           answer.content+=delta;if(!this.destroyed){const follow=this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80;const last=this.messages.lastElementChild?.querySelector('.zma-answer');if(last)this.renderAnswer(last,answer.content);if(follow)this.messages.scrollTop=this.messages.scrollHeight;}
         }});
-        answer.incomplete=false;if(this.question.value.trim()===question)this.question.value='';this.state.draft=this.question.value;this.status.textContent='回答完成，可追问或保存。';
+        answer.incomplete=false;if(this.question.value.trim()===question)this.question.value='';conversation.draft=this.question.value;C.touchConversation(conversation);this.status.textContent='回答完成，可追问或保存。';
       }catch(e){
         if(answer){answer.content=e.partial??answer.content;answer.incomplete=true;}
-        this.state.draft=this.question.value;this.error(e);
+        conversation.draft=this.question.value;C.touchConversation(conversation);this.error(e);
       }finally{
         clearTimeout(deadline);this.controller=null;this.busy=false;this.host.releaseRequest?.(this.reader);
-        if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();this.renderMessages();await this.persist().catch(e=>this.error(e));}
+        if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();this.renderMessages();this.renderConversationList();await this.persist().catch(e=>this.error(e));}
       }
     }
     async saveAnswer(index,kind){
       if(this.busy)throw new Error('请先等待回答或停止生成');
-      const answer=this.state.history[index],question=this.state.history[index-1];if(!answer?.content||question?.role!=='user')return;
+      const history=this.conversation().history,answer=history[index],question=history[index-1];if(!answer?.content||question?.role!=='user')return;
       const doc=this.doc;const form=el(doc,'div',undefined,'zma-save-preview');
       const preview=el(doc,'textarea');preview.value=`问题：${question.content}\n\n${answer.incomplete?'[未完成回答]\n':''}${answer.content}`;
       preview.setAttribute('aria-label','保存内容预览');
@@ -157,7 +183,7 @@
       }),button(doc,'取消',()=>{form.remove();this.relinkID=null;}));this.node.append(form);number.focus();
     }
     async showDirectory(target){
-      this.open();this.chat.hidden=true;this.directory.hidden=false;this.directory.replaceChildren();this.insertTarget=target;
+      this.open();this.chat.hidden=true;this.conversationList.hidden=true;this.directory.hidden=false;this.directory.replaceChildren();this.insertTarget=target;
       const query=el(this.doc,'input');query.placeholder='输入编号，例如 6.30';query.setAttribute('aria-label','查找引用编号');
       const type=el(this.doc,'select');type.append(el(this.doc,'option','全部'));C.TYPES.forEach(t=>type.append(el(this.doc,'option',t)));
       const list=el(this.doc,'div');

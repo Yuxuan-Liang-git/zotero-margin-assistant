@@ -16,7 +16,7 @@ def replace_once(text, old, new):
 def build():
     out = PROJECT / 'build'
     # Only generated build output is removed, after absolute-target and link checks.
-    if out.resolve() != PROJECT / 'build' or out.is_symlink() or out.is_junction():
+    if out.resolve() != PROJECT / 'build' or out.is_symlink() or getattr(out, 'is_junction', lambda: False)():
         raise RuntimeError('Refusing to clean a redirected build directory')
     if out.exists():
         shutil.rmtree(out)
@@ -73,7 +73,7 @@ def build():
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
   Services.scriptloader.loadSubScript(rootURI + "content/vendor/marked/marked.umd.js", context);
-  for (const name of ["core", "capture", "document", "references", "deepseek", "settings", "math", "markdown", "panel", "margin-references", "images", "host"]) {
+  for (const name of ["core", "capture", "document", "references", "deepseek", "credentials", "settings", "math", "markdown", "panel", "margin-references", "images", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();

@@ -51,28 +51,66 @@
   }
   function escapeHTML(v) {return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function storedLink(s,groupID) {return `<a href="${sourceLink(s,groupID)}">${escapeHTML(`${s.type||'来源'} (${s.number||s.annotationKey}) · 第 ${s.pageLabel} 页`)}</a>`;}
-  function emptyState() {return {version:1,sources:[],references:[],history:[],draft:'',images:[],imageNoteKey:null};}
+  const conversationID=/^[a-zA-Z0-9_-]{1,64}$/;
+  function blankConversation(id='default',now=Date.now()){return {id,title:'新对话',createdAt:now,updatedAt:now,history:[],draft:''};}
+  function emptyState() {const conversation=blankConversation();return {version:2,sources:[],references:[],conversations:[conversation],activeConversationId:conversation.id,images:[],imageNoteKey:null};}
+  function activeConversation(state,id=state.activeConversationId){const conversation=state.conversations?.find(c=>c.id===id);if(!conversation)throw new Error('对话不存在');return conversation;}
+  function selectConversation(state,id){activeConversation(state,id);state.activeConversationId=id;return activeConversation(state);}
+  function createConversation(state,id=`chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`,now=Date.now()){
+    if(!conversationID.test(id)||!Number.isSafeInteger(now)||now<0)throw new Error('对话标识无效');
+    if(state.conversations.some(c=>c.id===id))throw new Error('对话标识重复');
+    const conversation=blankConversation(id,now);state.conversations.push(conversation);state.activeConversationId=id;return conversation;
+  }
+  function touchConversation(conversation,now=Date.now()){
+    if(!Number.isSafeInteger(now)||now<0)throw new Error('对话时间无效');
+    conversation.updatedAt=now;
+    if(conversation.title==='新对话'){
+      const first=conversation.history.find(m=>m.role==='user'&&m.content.trim());
+      if(first)conversation.title=Array.from(first.content.trim().replace(/\s+/g,' ')).slice(0,40).join('');
+    }
+  }
   function pickImage(record){
     const mimeExtensions={'image/png':'png','image/jpeg':'jpg','image/gif':'gif','image/webp':'webp'};
     if(!record||typeof record.id!=='string'||!/^[a-f0-9]{32}$/.test(record.id)||!keyPattern.test(record.annotationKey)||!keyPattern.test(record.noteKey)||!keyPattern.test(record.noteImageKey)||record.fileName!==`margin-comment-${record.id}.${mimeExtensions[record.mime]}`||!mimeExtensions[record.mime])throw new Error('图片记录数据损坏');
     return {id:record.id,annotationKey:record.annotationKey,fileName:record.fileName,mime:record.mime,noteKey:record.noteKey,noteImageKey:record.noteImageKey};
   }
+  function cleanMessage(m){
+    if(!['user','assistant'].includes(m?.role)||typeof m.content!=='string'||m.materials!==undefined&&!Array.isArray(m.materials))throw new Error('对话数据损坏');
+    return {role:m.role,content:m.content,incomplete:!!m.incomplete,materials:(m.materials||[]).map(s=>({...pickSource(s),type:s.type,number:s.number,description:s.description}))};
+  }
+  function cleanConversation(c){
+    if(!c||!conversationID.test(c.id)||typeof c.title!=='string'||c.title.length>120||!Number.isSafeInteger(c.createdAt)||c.createdAt<0||!Number.isSafeInteger(c.updatedAt)||c.updatedAt<0||!Array.isArray(c.history)||typeof c.draft!=='string')throw new Error('对话数据损坏');
+    return {id:c.id,title:c.title,createdAt:c.createdAt,updatedAt:c.updatedAt,history:c.history.map(cleanMessage),draft:c.draft};
+  }
   function cleanState(value) {
-    if(!value||value.version!==1||!Array.isArray(value.sources)||!Array.isArray(value.references)||!Array.isArray(value.history)||typeof value.draft!=='string')throw new Error('数据损坏或版本不兼容');
+    if(!value||![1,2].includes(value.version)||!Array.isArray(value.sources)||!Array.isArray(value.references))throw new Error('数据损坏或版本不兼容');
     const idx=new ReferenceIndex([]);value.sources.forEach(s=>idx.add(s));
     if(value.images!==undefined&&!Array.isArray(value.images)||value.imageNoteKey&&(!keyPattern.test(value.imageNoteKey)||typeof value.imageNoteKey!=='string'))throw new Error('图片记录数据损坏');
-    return {version:1,sources:idx.records,references:value.references.map(r=>({annotationKey:String(r.annotationKey),sourceID:String(r.sourceID),link:String(r.link)})).filter(r=>keyPattern.test(r.annotationKey)&&parseSourceLink(r.link)),history:value.history.map(m=>{
-      if(!['user','assistant'].includes(m.role)||typeof m.content!=='string')throw new Error('对话数据损坏');
-      return {role:m.role,content:m.content,incomplete:!!m.incomplete,materials:(m.materials||[]).map(s=>({...pickSource(s),type:s.type,number:s.number,description:s.description}))};
-    }),draft:value.draft,images:(value.images||[]).map(pickImage),imageNoteKey:value.imageNoteKey||null};
+    let conversations,activeConversationId;
+    if(value.version===1){
+      if(!Array.isArray(value.history)||typeof value.draft!=='string')throw new Error('旧版对话数据损坏');
+      const legacy=blankConversation('default',0);legacy.history=value.history.map(cleanMessage);legacy.draft=value.draft;touchConversation(legacy,0);
+      conversations=[legacy];activeConversationId=legacy.id;
+    }else{
+      if(!Array.isArray(value.conversations)||!value.conversations.length||typeof value.activeConversationId!=='string')throw new Error('对话数据损坏');
+      conversations=value.conversations.map(cleanConversation);activeConversationId=value.activeConversationId;
+      if(new Set(conversations.map(c=>c.id)).size!==conversations.length||!conversations.some(c=>c.id===activeConversationId))throw new Error('对话索引损坏');
+    }
+    return {version:2,sources:idx.records,references:value.references.map(r=>({annotationKey:String(r.annotationKey),sourceID:String(r.sourceID),link:String(r.link)})).filter(r=>keyPattern.test(r.annotationKey)&&parseSourceLink(r.link)),conversations,activeConversationId,images:(value.images||[]).map(pickImage),imageNoteKey:value.imageNoteKey||null};
   }
   class LocalStore {
     constructor(adapter){this.adapter=adapter;this.queues=new Map();this.blocked=new Set();}
     async load(scope){
       const path=scopeKey(scope)+'.json';
       if(!await this.adapter.exists(path))return emptyState();
-      try{return cleanState(JSON.parse(await this.adapter.read(path)));}
+      let raw,parsed,state;
+      try{raw=await this.adapter.read(path);parsed=JSON.parse(raw);state=cleanState(parsed);}
       catch{this.blocked.add(path);throw new Error('本地数据损坏：已保留原文件，请先恢复备份，未覆盖数据');}
+      if(parsed.version===1){
+        try{if(!await this.adapter.exists(path+'.v1.bak'))await this.adapter.writeAtomic(path+'.v1.bak',raw);}
+        catch{this.blocked.add(path);throw new Error('旧版对话备份失败：未覆盖原文件');}
+      }
+      return state;
     }
     save(scope,state){
       const path=scopeKey(scope)+'.json';
@@ -83,6 +121,6 @@
     }
     async flush(){await Promise.all(this.queues.values());}
   }
-  const api={TYPES,scopeKey,normalizeNumber,validateSource,pickSource,ReferenceIndex,sourceLink,parseSourceLink,storedLink,escapeHTML,emptyState,cleanState,LocalStore};
+  const api={TYPES,scopeKey,normalizeNumber,validateSource,pickSource,ReferenceIndex,sourceLink,parseSourceLink,storedLink,escapeHTML,emptyState,activeConversation,selectConversation,createConversation,touchConversation,cleanState,LocalStore};
   root.ZMACore=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof _globalThis!=='undefined'?_globalThis:globalThis);

@@ -1,10 +1,10 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');
 const H=fs.existsSync(__dirname+'/../src/host.js')?require('../src/host.js'):{};
 globalThis.ZMAPanel={Panel:class{constructor(){this.node={};}async init(){if(globalThis.waitInit)await globalThis.waitInit;return this;}async destroy(){globalThis.destroyedPending=true;}}};
-function fixture(){
+function fixture(overrides={}){
   const attachment={id:1,libraryID:1,key:'ABCD1234',getFilePathAsync:async()=> '/book.pdf',isEditable:()=>true};
   const annotation={id:2,key:'FORM0630',libraryID:1,parentID:1,isAnnotation:()=>true,annotationType:'image',annotationPageLabel:'60',annotationPosition:JSON.stringify({pageIndex:65,rects:[[10,20,90,50]]}),annotationComment:'已有评论',isEditable:()=>true,saveTx:async()=>{}};
-  const events=new Map();const Z={Items:{get:id=>id===1?attachment:annotation,getByLibraryAndKey:(lib,key)=>key===attachment.key?attachment:key===annotation.key?annotation:null},Reader:{_readers:[],registerEventListener:(name,fn)=>events.set(name,fn),_unregisterEventListenerByPluginID:()=>events.clear()},Libraries:{get:()=>({libraryType:'user'})},Notifier:{registerObserver:()=>1,unregisterObserver:()=>{}},DataDirectory:{dir:'/data'}};
+  const events=new Map();const Z={Items:{get:id=>id===1?attachment:annotation,getByLibraryAndKey:(lib,key)=>key===attachment.key?attachment:key===annotation.key?annotation:null},Reader:{_readers:[],registerEventListener:(name,fn)=>events.set(name,fn),_unregisterEventListenerByPluginID:()=>events.clear()},Libraries:{get:()=>({libraryType:'user'})},Notifier:{registerObserver:()=>1,unregisterObserver:()=>{}},DataDirectory:{dir:'/data'},...overrides};
   const files=new Map();const IO={exists:async p=>files.has(p),readUTF8:async p=>files.get(p),writeUTF8:async(p,s)=>files.set(p,s),makeDirectory:async()=>{},stat:async()=>({size:123,lastModified:9})};
   const host=new H.Host({controller:{}},{Zotero:Z,IOUtils:IO,PathUtils:{join:(...p)=>p.join('/')},window:{fetch:async()=>{},TextDecoder,AbortController}});
   return {host,Z,annotation,attachment,events,files};
@@ -32,7 +32,7 @@ test('region menus constrain attachment/type and lifecycle removes registered ca
 });
 test('two readers for one attachment share index state instead of overwriting additions',async()=>{
   const {host}=fixture();const first=await host.load({itemID:1});const second=await host.load({itemID:1});
-  first.draft='from first reader';await host.save({itemID:1},first);assert.equal(second.draft,'from first reader');
+  require('../src/core.js').activeConversation(first).draft='from first reader';await host.save({itemID:1},first);assert.equal(require('../src/core.js').activeConversation(second).draft,'from first reader');
 });
 test('same attachment cannot generate concurrently through two reader panels',()=>{
   const {host}=fixture();assert.equal(typeof host.claimRequest,'function');host.claimRequest({itemID:1});assert.throws(()=>host.claimRequest({itemID:1}),/正在生成/);host.releaseRequest({itemID:1});host.claimRequest({itemID:1});
@@ -49,6 +49,22 @@ test('reader closed during assistant initialization cannot publish a stale panel
 });
 test('DeepSeek settings command opens its native Zotero preferences without a separate dialog',()=>{
   const {host,Z}=fixture();let pane;Z.Utilities={Internal:{openPreferences:id=>{pane=id;}}};host.settings();assert.equal(pane,'margin-comments-preferences');
+});
+
+test('host restores a locally encrypted DeepSeek key and model after restart',async()=>{
+  const prefs=new Map();
+  const adapter={
+    Prefs:{get:name=>prefs.get(name),set:(name,value)=>prefs.set(name,value),clear:name=>prefs.delete(name)},
+    OSKeyStore:{encrypt:async value=>'oskv1:'+Buffer.from(value).toString('base64'),decrypt:async value=>Buffer.from(value.slice(6),'base64').toString()},
+  };
+  const {host:old,Z}=fixture(adapter);
+  await old.start();await old.settingsAPI().apply('sk-persisted','deepseek-chat');await old.stop();
+  assert.ok(!JSON.stringify([...prefs]).includes('sk-persisted'));
+  const restored=new H.Host(old.addon,{Zotero:Z,IOUtils:old.IO,PathUtils:old.P,window:old.win});
+  await restored.start();
+  assert.equal(restored.key,'sk-persisted');assert.equal(restored.model,'deepseek-chat');
+  await restored.settingsAPI().clear();assert.equal(restored.key,'');assert.equal(prefs.has('margincomments.deepseekKey'),false);
+  await restored.stop();
 });
 
 test('highlight sources use the selected native passage and reject changed text',async()=>{

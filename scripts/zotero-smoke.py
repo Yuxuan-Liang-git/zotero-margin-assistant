@@ -95,10 +95,10 @@ async function startup() {
         const response='## 三段式结构\n\n**关键结论**：\\(I_a<I_{thr}\\)\n\n- 第一项\n- 第二项\n\n\\[x^2=a+b\\]';
         addon.assistant.client={generate:async(_messages,{onDelta})=>{onDelta(response);return response;}};
         try{
-          for(const question of ['请解释所列材料','继续追问其定义']){const before=panel.state.history.length;panel.question.value=question;panel.sendButton.click();for(let n=0;n<150;n++){if(!panel.busy&&panel.state.history.length===before+2)break;await new Promise(r=>setTimeout(r,20));}if(panel.state.history.length!==before+2||panel.state.history.at(-1).incomplete)throw new Error('Native send button did not produce a complete mock turn');}
+          for(const question of ['请解释所列材料','继续追问其定义']){const before=panel.conversation().history.length;panel.question.value=question;panel.sendButton.click();for(let n=0;n<150;n++){if(!panel.busy&&panel.conversation().history.length===before+2)break;await new Promise(r=>setTimeout(r,20));}if(panel.conversation().history.length!==before+2||panel.conversation().history.at(-1).incomplete)throw new Error('Native send button did not produce a complete mock turn');}
           const button=panel.sendButton.getBoundingClientRect(),chat=panel.chat.getBoundingClientRect();if(button.bottom>chat.bottom+1)throw new Error('Send button is clipped in the sidebar');
           const answer=panel.messages.lastElementChild.querySelector('.zma-answer'),scriptGlobal=Components.utils.getGlobalForObject(addon.assistant.constructor);report.markdownDiagnostics={h2:answer.querySelectorAll('h2').length,strong:answer.querySelectorAll('strong').length,li:answer.querySelectorAll('li').length,math:answer.querySelectorAll('math').length,globalMarked:typeof scriptGlobal.marked,contextMarked:typeof scriptGlobal._globalThis?.marked,html:answer.innerHTML};await write();if(!answer.querySelector('h2')||!answer.querySelector('strong')||answer.querySelectorAll('li').length!==2||answer.querySelectorAll('math').length!==2)throw new Error('Markdown and math did not render in native Gecko');
-          return {turns:2,messages:panel.state.history.length,api:'mock; no request sent',sendButtonVisible:true,markdownAndMath:true};
+          return {turns:2,messages:panel.conversation().history.length,api:'mock; no request sent',sendButtonVisible:true,markdownAndMath:true};
         }finally{addon.assistant.client=client;}
       });
       await step('native-zotero-preference-pane',async()=>{
@@ -106,7 +106,10 @@ async function startup() {
         let prefs;for(const win of Services.wm.getEnumerator(null)){if(win.document.getElementById('zma-api-key'))prefs=win;}
         if(!prefs)throw new Error('DeepSeek fields not found in Zotero preferences');
         const key=prefs.document.getElementById('zma-api-key');key.value='preferences-smoke-placeholder';prefs.document.getElementById('zma-api-apply').click();
-        if(addon.assistant.key!=='preferences-smoke-placeholder')throw new Error('Preference API field is not bound');prefs.document.getElementById('zma-api-clear').click();return {masked:key.type==='password',cleared:addon.assistant.key===''};
+        for(let n=0;n<150&&addon.assistant.key!=='preferences-smoke-placeholder';n++)await new Promise(r=>setTimeout(r,20));
+        if(addon.assistant.key!=='preferences-smoke-placeholder')throw new Error('Preference API field is not bound: '+prefs.document.getElementById('zma-api-status').textContent);
+        prefs.document.getElementById('zma-api-clear').click();for(let n=0;n<150&&addon.assistant.key;n++)await new Promise(r=>setTimeout(r,20));
+        return {masked:key.type==='password',cleared:addon.assistant.key===''};
       });
       await step('native-text-selection-reference',async()=>{
         const snapshot={type:'highlight',text:'前文定义：\\(x^2=a+b\\)',pageLabel:'100',sortIndex:'00000|000020|00000',position:{pageIndex:0,rects:[[60,570,450,590]]},color:'#ffd400',comment:''};

@@ -57,22 +57,37 @@ test('question panel explicitly sends two regions, restores failure, and separat
     assert.equal(await page.evaluate(()=>sends.length),0);
     await page.locator('[data-zma="question"]').first().fill('为什么使用前文公式？');
     await page.locator('[data-zma="send"]').first().click();
-    await page.waitForFunction(()=>panel1.state.history.length===2);
+    await page.waitForFunction(()=>panel1.conversation().history.length===2);
     assert.equal(await page.evaluate(()=>sends[0].at(-1).content.filter(x=>x.type==='image_url').length),2);
-    assert.equal(await page.evaluate(()=>panel2.state.history.length),0);
-    assert.equal(await page.evaluate(()=>panel1.state.history.at(-1).incomplete),false);
+    assert.equal(await page.evaluate(()=>panel2.conversation().history.length),0);
+    assert.equal(await page.evaluate(()=>panel1.conversation().history.at(-1).incomplete),false);
     await page.evaluate(()=>{panel1.host.client.generate=async()=>{const e=new Error('限流');e.partial='部分';throw e;};});
     await page.locator('[data-zma="question"]').first().fill('追问');await page.locator('[data-zma="send"]').first().click();
-    await page.waitForFunction(()=>panel1.state.history.at(-1).incomplete);
+    await page.waitForFunction(()=>panel1.conversation().history.at(-1).incomplete);
     assert.equal(await page.locator('[data-zma="question"]').first().inputValue(),'追问');
-    assert.equal(await page.evaluate(()=>panel1.state.history.at(-1).content),'部分');
+    assert.equal(await page.evaluate(()=>panel1.conversation().history.at(-1).content),'部分');
     await page.evaluate(()=>{panel1.host.client.generate=()=>new Promise(resolve=>globalThis.finishAnswer=resolve);});
     await page.locator('[data-zma="question"]').first().fill('提交的问题');await page.locator('[data-zma="send"]').first().click();
     await page.waitForFunction(()=>!!globalThis.finishAnswer);
     await page.locator('[data-zma="question"]').first().fill('新输入但尚未发送的追问');await page.evaluate(()=>finishAnswer('完成'));
     await page.waitForFunction(()=>!panel1.busy);
     assert.equal(await page.locator('[data-zma="question"]').first().inputValue(),'新输入但尚未发送的追问');
-    assert.equal(await page.evaluate(()=>panel1.state.draft),'新输入但尚未发送的追问');
+    assert.equal(await page.evaluate(()=>panel1.conversation().draft),'新输入但尚未发送的追问');
+    await page.locator('.zma-panel').first().getByRole('button',{name:'对话记录'}).click();
+    await page.locator('.zma-panel').first().locator('.zma-conversations').getByRole('button',{name:'新会话'}).click();
+    await page.waitForFunction(()=>panel1.state.conversations.length===2);
+    assert.equal(await page.locator('[data-zma="question"]').first().inputValue(),'');
+    await page.evaluate(()=>{panel1.host.client.generate=async()=> '第二段答案';});
+    await page.locator('[data-zma="question"]').first().fill('第二段独立提问');
+    await page.locator('[data-zma="send"]').first().click();
+    await page.waitForFunction(()=>panel1.conversation().history.length===2&&!panel1.busy);
+    assert.equal(await page.evaluate(()=>panel1.state.conversations[0].history.length),6);
+    await page.locator('.zma-panel').first().getByRole('button',{name:'对话记录'}).click();
+    await page.locator('.zma-panel').first().locator('.zma-conversations').getByRole('button',{name:'为什么使用前文公式？'}).click();
+    await page.waitForFunction(()=>panel1.conversation().history.length===6);
+    assert.equal(await page.locator('[data-zma="question"]').first().inputValue(),'新输入但尚未发送的追问');
+    const restored=await page.evaluate(async()=>{const p=new ZMAPanel.Panel(panel1.host,{itemID:1},document);await p.init();return {count:p.state.conversations.length,title:p.conversation().title,history:p.conversation().history.length};});
+    assert.deepEqual(restored,{count:2,title:'为什么使用前文公式？',history:6});
   }finally{await browser.close();}
 });
 
@@ -97,20 +112,26 @@ test('native Zotero region renderer is used without entering PDF page proxies',a
   }finally{await browser.close();}
 });
 
-test('Zotero preferences provide session-only masked API entry without a PDF reader',async()=>{
+test('Zotero preferences save an encrypted API key and restore it after restart',async()=>{
   const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
   try{const page=await browser.newPage();
     const prefs=require('node:fs').readFileSync(path.resolve(__dirname,'../build/content/preferences.xhtml'),'utf8');
     await page.setContent(prefs.replace(/html:/g,''));
-    for(const name of ['core','deepseek','capture','settings','host']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(require('node:fs').existsSync(file))await page.addScriptTag({path:file});}
+    for(const name of ['core','deepseek','capture','credentials','settings','host']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(require('node:fs').existsSync(file))await page.addScriptTag({path:file});}
     const available=await page.evaluate(()=>{
       if(!document.querySelector('#zma-api-key')||!ZMAHost.Host.prototype.bindPreferencePaneWindow)return false;
-      globalThis.preferenceHost=new ZMAHost.Host({controller:{}},{Zotero:{DataDirectory:{dir:'/data'}},IOUtils:{},PathUtils:{join:(...p)=>p.join('/')},window});
+      globalThis.savedPrefs=new Map();globalThis.fakeZotero={DataDirectory:{dir:'/data'},Prefs:{get:name=>savedPrefs.get(name),set:(name,value)=>savedPrefs.set(name,value),clear:name=>savedPrefs.delete(name)},OSKeyStore:{encrypt:async value=>'oskv1:'+btoa(value),decrypt:async value=>atob(value.slice(6))}};
+      globalThis.preferenceHost=new ZMAHost.Host({controller:{}},{Zotero:fakeZotero,IOUtils:{},PathUtils:{join:(...p)=>p.join('/')},window});
       preferenceHost.bindPreferencePaneWindow(window);return true;
     });assert.ok(available,'API settings should exist directly in the preference pane');
     assert.equal(await page.locator('#zma-api-key').getAttribute('type'),'password');await page.locator('#zma-api-key').fill('test-secret');await page.locator('#zma-api-apply').click();
+    await page.waitForFunction(()=>preferenceHost.key==='test-secret');
     assert.equal(await page.evaluate(()=>preferenceHost.key),'test-secret');assert.equal(await page.locator('#zma-api-key').inputValue(),'');
-    await page.locator('#zma-api-clear').click();assert.equal(await page.evaluate(()=>preferenceHost.key),'');
+    assert.equal(await page.evaluate(()=>savedPrefs.get('margincomments.deepseekKey')),'oskv1:dGVzdC1zZWNyZXQ=');
+    assert.equal(await page.evaluate(()=>JSON.stringify([...savedPrefs]).includes('test-secret')),false);
+    assert.equal(await page.evaluate(async()=>{const restarted=new ZMAHost.Host({controller:{}},{Zotero:fakeZotero,IOUtils:{},PathUtils:{join:(...p)=>p.join('/')},window});await restarted.restoreCredentials();return restarted.key;}),'test-secret');
+    await page.locator('#zma-api-clear').click();await page.waitForFunction(()=>preferenceHost.key==='');
+    assert.equal(await page.evaluate(()=>savedPrefs.has('margincomments.deepseekKey')),false);
   }finally{await browser.close();}
 });
 

@@ -4,6 +4,7 @@
   const D=root.ZMADeepSeek||(typeof require!=='undefined'?require('./deepseek.js'):null);
   const R=root.ZMACapture||(typeof require!=='undefined'?require('./capture.js'):null);
   const Doc=root.ZMADocument||(typeof require!=='undefined'?require('./document.js'):null);
+  const Credentials=root.ZMACredentials||(typeof require!=='undefined'?require('./credentials.js'):null);
   const Images=root.ZMAImages||(typeof require!=='undefined'?require('./images.js'):null);
   const ID='margin-comments-assistant@local.zotero';
   class Host{
@@ -11,6 +12,11 @@
     styleText;
     constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null}){
       this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
+      this.credentialError='';
+      this.credentials=Z.Prefs&&Z.OSKeyStore&&Credentials?new Credentials.CredentialStore({
+        get:name=>Z.Prefs.get(name),set:(name,value)=>Z.Prefs.set(name,value),clear:name=>Z.Prefs.clear(name),
+        encrypt:key=>Z.OSKeyStore.encrypt(key),decrypt:value=>Z.OSKeyStore.decrypt(value)
+      }):null;
       this.directory=P.join(Z.DataDirectory.dir,'margin-comments-assistant');
       this.documents=new Map();this.toolbarObservers=new Map();this.unwrap=unwrap;
       this.cloneInto=cloneInto;
@@ -170,7 +176,16 @@
     copy(text){this.Z.Utilities.Internal.copyTextToClipboard(text);}
     notify(message){const win=this.Z.getMainWindow?.()||this.win;if(win&&!win.closed)win.alert?.(message);else this.Z.logError?.(new Error(message));}
     guard(action){Promise.resolve().then(action).catch(e=>this.notify(e.message));}
-    settingsAPI(){return {model:this.model,hasKey:!!this.key,apply:(key,model)=>{if(key)this.key=key.trim();this.model=model.trim()||'deepseek-flash';},clear:()=>{this.key='';},test:()=>this.client.testConnection(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
+    settingsAPI(){return {model:this.model,hasKey:!!this.key,error:this.credentialError,apply:async(key,model)=>{
+      if(!this.credentials)throw new Error('当前 Zotero 不支持安全保存密钥');
+      await this.credentials.save(key,model);
+      if(key.trim())this.key=key.trim();this.model=model.trim();this.credentialError='';
+    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
+    async restoreCredentials(){
+      if(!this.credentials){this.credentialError='当前 Zotero 不支持安全保存密钥';return;}
+      try{const saved=await this.credentials.load();this.key=saved.key;this.model=saved.model;this.credentialError='';}
+      catch(e){this.key='';this.credentialError=`已保存的 DeepSeek 密钥无法读取：${e.message}`;}
+    }
     bindPreferencePaneWindow(win){const container=win.document.querySelector('#zma-api-settings');root.ZMASettings?.bind(container,this.settingsAPI());}
     settings(){
       this.Z.Utilities.Internal.openPreferences('margin-comments-preferences');
@@ -225,6 +240,7 @@
     isPDF(reader){return reader?.type==='pdf'||reader?._type==='pdf';}
     async start(){
       if(this.running)return;
+      await this.restoreCredentials();
       this.running=true;this.Z.Reader.registerEventListener('renderToolbar',this.onToolbar,ID);this.Z.Reader.registerEventListener('createAnnotationContextMenu',this.onMenu,ID);
       this.Z.Reader.registerEventListener('createViewContextMenu',this.onViewMenu,ID);
       for(const doc of this.addon.controller.preferenceDocuments||[])this.bindPreferencePaneWindow(doc.defaultView);

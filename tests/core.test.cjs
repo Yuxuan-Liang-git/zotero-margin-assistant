@@ -37,10 +37,10 @@ test('serialized storage isolates scopes, snapshots writes, and excludes credent
   const store=new C.LocalStore(adapter);
   const state=await store.load(source);
   state.sources.push({...source,id:'one',type:'公式',number:'6.30'});state.apiKey='SECRET';
-  const first=store.save(source,state);state.draft='changed';const second=store.save(source,state);
+  const first=store.save(source,state);C.activeConversation(state).draft='changed';const second=store.save(source,state);
   await Promise.all([first,second]);
   const loaded=await new C.LocalStore(adapter).load(source);
-  assert.equal(loaded.draft,'changed');assert.equal(loaded.sources.length,1);
+  assert.equal(C.activeConversation(loaded).draft,'changed');assert.equal(loaded.sources.length,1);
   assert.ok(![...files.values()].join('').includes('SECRET'));
   assert.equal((await store.load({...source,attachmentKey:'OTHERPDF'})).sources.length,0);
 });
@@ -63,7 +63,7 @@ test('explicit whole-page material retains its identity and native page-only lin
 });
 
 test('highlight passage survives index and dialogue storage instead of becoming an image-only source',()=>{
-  const state=C.emptyState(),textSource={...source,kind:'text',text:'定义 x 为系统状态',type:'段落',number:'定义1'};new C.ReferenceIndex(state.sources).add(textSource);state.history=[{role:'user',content:'解释定义',materials:[textSource]}];const loaded=C.cleanState(state);assert.equal(loaded.sources[0].kind,'text');assert.equal(loaded.sources[0].text,'定义 x 为系统状态');assert.equal(loaded.history[0].materials[0].text,'定义 x 为系统状态');
+  const state=C.emptyState(),textSource={...source,kind:'text',text:'定义 x 为系统状态',type:'段落',number:'定义1'};new C.ReferenceIndex(state.sources).add(textSource);C.activeConversation(state).history=[{role:'user',content:'解释定义',materials:[textSource]}];const loaded=C.cleanState(state);assert.equal(loaded.sources[0].kind,'text');assert.equal(loaded.sources[0].text,'定义 x 为系统状态');assert.equal(C.activeConversation(loaded).history[0].materials[0].text,'定义 x 为系统状态');
 });
 
 test('PDF image records survive save/reload and older states remain compatible',()=>{
