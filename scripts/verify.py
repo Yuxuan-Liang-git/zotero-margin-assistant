@@ -15,14 +15,14 @@ parser.add_argument('--native-run',default='zotero-0106-native-final')
 parser.add_argument('--restart-run',default='zotero-0105-final')
 parser.add_argument('--conversation-run',default='zotero-0106-conversation-qa')
 parser.add_argument('--upgrade-run',default='zotero-0106-upgrade')
-parser.add_argument('--clipboard-run',default='zotero-0170-memory-v2')
+parser.add_argument('--clipboard-run',default='zotero-0180-library-final-v2')
 args=parser.parse_args()
 version=json.loads((PROJECT/'package.json').read_text(encoding='utf-8'))['version']
 package=PROJECT/f'dist/margin-comments-deepseek-{version}.xpi'
 with zipfile.ZipFile(package) as archive:
     assert archive.testzip() is None
     names=set(archive.namelist())
-    assert all('content/scripts/'+name+'.js' in names for name in ['instructions','notion','notion-browser','docks','reading-summary','memory-core','memory-store','memory-host','clipboard','chatgpt-auth','chatgpt','chatgpt-native','streaming','attachments','reference-preview','text-math','transfer','transfer-ui'])
+    assert all('content/scripts/'+name+'.js' in names for name in ['instructions','notion','notion-browser','docks','reading-summary','memory-core','memory-store','library-index','library-store','library-host','memory-host','clipboard','chatgpt-auth','chatgpt','chatgpt-native','streaming','attachments','reference-preview','text-math','transfer','transfer-ui'])
     for path in (PROJECT/'src').glob('*.js'):
         assert archive.read('content/scripts/'+path.name)==path.read_bytes(),path.name
     assert archive.read('content/assistant.css')==(PROJECT/'src/assistant.css').read_bytes()
@@ -130,7 +130,7 @@ composer_ok=clipboard_ok and all(any(s.get('name')=='composer-input-height' and 
 report['native_composer_resize']='passed: native Gecko reader on first launch and cold restart; input grows/shrinks, collapses fully to its handle, remains collapsed on reopen, and double-click restores font-aware default size with draft/caret intact. Pointer/double-click events are synthetic; real mouse dragging and double-click are covered in browser regression' if composer_ok else 'not passed or not run'
 reading_summary_ok=clipboard_ok and all(any(s.get('name')=='reading-summary-native' and s.get('ok') and all(s.get('result',{}).get(key) for key in ['legacyReorganized','directMarkdown','crossConversation','incrementalTextOnly','unchangedSkipsInference','idleUpdate','nativeNote','nativeMathSource','sidebarMath','manualEditProtected','newVersionRetainsOriginal','canonicalPublicationRecovery','reopenUsesLocal','openedNativeNote','noExternalApiCalls']) for s in r['steps']) for r in clipboard_reports) and any(s.get('name')=='reading-summary-native' and s.get('result',{}).get('coldRestored') for s in (clipboard_reports[1] or {}).get('steps',[]))
 report['native_reading_summary']='passed: isolated Zotero '+str((clipboard_reports[0] or {}).get('zotero',''))+' first launch and cold restart; legacy consumed-summary reorganization, direct Markdown with thematic sections, cross-conversation incremental text-only Responses, idle scheduling, no-change skip, actual note math HTML and sidebar MathML, manual-edit protection/new version, canonical publication recovery and local reopen; OAuth/inference mocked, daily profile unchanged' if reading_summary_ok else 'not passed or not run'
-test_output=PROJECT/'evidence/memory-0170/tests-final.txt'
+test_output=PROJECT/'evidence/library-0180/tests-final.txt'
 test_text=test_output.read_text(encoding='utf-8',errors='replace') if test_output.exists() else ''
 import re
 passed=re.search(r'(?:ℹ|#) pass (\d+)',test_text)
@@ -151,6 +151,11 @@ memory_flags=['normalRequestContainsOtherPaper','localOnlyIndex','provenancePers
 memory_ok=clipboard_ok and all(any(s.get('name')=='cross-paper-memory-native' and s.get('ok') and all(s.get('result',{}).get(key) for key in memory_flags) for s in r['steps']) for r in clipboard_reports) and any(s.get('name')=='cross-paper-memory-native' and s.get('result',{}).get('coldProvenanceRestored') and s.get('result',{}).get('catalogColdRestored') for s in (clipboard_reports[1] or {}).get('steps',[]))
 report['native_cross_paper_memory']='passed: isolated Zotero first launch and cold restart; two real fixture PDFs, read-only history backfill, A request includes B dialogue, persisted provenance and catalog restore, native source navigation with bounded message window, manual summary edit excluded, preference switch and real Markdown file export; inference mocked' if memory_ok else 'not passed or not run'
 report['memory_limits']={'source_file_bytes':16*1024*1024,'indexed_characters_per_paper':256000,'fragments_per_paper':512,'papers_per_library':2000,'catalog_characters':2000000,'cached_documents':8,'retrieved_papers':3,'context_characters':6000,'fragment_characters':1800}
-report['native_run_scope']='first ten admission/clipboard/context checks, reading-summary-native, notion-sidebar-native, custom-prompt-native and cross-paper-memory-native; 14 checks on each of two launches; second fixture PDF is used for the focused memory case; broader later multi-PDF/performance chain not run'
+library_flags=['unreadPaperInNormalRequest','realWorkerSDT','realSQLite','lastPageLocated','metadataOnlyNavigation','noteAndAnnotationIdentity','changedNoteRejected','collectionDeduplicated','pdfVersionsRetained','noHistorySideEffects','manualPauseRespected','coverageShown','metadataExport','noExternalApiCalls']
+library_ok=clipboard_ok and all(any(s.get('name')=='personal-library-memory-native' and s.get('ok') and all(s.get('result',{}).get(key) for key in library_flags) for s in r['steps']) for r in clipboard_reports) and any(s.get('name')=='personal-library-memory-native' and s.get('result',{}).get('coldCatalogRestored') and s.get('result',{}).get('coldProvenanceRestored') for s in (clipboard_reports[1] or {}).get('steps',[]))
+report['native_personal_library_memory']='passed: isolated Zotero first launch and cold restart; real SQLite and five-page SDT worker extraction from unread paper, last-page text enters normal A question and navigates to page five, metadata-only item navigation, real notes/annotations, cache and v2 provenance restoration, multi-collection deduplication, multiple PDF identities, manual pause and Markdown export; no external AI calls' if library_ok else 'not passed or not run'
+report['personal_library_limits']={'automatic_pdf_extraction_bytes':64*1024*1024,'storage':'research-memory/papers-v1.sqlite','scope':'entire personal library, all collections','dialogue_limits_apply_to_pdf_text':False,'candidate_fragments_per_paper':4,'candidate_fragments_total':96,'retrieved_papers':3,'context_characters':6000,'fragment_characters':1800,'pathological_page_characters_skipped_as_partial':2*1024*1024}
+report['automated_tests']=report['reading_summary_automated_tests']
+report['native_run_scope']='first ten admission/clipboard/context checks, reading-summary-native, notion-sidebar-native, custom-prompt-native, cross-paper-memory-native and personal-library-memory-native; 15 checks on each of two launches; actual five-page unread PDF uses native Worker/SDT; inference mocked; broader later multi-PDF/performance chain not run'
 (PROJECT/'dist/verification-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(report))

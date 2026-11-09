@@ -268,8 +268,7 @@
     }
 
     async export(libraryID) {
-      await this.rebuild(libraryID);
-      if ([...this.jobs.values()].some(scope => scope.libraryID === libraryID)) throw new Error('研究记忆正在等待空闲，请稍后导出');
+      await this.ensure(libraryID);
       const documents = [];
       for (const scope of await this.adapter.list(libraryID)) {
         if (this.stopped) throw new Error('研究笔记导出已取消');

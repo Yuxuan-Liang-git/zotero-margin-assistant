@@ -158,9 +158,11 @@
       };
       pane.viewItems=wrapped;this.historyPanes.set(win,{pane,original,wrapped});
     }
-    async openHistory(attachment){let reader=await this.Z.Reader.open(attachment.id);
-      if(!reader){for(let i=0;i<100&&!reader;i++){await new Promise(resolve=>setTimeout(resolve,50));reader=(this.Z.Reader._readers||[]).find(r=>r.itemID===attachment.id);}}
-      if(!reader)throw new Error('PDF 阅读器未能打开');await reader._initPromise;const panel=await this.panel(reader);panel.showConversations();
+    async openPDF(attachment,location){let reader=await this.Z.Reader.open(attachment.id,location);
+      if(!reader){for(let i=0;i<100&&!reader;i++){await new Promise(resolve=>setTimeout(resolve,50));reader=(this.Z.Reader._readers||[]).find(r=>r.itemID===attachment.id&&!r._isTabClosed);}}
+      if(!reader)throw new Error('PDF 阅读器未能打开');await reader._initPromise;return reader;
+    }
+    async openHistory(attachment){const reader=await this.openPDF(attachment);const panel=await this.panel(reader);panel.showConversations();
     }
     groupID(source){const lib=this.Z.Libraries.get(source.libraryID);return lib?.libraryType==='group'?Number(lib.groupID||this.Z.Groups?.getGroupIDFromLibraryID?.(source.libraryID)):undefined;}
     isReadOnly(reader){const a=this.Z.Items.get(Number(reader.itemID));return a?.isEditable?.()===false;}
@@ -246,7 +248,7 @@
         // drafts during the write; replacing their objects would lose edits.
         state.conversations.push(conversation);state.activeConversationId=conversation.id;this.readingSummary?.schedule(reader);this.memory?.schedule(scope);return conversation;
       });
-      this.transferTasks.set(key,task);const clear=()=>{if(this.transferTasks.get(key)===task)this.transferTasks.delete(key);if(!this.transferTasks.size&&!this.activeRequests.size)this.readingSummary?.resume();};task.then(clear,clear);return task;
+      this.transferTasks.set(key,task);const clear=()=>{if(this.transferTasks.get(key)===task)this.transferTasks.delete(key);if(!this.transferTasks.size&&!this.activeRequests.size){this.readingSummary?.resume();void this.memory?.resume().catch(error=>this.Z.logError?.(error));}};task.then(clear,clear);return task;
     }
     claimRequest(reader){const key=C.scopeKey(this.scope(reader));if(this.activeRequests.has(key)||this.transferTasks?.has(key))throw new Error('此 PDF 已在另一窗口正在生成，请先停止或等待完成');this.readingSummary?.pause();this.memory?.pause();this.activeRequests.add(key);}
     releaseRequest(reader){this.activeRequests.delete(C.scopeKey(this.scope(reader)));if(!this.activeRequests.size){this.readingSummary?.resume();void this.memory?.resume().catch(e=>this.Z.logError?.(e));}}
@@ -451,6 +453,7 @@
       this.toolbarObservers.set(doc,{reader,toolbar,observer,parentObserver});
     }
     onItemChange(event,ids){
+      this.memory?.onItemsChanged();
       const readers=this.Z.Reader._readers||[];if(event==='delete'){this.refreshReferenceCards(undefined,true);return;}
       const affected=new Set(),values=Array.isArray(ids)?ids:[ids];
       for(const value of values){const id=Number(value);if(!Number.isSafeInteger(id))continue;
@@ -481,6 +484,7 @@
       await this.restoreCredentials();
       try{await this.auth?.load();}catch{this.authError='ChatGPT 登录信息无法读取，请在设置中重新登录。';}
       this.running=true;for(const win of this.Z.getMainWindows?.()||[this.win])this.bindHistoryPane(win);
+      void this.memory?.start().catch(error=>this.Z.logError?.(error));
       this.Z.Reader.registerEventListener('renderToolbar',this.onToolbar,ID);this.Z.Reader.registerEventListener('createAnnotationContextMenu',this.onMenu,ID);
       this.Z.Reader.registerEventListener('createViewContextMenu',this.onViewMenu,ID);
       for(const doc of this.addon.controller.preferenceDocuments||[])this.bindPreferencePaneWindow(doc.defaultView);

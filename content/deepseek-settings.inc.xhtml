@@ -18,11 +18,11 @@
       <html:p>完整回答后空闲20秒整理新增问答，额外使用当前AI服务的额度。关闭自动更新后仍可在“阅读摘要”中手动更新。笔记与进度保存在本地，已有手动改写会保留。</html:p>
       <html:p id="zma-reading-status" role="status" style="margin:0"></html:p>
       <html:h3>跨论文研究记忆</html:h3>
-      <html:label><html:input id="zma-memory-enabled" type="checkbox" />自动关联同一文献库中的阅读记录</html:label>
-      <html:p>本地检索插件保存的完整问答和正式阅读摘要，每轮最多关联三篇论文并按剩余上下文预算选取片段。选中的历史文字随本轮提问提交给当前AI服务。回答旁可查看出处并返回原会话。</html:p>
-      <html:div><html:button id="zma-memory-rebuild" type="button">重建研究记忆索引</html:button> <html:button id="zma-memory-export" type="button">导出研究笔记</html:button></html:div>
+      <html:label><html:input id="zma-memory-enabled" type="checkbox" />自动关联个人文献库中的论文与阅读记录</html:label>
+      <html:p>本地索引全部分类中的文献信息、PDF文字、Zotero笔记及文字标注，并结合完整问答和正式阅读摘要。每轮最多关联三篇论文、6000字符，单段最多1800字符，当前问题及PDF优先。选中的资料节选随本轮提问提交给当前AI服务。回答旁可查看出处并打开原文。</html:p>
+      <html:div><html:button id="zma-memory-pause" type="button">暂停后台索引</html:button> <html:button id="zma-memory-rebuild" type="button">重建研究记忆索引</html:button> <html:button id="zma-memory-export" type="button">导出研究笔记</html:button></html:div>
       <html:p id="zma-memory-status" role="status" style="margin:0;overflow-wrap:anywhere"></html:p>
-      <html:p>索引在后台分批更新。Markdown导出汇总正式阅读摘要，可作为ChatGPT项目资料。单个历史文件上限16 MiB，每篇索引最多256000字符或512个片段，超过范围的记录会在状态中标记。</html:p>
+      <html:p>后台索引使用本地提取，自动提取单个PDF上限64 MiB，大文件优先复用已有文字缓存。纯扫描件显示需要OCR，图片公式可能缺少可读文字。Markdown导出包含正式阅读摘要及明确标识的文献资料与覆盖情况。旧对话通道保留每库2000篇、每篇256000字符或512段、单历史文件16 MiB的限制，正文通道采用独立分段索引。当前实现采用本地词项相关性，跨语言同义关联取决于实际可匹配文字。</html:p>
       <html:h3>ChatGPT 订阅</html:h3>
       <html:label for="zma-web-mode">联网搜索</html:label>
       <html:select id="zma-web-mode"><html:option value="auto">自动：需要补充资料时检索</html:option><html:option value="off">关闭：仅使用文档与对话</html:option></html:select>

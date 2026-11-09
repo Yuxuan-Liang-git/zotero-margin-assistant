@@ -307,17 +307,17 @@
       let details=card.querySelector('.zma-memory-sources');
       if(!details){
         details=el(this.doc,'details',undefined,'zma-memory-sources');
-        const count=new Set(sources.map(source=>source.libraryID+'-'+source.attachmentKey)).size;
-        details.append(el(this.doc,'summary',`参考过的阅读记录 · ${count}篇`));
+        const count=new Set(sources.map(source=>source.libraryID+'-'+(source.paperKey||source.attachmentKey))).size;
+        details.append(el(this.doc,'summary',`参考文献与阅读记录 · ${count}篇`));
         const status=el(this.doc,'p','','zma-memory-status');status.setAttribute('role','status');details.append(status);
         details.addEventListener('toggle',()=>{
           if(!details.open||details.dataset.loaded)return;
           details.dataset.loaded='true';
           for(const source of sources){
             const row=el(this.doc,'section',undefined,'zma-memory-source');
-            const kind=source.kind==='summary'?'阅读摘要':'历史问答';
-            row.append(button(this.doc,source.title+' · '+source.label+' · '+kind,()=>open(source,status)));
-            row.append(el(this.doc,'small',source.updatedAt?(source.kind==='summary'?'摘要更新 ':'会话更新 ')+new Date(source.updatedAt).toLocaleString('zh-CN'):'记录时间未知'));
+            const kind=root.ZMAMemoryCore.kindLabel(source.kind),page=source.pageIndex!==undefined?' · 第'+(source.pageIndex+1)+'页':'';
+            row.append(button(this.doc,source.title+' · '+source.label+' · '+kind+page,()=>open(source,status)));
+            row.append(el(this.doc,'small',source.version===2?(source.kind==='pdf'?'本地文字节选，图像公式可能缺少文字'+(source.pageIndex===undefined?'，点击后搜索定位':''):'本地文献资料'):source.updatedAt?(source.kind==='summary'?'摘要更新 ':'会话更新 ')+new Date(source.updatedAt).toLocaleString('zh-CN'):'记录时间未知'));
             const excerpt=el(this.doc,'blockquote',undefined,'zma-memory-excerpt');this.renderAnswer(excerpt,source.text);row.append(excerpt);details.append(row);
           }
         });
@@ -404,7 +404,7 @@
           const serializedBudget=Math.max(0,12*1024*1024-JSON.stringify(messages).length);
           if(budget>=500&&serializedBudget>=500){
             const query=[question,context?.title,this.host.readingSummaryContext?.(this.reader)?.title,conversation.summary?.slice(0,800),...history.filter(m=>m.role==='user').slice(-2).map(m=>m.content.slice(0,400))].filter(Boolean).join('\n');
-            try{const sources=await this.host.memory.retrieve(this.host.scope(this.reader),query,{conversationId:conversation.id,signal:this.controller.signal});const prepared=root.ZMAMemoryCore.appendContext(messages,sources,budget,serializedBudget);messages=prepared.messages;memorySources=prepared.sources;}
+            try{const sources=await this.host.memory.retrieve(this.host.scope(this.reader),query,{question,conversationId:conversation.id,signal:this.controller.signal});const prepared=root.ZMAMemoryCore.appendContext(messages,sources,budget,serializedBudget);messages=prepared.messages;memorySources=prepared.sources;}
             catch(error){if(this.controller.signal.aborted)throw error;this.contextInfo.textContent+='；研究记忆本轮未就绪，可在设置中检查索引状态';}
           }
         }

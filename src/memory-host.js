@@ -3,6 +3,7 @@
   const C = root.ZMACore || (typeof require !== 'undefined' ? require('./core.js') : null);
   const M = root.ZMAMemoryCore || (typeof require !== 'undefined' ? require('./memory-core.js') : null);
   const Store = root.ZMAMemoryStore || (typeof require !== 'undefined' ? require('./memory-store.js') : null);
+  const Library = root.ZMALibraryHost || (typeof require !== 'undefined' ? require('./library-host.js') : null);
 
   function create(host) {
     const { Z, IO, P } = host;
@@ -11,6 +12,7 @@
     const listeners = new Set();
     let enabled = Z.Prefs?.get('margincomments.researchMemory') !== false;
     let currentLibrary = Z.Libraries?.userLibraryID || 1;
+    let userPaused = Z.Prefs?.get('margincomments.researchMemoryPaused') === true;
 
     function checked(scope) {
       C.scopeKey(scope);
@@ -94,33 +96,85 @@
     };
     const manager = new Store.Manager(adapter);
     const report = error => Z.logError?.(error);
+    const papers = Library?.create(host, {
+      enabled: () => enabled, userPaused: () => userPaused, notify: adapter.notify,
+      canonicalSummary: async note => {
+        const match = /zma-summary:\/\/([1-9]\d*)\/([A-Z0-9]{8})/.exec(note.getNote());
+        if (!match || Number(match[1]) !== note.libraryID) return false;
+        const record = await readRecord({ libraryID: note.libraryID, attachmentKey: match[2] });
+        return !!record?.summaryValid && record.state.readingSummary?.noteKey === note.key;
+      }
+    });
+    const history = {};
+    for (const name of ['pause', 'resume', 'retrieve', 'rebuild', 'stop', 'export']) history[name] = manager[name].bind(manager);
+    manager.papers = papers;
+    manager.pause = () => { history.pause(); papers?.pause(); };
+    manager.resume = async () => { if (!userPaused) await Promise.all([history.resume(), papers?.resume()]); };
+    manager.rebuild = async libraryID => { await Promise.all([history.rebuild(libraryID), papers?.rebuild()]); };
+    manager.stop = async () => { await Promise.all([history.stop(), papers?.stop()]); };
+    manager.retrieve = async (scope, query, options = {}) => {
+      const previous = await history.retrieve(scope, query, options);
+      for (const source of previous) {
+        const item = Z.Items.getByLibraryAndKey(source.libraryID, source.attachmentKey);
+        const parent = item?.parentID ? Z.Items.get(item.parentID) : item;
+        if (/^[A-Z0-9]{8}$/.test(parent?.key)) source.paperKey = parent.key;
+      }
+      const attachment = Z.Items.getByLibraryAndKey(scope.libraryID, scope.attachmentKey);
+      const owner = attachment?.parentID ? Z.Items.get(attachment.parentID) : attachment;
+      const current = await papers?.retrieve(scope, query, { ...options, paperKey: owner?.key }) || [];
+      return M.mergeSources([...previous, ...current], options.question || query);
+    };
 
     return Object.assign(manager, {
+      async start() {
+        if (userPaused) manager.pause();
+        await Promise.all([manager.ensure(currentLibrary), papers?.start()]);
+      },
+      onItemsChanged() { papers?.refresh(); },
       forReader(reader) {
         const scope = host.scope(reader);
-        currentLibrary = scope.libraryID;
-        void manager.ensure(currentLibrary).then(() => { manager.schedule(scope); adapter.notify(); }).catch(report);
+        currentLibrary = Z.Libraries?.userLibraryID || scope.libraryID;
+        papers?.prioritize(scope.attachmentKey);
+        void Promise.all([manager.ensure(scope.libraryID), papers?.start()]).then(() => { manager.schedule(scope); adapter.notify(); }).catch(report);
       },
       settingsAPI() {
         return {
-          state: () => ({ enabled, libraryID: currentLibrary, ...manager.status(currentLibrary) }),
+          state: () => ({ enabled, paused: userPaused, libraryID: currentLibrary, ...manager.status(currentLibrary), ...(papers ? { coverage: papers.status() } : {}) }),
           watch: listener => { listeners.add(listener); return () => listeners.delete(listener); },
           set: async value => {
             enabled = !!value;
             Z.Prefs?.set('margincomments.researchMemory', enabled);
-            if (enabled) { await manager.ensure(currentLibrary); void manager.resume().catch(report); }
+            if (enabled) { await manager.start(); void manager.resume().catch(report); }
             else manager.pause();
+            adapter.notify();
+          },
+          pause: async () => {
+            userPaused = !userPaused;
+            Z.Prefs?.set('margincomments.researchMemoryPaused', userPaused);
+            if (userPaused) manager.pause(); else void manager.resume().catch(report);
             adapter.notify();
           },
           rebuild: () => manager.rebuild(currentLibrary),
           export: async () => {
-            const text = await manager.export(currentLibrary);
+            let text = await history.export(currentLibrary);
+            if (papers) {
+              await papers.start();
+              await papers.run();
+              const records = await papers.index.papers();
+              text += '\n# 文献资料与覆盖情况\n\n以下为本地文献资料，正文覆盖仅代表实际提取的文字，图像公式可能缺少文字。\n\n';
+              for (const paper of records) {
+                const units = await papers.index.units(paper.key);
+                const counts = units.filter(unit => unit.kind === 'pdf').map(unit => unit.sourceKey + ' ' + unit.status).join('，') || '仅文献信息';
+                text += '## ' + paper.title.replace(/[\r\n]/g, ' ') + '\n\n' + paper.text + '\n\n正文覆盖 ' + counts + '\n\n';
+              }
+            }
             return host.writeConversationFile(text, 'md', '研究阅读笔记', { research: true });
           }
         };
       },
       async openSource(value) {
         const source = M.cleanSources([value])[0];
+        if (source.version === 2) { if (!papers) throw new Error('个人文献库索引模块尚未就绪，请更新插件并重启'); await papers.openSource(source); return; }
         const record = await readRecord(source);
         if (!record || source.kind === 'summary' && !record.summaryValid || !M.sourceCurrent(source, record.state)) throw new Error('原阅读记录已变更，请重新检索最新记录');
         const attachment = Z.Items.getByLibraryAndKey(source.libraryID, source.attachmentKey);

@@ -5,12 +5,22 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const project = path.resolve(__dirname, '..');
 
-async function setup() {
+async function setup(library = false) {
   const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true });
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   try {
+  if (library) {
+    const db = new (require('node:sqlite').DatabaseSync)(':memory:');
+    await page.exposeFunction('librarySQL', (sql, params = []) => {
+      if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') { db.exec(sql); return []; }
+      const statement = db.prepare(sql);
+      if (/^\s*(SELECT|PRAGMA)/i.test(sql)) return statement.all(...params);
+      statement.run(...params); return [];
+    });
+    browser.on('disconnected', () => db.close());
+  }
   await page.setContent('<style>body{margin:0}#split-view{position:fixed;inset:40px 0 0}</style><div id="split-view">A论文</div><iframe id="paper-b" style="position:fixed;left:0;top:0;width:800px;height:900px;visibility:hidden"></iframe>');
-  for (const name of ['web', 'instructions', 'notion', 'docks', 'reading-summary', 'memory-core', 'core', 'memory-store', 'memory-host', 'transfer', 'capture', 'references', 'deepseek', 'settings', 'attachments', 'clipboard', 'panel', 'host']) {
+  for (const name of ['web', 'instructions', 'notion', 'docks', 'reading-summary', 'memory-core', 'core', 'memory-store', 'library-index', 'library-store', 'library-host', 'memory-host', 'transfer', 'capture', 'references', 'deepseek', 'settings', 'attachments', 'clipboard', 'panel', 'host']) {
     const file = path.join(project, 'src', name + '.js');
     if (fs.existsSync(file)) await page.addScriptTag({ path: file });
   }
@@ -34,8 +44,22 @@ async function setup() {
       Prefs: { get: key => preferences.get(key), set: (key, value) => preferences.set(key, value) }, Libraries: { userLibraryID: 1 },
       Search: class { addCondition() {} async search() { return [1, 2]; } },
       Items: { get: id => items.get(id), getAsync: async ids => ids.map(id => items.get(id)), getByLibraryAndKey: (libraryID, key) => [...items.values()].find(item => item.libraryID === libraryID && item.key === key) },
-      Reader: { _readers: [reader, other], open: async id => { globalThis.openedPDF = id; frame.style.visibility = 'visible'; return id === 2 ? other : reader; } }
+      Reader: { _readers: [reader, other], open: async (id, location) => { globalThis.openedPDF = id; globalThis.openedLocation = location; frame.style.visibility = 'visible'; return id === 2 ? other : reader; } }
     };
+    if (globalThis.librarySQL) {
+      Z.DBConnection = class {
+        queryAsync(sql, params) { return librarySQL(sql, params); }
+        async executeTransaction(action) { await librarySQL('BEGIN'); try { const result = await action(); await librarySQL('COMMIT'); return result; } catch (error) { await librarySQL('ROLLBACK'); throw error; } }
+        async closeDatabase() {}
+      };
+      for (const [id, item] of items) if (id >= 10) Object.assign(item, { id, key: id === 10 ? 'PAPERA01' : 'PAPERB01', libraryID: 1, isRegularItem: () => true, getAttachments: () => [id === 10 ? 1 : 2], getNotes: () => [] });
+      items.set(30, { id: 30, key: 'META0001', libraryID: 1, isRegularItem: () => true, getField: name => name === 'title' ? 'Metadata evidence' : name === 'abstractNote' ? 'Standaloneabstract identifiability condition.' : '', getNotes: () => [], getAttachments: () => [] });
+      Z.Items.getAll = async () => [...items.keys()];
+      Z.SDT = { getPack: async () => ({ ok: true }), getReader: async () => ({ getCatalog: async () => ({ pages: [{}, {}] }), getPageBlocks: async pageIndex => [{ content: [{ text: pageIndex ? 'Unreaddocumentneedle guarantees excitation.' : 'Opening page.' }] }] }) };
+      files.set('/pdf/A/paper.pdf', 'fixture PDF A'); files.set('/pdf/B/paper.pdf', 'fixture PDF B');
+      files.delete('/pdf/B/margin-comments-assistant-1-BBBB1111.json');
+      window.ZoteroPane = { selectItem: async id => { globalThis.openedItem = id; } }; Z.getMainWindow = () => window;
+    }
     const IO = { exists: async file => files.has(file), stat: async file => ({ size: new TextEncoder().encode(files.get(file) || '').length, lastModified: files.get(file)?.length || 0 }),
       readUTF8: async file => files.get(file), makeDirectory: async () => {}, writeUTF8: async (file, text) => { files.set(file, text); } };
     const host = new ZMAHost.Host({ bridge: { renderMathPreview: (node, text) => node.textContent = text, installMathResources: () => () => {} },
@@ -81,9 +105,40 @@ test('the normal send path retrieves B for A and reopens the cited conversation 
       return { sources: saved.memorySources.length, view: target.activeView, conversation: target.conversationId };
     });
     assert.ok(restored.sources > 0);
-    const folder = path.join(project, 'evidence/memory-0170');
+    const folder = path.join(project, 'evidence/library-0180');
     fs.mkdirSync(folder, { recursive: true });
     await page.screenshot({ path: path.join(folder, 'memory-sources.png') });
+  } finally { await browser.close(); }
+});
+
+test('unread personal-library PDFs and metadata reach normal requests with navigable compact sources', async () => {
+  const { browser, page } = await setup(true);
+  try {
+    await page.evaluate(async () => { panel.question.value = 'Unreaddocumentneedle'; await panel.send(); });
+    assert.match(await page.evaluate(() => JSON.stringify(requests)), /Unreaddocumentneedle guarantees excitation/);
+    assert.equal(await page.evaluate(() => fixture.files.has('/pdf/B/margin-comments-assistant-1-BBBB1111.json')), false);
+    await page.locator('.zma-memory-cite').first().click();
+    assert.equal(await page.evaluate(() => openedPDF), 2);
+    assert.equal(await page.evaluate(() => openedLocation.pageIndex), 1);
+    await page.locator('.zma-memory-sources summary').first().click();
+    assert.match(await page.locator('.zma-memory-source').first().textContent(), /论文正文.*第2页/s);
+    await page.screenshot({ path: path.join(project, 'evidence/library-0180/library-sources.png') });
+    const template = fs.readFileSync(path.join(project, 'content/deepseek-settings.inc.xhtml'), 'utf8').replace(/html:/g, '');
+    await page.evaluate(html => { const root = document.createElement('section'); root.id = 'library-settings'; root.style.cssText = 'position:relative;z-index:20000;background:white'; root.innerHTML = html; document.body.append(root); ZMASettings.bind(root.querySelector('#zma-api-settings'), fixture.host.settingsAPI()); }, template);
+    assert.match(await page.locator('#zma-memory-status').textContent(), /个人文献库.*3篇.*元数据.*3/s);
+    await page.locator('#zma-memory-pause').click();
+    await page.waitForFunction(() => fixture.preferences.get('margincomments.researchMemoryPaused') === true);
+    await page.evaluate(() => { document.querySelector('#library-settings').hidden = true; });
+    await page.evaluate(async () => { fixture.host.claimRequest(fixture.reader); fixture.host.releaseRequest(fixture.reader); await panel.newConversation(); panel.question.value = 'Standaloneabstract'; await panel.send(); });
+    assert.equal(await page.evaluate(() => fixture.host.memory.settingsAPI().state().paused), true);
+    assert.match(await page.evaluate(() => JSON.stringify(requests.at(-1))), /Standaloneabstract identifiability/);
+    await page.locator('.zma-memory-cite').first().click();
+    assert.equal(await page.evaluate(() => openedItem), 30);
+    await page.evaluate(() => { document.querySelector('#library-settings').hidden = false; });
+    await page.locator('#zma-memory-export').click(); await page.waitForFunction(() => fixture.files.has('/export/research.md'));
+    assert.match(await page.evaluate(() => fixture.files.get('/export/research.md')), /文献资料.*Metadata evidence/s);
+    await page.screenshot({ path: path.join(project, 'evidence/library-0180/library-settings.png') });
+    await page.evaluate(() => fixture.host.memory.stop());
   } finally { await browser.close(); }
 });
 

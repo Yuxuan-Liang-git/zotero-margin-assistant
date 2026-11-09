@@ -19,6 +19,58 @@ const scope = key => ({ libraryID: 1, attachmentKey: key });
 const document = (key, title, text, summary = '', options = {}) =>
   M.buildDocument(scope(key), state(text, summary), { title, year: '2025', doi: '10.1/example' }, options);
 
+test('paper sources survive cleaning and portable transfer with distinct provenance', () => {
+  const sources = ['metadata', 'pdf', 'note', 'annotation'].map((kind, i) => ({
+    version: 2, label: '阅读' + (i + 1), libraryID: 1, paperKey: 'PAPER001', sourceKey: 'SOURCE01',
+    attachmentKey: kind === 'metadata' || kind === 'note' ? '' : 'PDF00001', title: 'Observer', year: '2025', doi: '',
+    kind, conversationId: '', messageIndex: 0, part: 0, signature: M.signature('source ' + i),
+    fingerprint: '1111111122222222', updatedAt: 0, text: 'source ' + i, ...(kind === 'pdf' ? { pageIndex: 42 } : {})
+  }));
+  assert.deepEqual(M.cleanSources(sources), sources);
+  assert.throws(() => M.cleanSources([{ ...sources[1], pageIndex: -1 }]), /来源/);
+  assert.throws(() => M.cleanSources([{ ...sources[0], paperKey: '../oops' }]), /来源/);
+  assert.throws(() => M.cleanSources([{ ...sources[2], sourceKey: 'bad' }]), /来源/);
+  const text = M.annotatedText('answer', sources);
+  for (const label of ['文献摘要', '论文正文', 'Zotero笔记', 'PDF标注']) assert.ok(text.includes(label));
+  const T = require('../src/transfer.js');
+  const C = require('../src/core.js');
+  const conversation = C.emptyState().conversations[0];
+  conversation.history = [{ role: 'user', content: 'question', materials: [] }, { role: 'assistant', content: 'answer', materials: [], memorySources: sources }];
+  assert.deepEqual(T.prepare(T.parseJSON(T.exportJSON(conversation))[0]).history[1].memorySources, sources);
+});
+
+test('combined sources count parent papers and deduplicate repeated text across kinds', () => {
+  const sources = Array.from({ length: 10 }, (_, i) => ({
+    version: 2, label: '阅读' + (i + 1), libraryID: 1, paperKey: 'PAPER00' + Math.floor(i / 2), sourceKey: 'SOURCE0' + i,
+    attachmentKey: i % 2 ? '' : 'PDF0000' + i, title: 'Observer ' + i, year: '', doi: '', kind: i % 2 ? 'note' : 'pdf',
+    conversationId: '', messageIndex: 0, part: 0, signature: M.signature('observer excitation ' + i),
+    fingerprint: '1111111122222222', updatedAt: 0, text: 'observer excitation ' + i
+  }));
+  sources[1].text = sources[0].text;
+  const selected = M.mergeSources(sources, 'observer excitation');
+  assert.ok(selected.length > 0);
+  assert.ok(new Set(selected.map(s => s.paperKey)).size <= 3);
+  assert.equal(new Set(selected.map(s => s.text)).size, selected.length);
+  assert.equal(M.cleanSources(selected).length, selected.length);
+});
+
+test('named-paper metadata cannot crowd out directly relevant existing dialogue', async () => {
+  const doc = await document('BBBB1111', 'Research Memory B excitation QA', '缓存激励条件要求信息矩阵正定。', '# 文章内容\n\n缓存激励条件与参数辨识相关。');
+  const query = 'Research Memory B excitation QA 的缓存激励条件与当前论文有什么联系';
+  const previous = M.selectSources([doc], query).map(source => ({ ...source, paperKey: 'PAPER001' }));
+  const metadata = { version: 2, label: '阅读1', libraryID: 1, paperKey: 'PAPER001', sourceKey: 'PAPER001', attachmentKey: '', title: doc.title, year: '', doi: '', kind: 'metadata', conversationId: '', messageIndex: 0, part: 0, signature: M.signature(doc.title), fingerprint: '1111111122222222', updatedAt: 0, text: doc.title };
+  const result = M.mergeSources([...previous, metadata], query);
+  assert.ok(result.some(source => source.kind === 'dialogue'));
+});
+
+test('old conversations from two PDF versions keep their own attachment identities after paper grouping', async () => {
+  const a = await document('PDF00001', 'Shared paper', '版本一的激励条件说明。');
+  const b = await document('PDF00002', 'Shared paper', '版本二补充激励条件的限制。');
+  const sources = [...M.selectSources([a], '激励条件'), ...M.selectSources([b], '激励条件')].map(source => ({ ...source, paperKey: 'PAPER001' }));
+  const merged = M.mergeSources(sources, '激励条件');
+  assert.deepEqual(new Set(merged.map(source => source.attachmentKey)), new Set(['PDF00001', 'PDF00002']));
+});
+
 test('memory extracts completed dialogue and formal summary with identifiable provenance', async () => {
   const doc = await document('BBBB1111', 'Persistent Excitation', '信息矩阵满秩时参数可辨识。', '# 文章内容\n\n持续激励保证信息矩阵正定。');
   assert.ok(doc.chunks.some(c => c.kind === 'summary'));

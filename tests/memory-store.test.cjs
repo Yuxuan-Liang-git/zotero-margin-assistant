@@ -32,6 +32,13 @@ function fixture() {
 }
 const target = { libraryID: 1, attachmentKey: 'AAAA1111' };
 
+test('formal note export stays available while background indexing is paused', async () => {
+  const f = fixture();
+  const manager = f.create();
+  try { manager.pause(); assert.match(await manager.export(1), /持续激励是信息条件/); }
+  finally { await manager.stop(); }
+});
+
 test('backfilled memory is retrieved from another paper and restores from persistent cache', async () => {
   const f = fixture();
   const first = f.create();

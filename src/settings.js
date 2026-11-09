@@ -16,15 +16,22 @@
     const auto=container.querySelector('#zma-reading-auto'),summaryStatus=container.querySelector('#zma-reading-status');if(auto){auto.checked=api.readingSummary?.state().enabled??false;auto.disabled=!api.readingSummary;auto.addEventListener('change',async()=>{auto.disabled=true;try{await api.readingSummary.set(auto.checked);summaryStatus.textContent=auto.checked?'自动摘要已开启，空闲后检查新增问答。':'自动摘要已关闭，可在阅读摘要中手动更新。';}catch(e){summaryStatus.textContent=e.message;}finally{auto.checked=api.readingSummary.state().enabled;auto.disabled=false;}});}
   }
   function bindMemory(container,api){
-    const enabled=container.querySelector('#zma-memory-enabled'),rebuild=container.querySelector('#zma-memory-rebuild'),exportButton=container.querySelector('#zma-memory-export'),status=container.querySelector('#zma-memory-status');
+    const enabled=container.querySelector('#zma-memory-enabled'),rebuild=container.querySelector('#zma-memory-rebuild'),exportButton=container.querySelector('#zma-memory-export'),status=container.querySelector('#zma-memory-status'),pause=container.querySelector('#zma-memory-pause');
     let working=false;
     const render=()=>{
       const state=api?.state();enabled.checked=!!state?.enabled;enabled.disabled=working||!api;rebuild.disabled=exportButton.disabled=working||!state?.enabled;
-      if(!working)status.textContent=state?`当前文献库已索引${state.indexed}篇，待处理${state.pending}篇`+(state.partial?`，${state.partial}篇包含部分记录`:'')+(state.skipped?`，${state.skipped}项需要检查。`+state.errors.join('。'):'。')+(['scanning','indexing'].includes(state.phase)?'正在后台分批更新。':''):'研究记忆模块尚未就绪，请重启Zotero。';
+      if(pause){pause.disabled=working||!state?.enabled;pause.textContent=state?.paused?'继续后台索引':'暂停后台索引';}
+      if(!working){
+        if(state?.coverage){
+          const c=state.coverage,labels={ready:'正文就绪',partial:'部分文字',ocr:'需要OCR',missing:'文件缺失',password:'需要密码',failed:'提取失败',large:'大文件待处理',processing:'处理中'},counts=Object.entries(c.counts).map(([key,count])=>(labels[key]||key)+' '+count).join('，');
+          status.textContent=`个人文献库共${c.total}篇，元数据就绪${c.metadata}篇。PDF附件${counts||'等待发现'}。待处理${c.pending}项。已有对话索引${state.indexed}篇。`+(state.paused?'后台索引已暂停。':['scanning','indexing'].includes(c.phase)?'正在本地后台分批更新。':'')+(c.error||'')+(state.skipped?' 对话索引 '+state.errors.join('。'):'');
+        }else status.textContent=state?`当前文献库已索引${state.indexed}篇，待处理${state.pending}篇`+(state.partial?`，${state.partial}篇包含部分记录`:'')+(state.skipped?`，${state.skipped}项需要检查。`+state.errors.join('。'):'。')+(['scanning','indexing'].includes(state.phase)?'正在后台分批更新。':''):'研究记忆模块尚未就绪，请重启Zotero。';
+      }
     };
     const run=async action=>{working=true;render();status.textContent='正在处理研究记忆…';try{await action();}catch(error){status.textContent=error.message;return;}finally{working=false;enabled.disabled=!api;rebuild.disabled=exportButton.disabled=!api?.state().enabled;}render();};
     enabled.addEventListener('change',()=>{const value=enabled.checked;void run(()=>api.set(value));});
     rebuild.addEventListener('click',()=>void run(()=>api.rebuild()));exportButton.addEventListener('click',()=>void run(()=>api.export()));
+    pause?.addEventListener('click',()=>void run(()=>api.pause()));
     const dispose=api?.watch(render);if(dispose)container.ownerDocument.defaultView?.addEventListener('unload',dispose,{once:true});render();
   }
   function bindPrompt(container,api){
