@@ -1,8 +1,16 @@
 # Zotero Margin Assistant
 
+边读论文，边对照公式、追问推导，把弄懂的内容留下来。
+
+[![最新版本](https://img.shields.io/github/v/release/Yuxuan-Liang-git/zotero-margin-assistant?style=flat-square&color=6366f1&label=release)](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/latest) [![Zotero 10.0.x](https://img.shields.io/badge/Zotero-10.0.x-CC2936?style=flat-square&logo=zotero&logoColor=white)](https://www.zotero.org/)
+
 面向 Zotero 10.0.x 的 PDF 文献阅读插件，将页边批注、公式引用、AI 对话、阅读摘要和关联的 Notion 笔记放在同一个阅读界面中。
 
 [下载最新版本](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/latest) · [使用指南](docs/user-guide.md) · [更新日志](CHANGELOG.md) · [反馈问题](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/issues)
+
+![阅读全景：页边对照公式，中央阅读 PDF，右侧讨论推导并渲染 LaTeX](docs/media/reading-workspace.png)
+
+从一处看不懂的推导出发：左边对照前文公式，中间继续阅读，右边追问原因。截图和动图采用 0.19.0 的实际插件组件、自编 PDF 与示例对话，在后台无头浏览器中录制。查看 [素材说明与复现方式](docs/media/README.md)。
 
 ## 为什么做这个项目
 
@@ -22,6 +30,28 @@
 | 配合 Notion 阅读 | 复用文献下已有的 Notion 链接打开对应笔记；Notion 和文档助手可同时显示，独立调整宽度和左右位置。 |
 
 页面图片可通过“导出带图片的 PDF”写入一份新文件，供其他 PDF 阅读器查看。原 PDF 继续用于调整图片的位置和尺寸。
+
+## 从一处公式开始
+
+读到式 (7.41)，需要回看前面的式 (6.30) 时，可以先为前文标记编号，再把来源链接插入当前批注。悬停即可对照原式，点“加入提问”还能把这处材料带到助手中继续讨论。
+
+![公式引用演示：悬停查看前文，再将公式加入提问](docs/media/formula-reference.gif)
+
+[查看静态预览](docs/media/formula-reference.png) · [如何标记和引用前文](docs/user-guide.md#标记和引用前文)
+
+### 把弄懂的内容留下来
+
+讨论结束后，“阅读摘要”把已经澄清的内容整理到文章内容、关键公式解释和补充讨论中。重新打开论文时，可以先看笔记，再接着上次的理解往下读。
+
+![阅读摘要示例：按文章内容、关键公式解释和补充讨论组织，保留公式与适用条件](docs/media/reading-summary.png)
+
+### 把自己的图放到 PDF 上
+
+有时画一张关系图，比再写一段话更容易理解。把图片放到 PDF 页面后，可以拖到合适位置、调整大小并锁定；需要分享时，再导出一份带图片的 PDF。
+
+![页面图片演示：插入自制关系图，拖动、缩放并锁定位置](docs/media/page-images.gif)
+
+[查看静态预览](docs/media/page-images.png) · [图片与导出操作](docs/user-guide.md#在-pdf-页面放置和导出图片)
 
 ## 安装
 

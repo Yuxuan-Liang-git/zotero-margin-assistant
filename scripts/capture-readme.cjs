@@ -1,0 +1,102 @@
+// Capture the actual 0.19.0 components in a headless, offline demo harness.
+// PDF, dialogue and diagram are authored public samples. Zotero persistence is
+// represented by the existing image-test adapter; no real library or AI is used.
+const fs=require('node:fs'),path=require('node:path'),{pathToFileURL}=require('node:url'),{execFileSync}=require('node:child_process');
+const {setup}=require('../tests/helpers/margin-images.cjs');
+const assert=require('node:assert/strict');
+const ROOT=path.resolve(__dirname,'..'),MEDIA=path.join(ROOT,'docs/media'),WORK=path.join(ROOT,'evidence/readme-media-background');
+fs.mkdirSync(WORK,{recursive:true});
+const pause=ms=>new Promise(r=>setTimeout(r,ms));
+(async()=>{
+ const assets=JSON.parse(fs.readFileSync(path.join(MEDIA,'example-dialogue.json'),'utf8'));
+ const pdfjs=await import(pathToFileURL(require.resolve('pdfjs-dist/legacy/build/pdf.mjs')).href);
+ const {createCanvas}=require('@napi-rs/canvas');
+ const {browser,page}=await setup();
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ try{
+   await page.setViewportSize({width:1440,height:1000});
+   await page.goto(pathToFileURL(path.join(MEDIA,'example-paper.html')).href);
+   await page.pdf({path:path.join(WORK,'example.pdf'),width:'794px',height:'1122px',printBackground:true});
+   const geometry=await page.evaluate(()=>{const r=document.getElementById('source-equation').getBoundingClientRect();return [r.left*.75,(1122-r.bottom)*.75,r.right*.75,(1122-r.top)*.75];});
+   const pdf=await pdfjs.getDocument({data:new Uint8Array(fs.readFileSync(path.join(WORK,'example.pdf')))}).promise;
+   const bitmap=await pdf.getPage(2),viewport=bitmap.getViewport({scale:1.5}),canvas=createCanvas(viewport.width,viewport.height);
+   await bitmap.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+   const pageImage=canvas.toDataURL('image/png');
+   const captured=await require('../src/capture.js').captureRegion(pdf,{rects:[geometry],pageIndex:0},{createElement:()=>createCanvas(1,1)});
+   const box=(await pdf.getPage(2)).view;
+   await pdf.destroy();
+   // Opening the authored HTML above navigated away from the image adapter.
+   // Reuse a fresh adapter page and keep the browser window entirely headless.
+   await page.close();
+   const fixtureRun=await setup();globalThis.fixtureBrowser=fixtureRun.browser;const view=fixtureRun.page;view.on('pageerror',e=>errors.push(e.message));
+   await view.setViewportSize({width:1440,height:1000});
+   await view.evaluate(()=>{globalThis._globalThis=globalThis;globalThis.Zotero={};});
+   for(const name of ['docks','notion','reading-summary','math','markdown','streaming','references','reference-preview','page-images'])await view.addScriptTag({path:path.join(ROOT,'src',name+'.js')});
+   await view.addScriptTag({path:path.join(ROOT,'content/vendor/marked/marked.umd.js')});
+   const bundle=path.join(WORK,'margincomments.js');
+   execFileSync('python',['-c','import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); open(sys.argv[2],"wb").write(z.read("content/scripts/margincomments.js"))',path.join(ROOT,'dist/margin-comments-deepseek-0.19.0.xpi'),bundle]);
+   await view.addScriptTag({path:bundle});
+   const css=fs.readFileSync(path.join(ROOT,'baseline/content/scripts/margincomments.js'),'utf8').match(/var PDF_STYLES = `([\s\S]*?)`;/)[1];
+   await view.addStyleTag({content:css});
+   await view.addStyleTag({path:path.join(ROOT,'baseline/content/vendor/katex/katex.min.css')});
+   await view.addStyleTag({content:`body{margin:0;overflow:hidden;font:14px/1.6 system-ui,sans-serif;background:#f1f2f4;color:#222}.demo-toolbar{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:#fff;border-bottom:1px solid #d9dce2;box-sizing:border-box;font-size:13px}.demo-toolbar small{color:#78818e}#split-view{position:fixed;inset:40px 0 0;overflow:auto;background:#f0f1f3}#paper-stage{position:relative;min-height:960px;width:100%}.page{position:relative;width:650px;height:919px;margin:24px 16px 24px auto;background:white;box-shadow:0 1px 6px #0002}.page>img{display:block;width:100%;height:100%}body:not(.zma-assistant-open) .page{margin-left:auto;margin-right:auto}.zmc-card{position:absolute!important;left:20px;right:auto!important;top:214px;width:264px;--zmc-color:#ffd400}.zmc-card footer{margin-top:10px}.demo-label{color:#66728a;font-size:11px;margin-bottom:8px}.demo-highlight{position:absolute;background:#ffd40040;left:8%;right:8%;top:23%;height:7%;pointer-events:none}.zma-assistant-open #paper-stage{min-width:940px}`});
+   await view.evaluate(async({assets,pageImage,captured,box,diagram})=>{
+     const f=fixture,state=f.state(),host=f.host;f.b.card.remove();
+     document.querySelector('main').style.cssText='display:contents';
+     const bar=document.createElement('div');bar.className='demo-toolbar';bar.innerHTML='<span>阅读示例 · 预测误差与参数灵敏度</span><small>真实插件组件 · 自编材料 · 0.19.0</small>';document.body.prepend(bar);
+     const split=document.createElement('div');split.id='split-view';split.innerHTML='<div id="paper-stage"><div class="page" data-page-number="2" tabindex="0"><img alt="自编 PDF 的第二页"/><div class="demo-highlight"></div></div></div>';document.body.append(split);const stage=split.firstElementChild,paper=stage.querySelector('.page');paper.querySelector('img').src=pageImage;
+     stage.append(f.a.card);f.a.card.style.cssText='';f.a.card.dataset.annotationKey=f.a.annotation.key;
+     f.a.editor.hidden=true;f.a.editor.style.setProperty('display','none','important');f.a.preview=document.createElement('div');f.a.preview.className='zmc-card-preview';f.a.card.prepend(f.a.preview);
+     const source={libraryID:1,attachmentKey:'PDF00001',annotationKey:'SOURCE63',id:'demo-630',type:'公式',number:'6.30',pageIndex:0,pageLabel:'1',rects:[[48,450,548,520]],fingerprint:'demo-pdf'};
+     const sourceAnnotation={key:source.annotationKey,parentID:1,libraryID:1,isAnnotation:()=>true,isEditable:()=>true,annotationType:'image',annotationPosition:JSON.stringify({pageIndex:0,rects:source.rects})};f.annotations.set(source.annotationKey,sourceAnnotation);
+     f.a.annotation.annotationPosition=JSON.stringify({pageIndex:1,rects:[[48,550,548,600]]});
+     state.sources=[source];state.references=[{annotationKey:f.a.annotation.key,sourceID:source.id,link:ZMACore.sourceLink(source)}];
+     f.a.currentValue='对照前文，理解误差求导的负号。\n'+ZMACore.storedLink(source);
+     host.addon.bridge=Zotero.MarginComments.bridge;host.addon.bridge.renderMathPreview(f.a.preview,f.a.currentValue);ZMAReferences.render(f.a.preview);
+     const canvas=document.createElement('canvas');canvas.width=1;canvas.height=1;
+     f.files.set('/paper/current.pdf',new Uint8Array([37,80,68,70]));f.files.set('/chosen/figure.png',Uint8Array.from(atob(diagram),c=>c.charCodeAt(0)));
+     const viewport={width:box[2],height:box[3],viewBox:box,rotation:0,convertToViewportPoint:(x,y)=>[x,box[3]-y],convertToPdfPoint:(x,y)=>[x,box[3]-y]};
+     f.session.reader.type='pdf';f.session.reader._iframeWindow=window;
+     f.session.adapter={document:()=>document,pageCount:()=>2,currentPageIndex:()=>1,pdfViewer:{},page:index=>({element:paper,viewport})};
+     f.session.cardRuntimes=()=>[f.a];f.session.refresh=async()=>{};
+     host.addon.controller.ensureSession=async()=>f.session;host.resolveSource=async()=>source;host.capture=async()=>({...captured,source});
+     host.jump=()=>{};host.appearanceState=()=>({fontSize:15});host.model='deepseek-flash';host.settings=()=>{};host.selectedClient=()=>{throw Error('AI requests are disabled in this authored demo');};
+     host.readingSummary={status:()=> 'idle',schedule:()=>{},update:async()=>{}};
+     const conversation=state.conversations[0];conversation.title='理解误差梯度与前文公式';conversation.history=assets.history;
+     state.readingSummary=ZMAReadingSummary.clean({text:assets.summary,updatedAt:1794182400000,formatVersion:2});
+     globalThis.demoPanel=await host.panel(f.session.reader);demoPanel.showChat();demoPanel.question.value='';
+     f.layer=host.ensurePageImages(f.session);await f.layer.refresh();
+     f.referencePreview=new ZMAReferencePreview.ReferencePreview(host,f.session.reader,document);
+     await ZMAMarginReferences.sync(host,f.session,f.a,true);
+     f.source=source;f.paper=paper;f.host=host;
+   },{assets,pageImage,captured,box,diagram:fs.readFileSync(path.join(MEDIA,'reading-diagram.png')).toString('base64')});
+   await view.waitForFunction(()=>document.querySelector('.zma-answer math'));
+   await pause(700);
+   await view.screenshot({path:path.join(MEDIA,'reading-workspace.png')});
+   await view.evaluate(()=>demoPanel.showReadingSummary());await pause(350);
+   await view.screenshot({path:path.join(MEDIA,'reading-summary.png')});
+   const frames=[];const capture=async(name,duration)=>{const file=path.join(WORK,name+'.png');await view.screenshot({path:file});frames.push({file,duration});};
+   await view.evaluate(()=>{demoPanel.close();fixture.a.referenceRoot.querySelector('button')?.click();});
+   await pause(300);await capture('reference-01',1400);
+   await view.locator('.zmc-card-preview a').hover();await view.locator('.zma-reference-popover img').waitFor();await pause(300);await capture('reference-02',3100);
+   await view.locator('.zma-reference-popover').getByRole('button',{name:'加入提问',exact:true}).click();await view.waitForFunction(()=>demoPanel.materials.length===1);await pause(500);await capture('reference-03',2500);
+   fs.writeFileSync(path.join(WORK,'reference-frames.json'),JSON.stringify(frames));frames.length=0;
+   await view.evaluate(()=>{demoPanel.close();fixture.referencePreview.hide();fixture.a.card.hidden=true;});
+   await capture('images-01',1000);
+   await view.evaluate(async()=>{const f=fixture;await f.layer.insert([{bytes:f.files.get('/chosen/figure.png'),name:'reading-diagram.png'}],{pageIndex:1,x:310,y:675});});
+   await view.waitForFunction(()=>document.querySelector('.zma-page-image img')?.naturalWidth===620);
+   await capture('images-02',900);
+   const image=view.locator('.zma-page-image').first(),before=await image.boundingBox();
+   await view.mouse.move(before.x+before.width/2,before.y+before.height/2);await view.mouse.down();
+   for(let i=1;i<=5;i++){await view.mouse.move(before.x+before.width/2-70*i/5,before.y+before.height/2+62*i/5);await pause(60);await capture('images-move-'+i,90);}await view.mouse.up();await pause(180);await capture('images-03',800);const moved=await image.boundingBox();assert.ok(moved.x<before.x-50&&moved.y>before.y+45,'Image drag must change the saved placement');
+   const handle=await image.getByRole('button',{name:'调整图片大小',exact:true}).boundingBox();
+   await view.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);await view.mouse.down();
+   for(let i=1;i<=5;i++){await view.mouse.move(handle.x+handle.width/2+60*i/5,handle.y+handle.height/2+20*i/5);await pause(60);await capture('images-size-'+i,90);}await view.mouse.up();await pause(200);
+   await image.getByRole('button',{name:'锁定',exact:true}).click();await view.waitForFunction(()=>fixture.state().pageImages[0].locked);const finalBox=await image.boundingBox();assert.ok(finalBox.width>moved.width+35,'Resize must change image width');await capture('images-04',2500);
+   await view.screenshot({path:path.join(MEDIA,'page-images.png')});
+   fs.writeFileSync(path.join(WORK,'image-frames.json'),JSON.stringify(frames));
+   if(errors.length)throw Error('Browser errors: '+errors.join('; '));
+   const report={pluginVersion:'0.19.0',mode:'headless component demo; authored materials; persistence adapter mocked',viewport:[1440,1000],liveAIRequests:0,personalLibraryAccess:false,formulaRendering:true,referenceHover:true,referenceAddedToQuestion:true,pageImageDrag:true,pageImageResize:true,pageImageLocked:true,sourceFiles:['docs/media/example-paper.html','docs/media/example-dialogue.json','docs/media/reading-diagram.png']};
+   fs.writeFileSync(path.join(WORK,'capture-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
+ }finally{await globalThis.fixtureBrowser?.close();await browser.close();}
+})().catch(e=>{console.error(e.stack);process.exit(1)});
