@@ -169,7 +169,10 @@
       const client=this.host.selectedClient?.()||this.host.client,provider=this.host.provider,model=this.host.providerState?.().model,label=this.host.providerLabel?.()||'DeepSeek';
       const controller=this.host.newAbortController();this.host.claimRequest?.(this.reader);this.busy=true;this.refreshProvider();this.sendButton.disabled=true;this.stopButton.disabled=false;this.renderMaterials();this.status.textContent='准备来源…';
       this.controller=controller;const deadline=setTimeout(()=>this.controller?.abort(),300000);
-      let user,answer,answerCard;
+      let user,answer,answerCard,readerMoved=false;
+      const readingEvents=['wheel','touchstart','pointerdown','keydown'];
+      const reading=event=>{if(event.type==='keydown'&&!['ArrowUp','ArrowDown','PageUp','PageDown','Home','End'].includes(event.key))return;readerMoved=true;};
+      for(const event of readingEvents)this.messages.addEventListener(event,reading,{passive:true});
       try{
         await this.compactHistory(conversation,history,this.controller.signal,client);
         const hydrated=[];
@@ -195,10 +198,10 @@
         this.status.textContent=label+' 正在回答…';
         const streamText=this.messages.lastElementChild?.querySelector('.zma-answer');
         const streamNode=this.doc.createTextNode('');streamText?.append(streamNode);let lastScroll=0;
-        this.liveRenderer=root.ZMAStreaming&&streamText?new root.ZMAStreaming.LiveRenderer(streamText,(node,value)=>this.renderAnswer(node,value),{before:()=>this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80,after:follow=>{if(follow&&!this.destroyed)this.messages.scrollTop=this.messages.scrollHeight;}}):null;
+        this.liveRenderer=root.ZMAStreaming&&streamText?new root.ZMAStreaming.LiveRenderer(streamText,(node,value)=>this.renderAnswer(node,value),{before:()=>!readerMoved&&this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80,after:follow=>{if(follow&&!readerMoved&&!this.destroyed)this.messages.scrollTop=this.messages.scrollHeight;}}):null;
         /** @type {any} */
         let serviceTier;answer.content=await client.generate(messages,{signal:this.controller.signal,onServiceTier:info=>{serviceTier=info;},onDelta:delta=>{
-          answer.content+=delta;if(!this.destroyed){if(this.liveRenderer)this.liveRenderer.append(delta);else{const follow=this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80;streamNode.appendData(delta);const now=Date.now();if(follow&&now-lastScroll>=100){this.messages.scrollTop=this.messages.scrollHeight;lastScroll=now;}}}
+          answer.content+=delta;if(!this.destroyed){if(this.liveRenderer)this.liveRenderer.append(delta);else{const follow=!readerMoved&&this.messages.scrollHeight-this.messages.scrollTop-this.messages.clientHeight<80;streamNode.appendData(delta);const now=Date.now();if(follow&&now-lastScroll>=100){this.messages.scrollTop=this.messages.scrollHeight;lastScroll=now;}}}
         }});
         answer.incomplete=false;conversation.draftAttachments=[];this.renderMaterials();if(this.question.value.trim()===question)this.question.value='';conversation.draft=this.question.value;C.touchConversation(conversation);this.status.textContent='回答完成，可追问或保存。'+(serviceTier?(serviceTier.actual?` 本轮档位：${{default:'标准',fast:'快速 Fast',ultrafast:'极速 Ultrafast'}[serviceTier.actual]}${serviceTier.requested!==serviceTier.actual?'（与请求档位不同）':''}。`:' 已请求速度档位，服务端未确认实际档位。'):'');
       }catch(e){
@@ -210,8 +213,9 @@
           await this.send();
         });retryButton.className='zma-retry-standard';answerCard.append(retryButton);}
       }finally{
+        for(const event of readingEvents)this.messages.removeEventListener(event,reading);
         this.liveRenderer?.finish();this.liveRenderer=null;clearTimeout(deadline);this.controller=null;this.busy=false;this.host.releaseRequest?.(this.reader);this.refreshProvider();
-        if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();if(answerCard){const text=answerCard.querySelector('.zma-answer');if(text)this.renderAnswer(text,answer.content);const label=answerCard.querySelector('strong');if(label)label.textContent=answer.incomplete?'回答（未完成）':'回答';if(answer.content)this.addAnswerActions(answerCard,answer,conversation.history.length-1);this.messages.scrollTop=this.messages.scrollHeight;}else if(answer)this.renderMessages();this.renderConversationList();await this.persist().catch(e=>this.error(e));}
+        if(!this.destroyed){this.sendButton.disabled=this.pendingMaterials.size>0;this.stopButton.disabled=true;this.renderMaterials();if(answerCard){const readingPosition=this.messages.scrollTop,selection=this.doc.defaultView.getSelection(),keepPosition=readerMoved||answer.incomplete||!!(selection&&!selection.isCollapsed&&(answerCard.contains(selection.anchorNode)||answerCard.contains(selection.focusNode)));const text=answerCard.querySelector('.zma-answer');if(text)this.renderAnswer(text,answer.content);const label=answerCard.querySelector('strong');if(label)label.textContent=answer.incomplete?'回答（未完成）':'回答';if(answer.content)this.addAnswerActions(answerCard,answer,conversation.history.length-1);this.messages.scrollTop=keepPosition?readingPosition:Math.max(0,this.messages.scrollTop+answerCard.getBoundingClientRect().top-this.messages.getBoundingClientRect().top-this.messages.clientTop);}else if(answer)this.renderMessages();this.renderConversationList();await this.persist().catch(e=>this.error(e));}
       }
     }
     async saveAnswer(index,kind){
