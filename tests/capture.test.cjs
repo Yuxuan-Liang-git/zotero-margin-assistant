@@ -1,5 +1,11 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');
 const R=fs.existsSync(__dirname+'/../src/capture.js')?require('../src/capture.js'):{};
+test('PDF page promises unwrapped at the Gecko boundary expose viewport and render methods',async()=>{
+  const rawPage={rotate:0,getViewport:()=>({width:100,height:100,convertToViewportPoint:(x,y)=>[x,y]}),render:()=>({promise:Promise.resolve()}),getTextContent:async()=>({items:[]})};
+  const wrappedPage={raw:rawPage};
+  const result=await R.captureRegion({getPage:async()=>wrappedPage},{pageIndex:0,rects:[[10,20,30,40]],pageLabel:'1'},{createElement:()=>({getContext:()=>({}),toDataURL:()=> 'data:image/png;base64,YQ=='})},{unwrap:o=>o.raw||o});
+  assert.equal(result.width,20);assert.equal(result.height,20);
+});
 test('rotation and clipping use PDF viewport transformed corners',()=>{
   assert.equal(typeof R.cropBounds,'function');
   const viewport={width:200,height:100,convertToViewportPoint:(x,y)=>[y,100-x]};

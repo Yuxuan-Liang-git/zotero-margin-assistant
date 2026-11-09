@@ -5,9 +5,11 @@
   const R=root.ZMACapture||(typeof require!=='undefined'?require('./capture.js'):null);
   const ID='margin-comments-assistant@local.zotero';
   class Host{
-    constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win}){
+    constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value}){
       this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
       this.directory=P.join(Z.DataDirectory.dir,'margin-comments-assistant');
+      this.unwrap=unwrap;
+      this.cloneInto=cloneInto;
       this.store=new C.LocalStore({exists:p=>IO.exists(P.join(this.directory,p)),read:p=>IO.readUTF8(P.join(this.directory,p)),writeAtomic:async(p,text)=>{await IO.makeDirectory(this.directory,{ignoreExisting:true});await IO.writeUTF8(P.join(this.directory,p),text,{tmpPath:P.join(this.directory,p+'.tmp')});}});
       this.client=new D.DeepSeekClient({fetch:(...args)=>this.win.fetch(...args),getKey:()=>this.key,getModel:()=>this.model,TextDecoder:win.TextDecoder});
     }
@@ -32,15 +34,17 @@
     }
     async currentPage(reader){
       const session=await this.addon.controller.ensureSession(reader);if(!session)throw new Error('PDF 阅读器尚未就绪');
-      const adapter=session.adapter;const pdf=adapter.pdfWindow.PDFViewerApplication.pdfDocument;const pageIndex=adapter.currentPageIndex();const page=await pdf.getPage(pageIndex+1);
+      const adapter=session.adapter;const pdf=this.unwrap(adapter.pdfWindow.PDFViewerApplication.pdfDocument);const pageIndex=adapter.currentPageIndex();const page=this.unwrap(await pdf.getPage(pageIndex+1));
       return {...this.scope(reader),annotationKey:'PAGE'+String(pageIndex).padStart(4,'0'),pageIndex,pageLabel:String(adapter.pdfViewer._pageLabels?.[pageIndex]||pageIndex+1),rects:[page.view.slice()],fingerprint:await this.fingerprint(reader),fullPage:true};
     }
     async capture(reader,query){
       const source=await this.resolveSource(reader,query);const key=JSON.stringify(source);
       if(this.cache.has(key))return this.cache.get(key);
       const session=await this.addon.controller.ensureSession(reader);if(!session)throw new Error('PDF 阅读器尚未就绪');
-      const adapter=session.adapter;const pdf=adapter.pdfWindow?.PDFViewerApplication?.pdfDocument;if(!pdf)throw new Error('PDF 页面尚未加载');
-      const result=await R.captureRegion(pdf,source,adapter.document());
+      const adapter=session.adapter;const renderer=adapter.primaryView?._pdfRenderer;
+      let result;
+      if(typeof renderer?.renderRegionCrops==='function')result=await R.captureNativeRegion(renderer,source,adapter.document(),{cloneInto:this.cloneInto});
+      else{const pdf=adapter.pdfWindow?.PDFViewerApplication?.pdfDocument;if(!pdf)throw new Error('PDF 页面尚未加载');result=await R.captureRegion(pdf,source,adapter.document(),{unwrap:this.unwrap});}
       if(this.cache.size>=16)this.cache.delete(this.cache.keys().next().value);this.cache.set(key,result);return result;
     }
     load(reader){const scope=this.scope(reader),key=C.scopeKey(scope);if(!this.states.has(key))this.states.set(key,this.store.load(scope));return this.states.get(key);}
@@ -119,9 +123,10 @@
     copy(text){this.Z.Utilities.Internal.copyTextToClipboard(text);}
     notify(message){this.win.alert?.(message);}
     guard(action){Promise.resolve().then(action).catch(e=>this.notify(e.message));}
+    settingsAPI(){return {model:this.model,hasKey:!!this.key,apply:(key,model)=>{if(key)this.key=key.trim();this.model=model.trim()||'deepseek-flash';},clear:()=>{this.key='';},test:()=>this.client.testConnection(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
+    bindPreferencePaneWindow(win){const container=win.document.querySelector('#zma-api-settings');root.ZMASettings?.bind(container,this.settingsAPI());}
     settings(){
-      const api={model:this.model,hasKey:!!this.key,apply:(key,model)=>{if(key)this.key=key.trim();this.model=model.trim()||'deepseek-flash';},clear:()=>{this.key='';},test:()=>this.client.testConnection()};
-      const dialog=this.win.openDialog('chrome://margincomments/content/assistant-settings.xhtml','zma-settings','chrome,centerscreen,resizable',api);this.settingsWindows.add(dialog);dialog.addEventListener('unload',()=>this.settingsWindows.delete(dialog),{once:true});
+      this.Z.Utilities.Internal.openPreferences('margin-comments-preferences');
     }
     onToolbar=event=>{
       if(!this.isPDF(event.reader))return;
@@ -137,6 +142,7 @@
     isPDF(reader){return reader?.type==='pdf'||reader?._type==='pdf';}
     async start(){
       this.running=true;this.Z.Reader.registerEventListener('renderToolbar',this.onToolbar,ID);this.Z.Reader.registerEventListener('createAnnotationContextMenu',this.onMenu,ID);
+      for(const doc of this.addon.controller.preferenceDocuments||[])this.bindPreferencePaneWindow(doc.defaultView);
       this.observer=this.Z.Notifier.registerObserver({notify:()=>this.prune()},['tab'],ID);
       for(const reader of this.Z.Reader._readers||[])if(this.isPDF(reader))this.guard(async()=>{
         await reader._initPromise;const doc=reader._iframeWindow?.document;if(!doc)return;

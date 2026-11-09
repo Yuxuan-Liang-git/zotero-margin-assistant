@@ -1,0 +1,17 @@
+  <groupbox data-search-strings-raw="DeepSeek,API,密钥,区域提问,模型">
+    <label><html:h2 class="zmc-prefs-heading">DeepSeek 区域提问</html:h2></label>
+    <html:div id="zma-api-settings" style="display:grid;gap:8px;max-width:540px">
+      <html:p>服务地址：https://api.deepseek.com</html:p>
+      <html:label for="zma-api-key">API Key（仅本次 Zotero 会话保存）</html:label>
+      <html:input id="zma-api-key" type="password" autocomplete="off" />
+      <html:label for="zma-api-model">模型（需要支持图片输入）</html:label>
+      <html:input id="zma-api-model" type="text" value="deepseek-flash" />
+      <html:p>填写后点击“应用设置”。关闭 Zotero 后密钥清除；只有点击提问面板的“发送”才上传材料。</html:p>
+      <html:div>
+        <html:button id="zma-api-apply" type="button">应用设置</html:button>
+        <html:button id="zma-api-test" type="button">测试连接</html:button>
+        <html:button id="zma-api-clear" type="button">清除密钥</html:button>
+      </html:div>
+      <html:p id="zma-api-status" role="status" style="white-space:pre-wrap"></html:p>
+    </html:div>
+  </groupbox>

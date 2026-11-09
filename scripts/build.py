@@ -23,7 +23,8 @@ def build():
     out.mkdir(exist_ok=True)
     shutil.copytree(PROJECT / 'baseline', out, dirs_exist_ok=True)
     manifest = json.loads((out / 'manifest.json').read_text(encoding='utf-8'))
-    manifest['version'] = '0.10.1'
+    version = json.loads((PROJECT / 'package.json').read_text(encoding='utf-8'))['version']
+    manifest['version'] = version
     manifest['name'] = 'Margin Comments + DeepSeek'
     manifest['description'] = '页边批注、LaTeX、DeepSeek 区域提问与手动编号前文引用'
     # Zotero 10.0.6 requires this field even for manually distributed add-ons.
@@ -64,12 +65,14 @@ def build():
     script.write_text(text, encoding='utf-8')
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
-  for (const name of ["core", "capture", "references", "deepseek", "panel", "host"]) {
+  for (const name of ["core", "capture", "references", "deepseek", "settings", "panel", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();
   const assistant = new context.ZMAHost.Host(Zotero.MarginComments, {
-    Zotero, IOUtils, PathUtils, window: Zotero.getMainWindow()
+    Zotero, IOUtils, PathUtils, window: Zotero.getMainWindow(),
+    unwrap: value => Components.utils.waiveXrays(value),
+    cloneInto: (value, target) => Components.utils.cloneInto(value, Components.utils.getGlobalForObject(target))
   });
   Zotero.MarginComments.assistant = assistant;
   await assistant.start();
@@ -81,9 +84,13 @@ def build():
         shutil.copy2(path, out / 'content/scripts' / path.name)
     shutil.copy2(PROJECT / 'src/assistant.css', out / 'content/assistant.css')
     shutil.copytree(PROJECT / 'content', out / 'content', dirs_exist_ok=True)
+    prefs = (out / 'content/preferences.xhtml').read_text(encoding='utf-8')
+    prefs = replace_once(prefs, 'registerPreferencePaneWindow(window)"', 'registerPreferencePaneWindow(window); Zotero.MarginComments.assistant?.bindPreferencePaneWindow(window)"')
+    prefs = replace_once(prefs, '</vbox>', (PROJECT / 'content/deepseek-settings.inc.xhtml').read_text(encoding='utf-8') + '\n</vbox>')
+    (out / 'content/preferences.xhtml').write_text(prefs, encoding='utf-8')
     dist = PROJECT / 'dist'
     dist.mkdir(exist_ok=True)
-    package = dist / 'margin-comments-deepseek-0.10.1.xpi'
+    package = dist / f'margin-comments-deepseek-{version}.xpi'
     with zipfile.ZipFile(package, 'w', zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(out.rglob('*')):
             if path.is_file():

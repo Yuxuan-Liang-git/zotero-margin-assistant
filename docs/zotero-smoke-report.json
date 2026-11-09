@@ -1,0 +1,59 @@
+{
+  "zotero": "10.0.6",
+  "harness": 4,
+  "process": 1936,
+  "steps": [
+    {
+      "name": "runtime-page-boundary",
+      "ok": true,
+      "result": {
+        "wrappedGetViewport": "undefined",
+        "unwrappedGetViewport": "function",
+        "nativeRenderer": "function"
+      }
+    },
+    {
+      "name": "capture-real-scanned-region",
+      "ok": true,
+      "result": {
+        "width": 1280,
+        "height": 1200,
+        "bytes": 397522
+      }
+    },
+    {
+      "name": "current-page-material",
+      "ok": true,
+      "result": {
+        "pageIndex": 0,
+        "rects": [
+          [
+            0,
+            0,
+            595.275591,
+            897.675591
+          ]
+        ]
+      }
+    },
+    {
+      "name": "question-panel-material",
+      "ok": true,
+      "result": {
+        "materialCount": 1,
+        "panelVisible": true
+      }
+    },
+    {
+      "name": "native-zotero-preference-pane",
+      "ok": true,
+      "result": {
+        "masked": true,
+        "cleared": true
+      }
+    }
+  ],
+  "phase": "initialize-reader-adapter",
+  "hostRunning": true,
+  "done": true
+}

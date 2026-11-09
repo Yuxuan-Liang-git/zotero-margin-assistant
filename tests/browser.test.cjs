@@ -83,3 +83,33 @@ test('reader assistant loads math stylesheet alongside its own styles',async()=>
     assert.ok(links.includes('chrome://margincomments/content/vendor/katex/katex.min.css'));
   }finally{await browser.close();}
 });
+
+test('native Zotero region renderer is used without entering PDF page proxies',async()=>{
+  const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+  try{const page=await browser.newPage();await page.setContent('<div/>');for(const name of ['core','deepseek','capture','host'])await page.addScriptTag({path:path.resolve(__dirname,'../src/'+name+'.js')});
+    const result=await page.evaluate(async()=>{
+      const source={libraryID:1,attachmentKey:'ABCD1234',annotationKey:'FORM0630',pageIndex:4,pageLabel:'3',rects:[[10,20,30,40]],fingerprint:'1'};
+      const canvas=document.createElement('canvas');canvas.width=40;canvas.height=20;canvas.getContext('2d').fillRect(0,0,40,20);
+      let converted;const calls=[];const renderer={renderRegionCrops:async(...args)=>{if(args[1]!==converted)throw new Error('Permission denied: coordinates must belong to reader realm');calls.push(args);return [canvas.toDataURL()];}};
+      const host=new ZMAHost.Host({controller:{ensureSession:async()=>({adapter:{primaryView:{_pdfRenderer:renderer},pdfWindow:{PDFViewerApplication:{pdfDocument:{getPage:()=>{throw new Error('page proxy must not be touched');}}}},document:()=>document}})}},{Zotero:{DataDirectory:{dir:'/data'}},IOUtils:{},PathUtils:{join:(...p)=>p.join('/')},window,cloneInto:(value,target)=>{if(target!==renderer)throw new Error('Wrong destination realm');return converted=structuredClone(value);}});
+      host.resolveSource=async()=>source;const m=await host.capture({itemID:1},source);return {calls,width:m.width,height:m.height,data:m.dataURL};
+    });assert.equal(result.calls[0][0],4);assert.deepEqual(result.calls[0][1],[[10,20,30,40]]);assert.equal(result.width,40);assert.equal(result.height,20);assert.ok(result.data.startsWith('data:image/png;base64,'));
+  }finally{await browser.close();}
+});
+
+test('Zotero preferences provide session-only masked API entry without a PDF reader',async()=>{
+  const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+  try{const page=await browser.newPage();
+    const prefs=require('node:fs').readFileSync(path.resolve(__dirname,'../build/content/preferences.xhtml'),'utf8');
+    await page.setContent(prefs.replace(/html:/g,''));
+    for(const name of ['core','deepseek','capture','settings','host']){const file=path.resolve(__dirname,'../src/'+name+'.js');if(require('node:fs').existsSync(file))await page.addScriptTag({path:file});}
+    const available=await page.evaluate(()=>{
+      if(!document.querySelector('#zma-api-key')||!ZMAHost.Host.prototype.bindPreferencePaneWindow)return false;
+      globalThis.preferenceHost=new ZMAHost.Host({controller:{}},{Zotero:{DataDirectory:{dir:'/data'}},IOUtils:{},PathUtils:{join:(...p)=>p.join('/')},window});
+      preferenceHost.bindPreferencePaneWindow(window);return true;
+    });assert.ok(available,'API settings should exist directly in the preference pane');
+    assert.equal(await page.locator('#zma-api-key').getAttribute('type'),'password');await page.locator('#zma-api-key').fill('test-secret');await page.locator('#zma-api-apply').click();
+    assert.equal(await page.evaluate(()=>preferenceHost.key),'test-secret');assert.equal(await page.locator('#zma-api-key').inputValue(),'');
+    await page.locator('#zma-api-clear').click();assert.equal(await page.evaluate(()=>preferenceHost.key),'');
+  }finally{await browser.close();}
+});
