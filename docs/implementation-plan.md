@@ -83,3 +83,11 @@ No Git commit steps: this workspace is not a repository; preserve evidence in a 
 - 批注草稿按会话与 PDF 保存，保持旧 v1/v2 历史兼容；发送时合并所有批注及问题，失败保留、成功清空待发送记录。
 - 引用公式沿用 LaTeX 提取，预览用 MathML；原生 textarea 继续支持光标、复制/粘贴及 IME，点击嵌套 PDF frame 也能收起。
 - 完成先失败后通过的批注交互与跨 frame 点击测试，161 项完整回归、checkJs、浅深/窄宽气泡截图检查，原生隔离验收见 acceptance.md。
+
+
+## 0.12.7 执行结果
+
+- PDF 文字选区与原生高亮/下划线/区域菜单增加批注提问入口，文字采用无数据库写入的文件指纹快照。
+- QuoteBubbles 扩展 PDF 覆盖层、原文/截图预览、坐标换算和缩放/滚动监听，保留当前字体、剪贴板和原生输入。
+- PDF 来源与对话批注共用待发送列表及本地持久化，原文/截图与评论合并发送，旧草稿兼容；失效来源遵循既有明确省略策略。
+- 先失败后通过的菜单/快照/跨 frame UI 集成，完整回归和实际 Gecko 首启/冷重启验收，证据见 acceptance.md。

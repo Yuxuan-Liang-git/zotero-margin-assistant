@@ -52,7 +52,7 @@ test('readonly comments cannot change; explicit save appends without overwriting
 test('region menus constrain attachment/type and lifecycle removes registered callbacks',async()=>{
   assert.equal(typeof H.Host,'function');const {host,events,annotation}=fixture();await host.start();
   const menu=[];events.get('createAnnotationContextMenu')({reader:{itemID:1,type:'pdf'},params:{ids:['FORM0630']},append:x=>menu.push(x)});
-  assert.equal(menu.length,3);assert.ok(menu.some(x=>x.label==='向 DeepSeek 提问'&&!x.disabled));
+  assert.equal(menu.length,4);assert.ok(menu.some(x=>x.label==='向 DeepSeek 提问'&&!x.disabled));assert.ok(menu.some(x=>x.label==='批注并提问'&&!x.disabled));
   annotation.annotationType='highlight';const other=[];events.get('createAnnotationContextMenu')({reader:{itemID:1,type:'pdf'},params:{ids:['FORM0630']},append:x=>other.push(x)});
   assert.ok(other.find(x=>x.label==='标记为引用来源').disabled);
   await host.stop();assert.equal(events.size,0);assert.equal(host.key,'');
@@ -105,4 +105,8 @@ test('selected PDF text adds a right-click reference action with a stable select
   Z.DataObjectUtilities={generateKey:()=> 'SELECT23'};Z.Annotations={saveFromJSON:async(a,json)=>{assert.equal(a,attachment);saved=json;return {key:json.key};}};
   host.resolveSource=async(_r,key)=>({annotationKey:key});let marked;host.panel=async()=>({markSource:async(s,direct)=>{marked={s,direct};}});
   events.get('createViewContextMenu')({reader,params:{},append:m=>menu.push(m)});const action=menu.find(m=>m.label==='引用选中文字到页边批注');assert.ok(action&&!action.disabled);selection.text='稍后选择已改变';action.onCommand();await new Promise(r=>setTimeout(r,15));assert.equal(saved.text,'引用时选中的定义');assert.equal(marked.direct,true);
+});
+
+test('PDF bubble action snapshots selected text without writing an annotation and verifies its file fingerprint',async()=>{
+ const {host,Z,events,attachment}=fixture();await host.start();const selection={text:'选区原文',pageLabel:'1',position:{pageIndex:0,rects:[[10,20,90,50]]}};attachment.isEditable=()=>false;let writes=0,received;Z.Annotations={saveFromJSON:async()=>{writes++;}};host.panel=async()=>({addPDFQuote:async source=>{received=source;}});const reader={itemID:1,type:'pdf',_internalReader:{_lastView:{_selectionPopup:{annotation:selection}}}},menu=[];events.get('createViewContextMenu')({reader,params:{},append:m=>menu.push(m)});const action=menu.find(m=>m.label==='批注并提问（选中文字）');assert.ok(action&&!action.disabled);selection.text='后来的选区';action.onCommand();await new Promise(r=>setTimeout(r,20));assert.equal(writes,0);assert.equal(received.text,'选区原文');assert.equal(received.selection,true);const captured=await host.capture(reader,received);assert.equal(captured.text,'选区原文');host.IO.stat=async()=>({size:124,lastModified:10});await assert.rejects(()=>host.capture(reader,received),/重新定位/);
 });

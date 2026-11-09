@@ -19,7 +19,7 @@
   function pickSource(s) {
     validateSource(s);
     if(s.kind==='text'&&(typeof s.text!=='string'||!s.text.trim()))throw new Error('来源文字为空');
-    return { libraryID:s.libraryID,attachmentKey:s.attachmentKey,annotationKey:s.annotationKey,pageIndex:s.pageIndex,pageLabel:String(s.pageLabel||s.pageIndex+1),rects:s.rects.map(r=>r.slice()),fingerprint:String(s.fingerprint||''),...(s.fullPage?{fullPage:true,...(s.automaticPage?{automaticPage:true}:{})}:{}),...(s.kind==='text'?{kind:'text',text:s.text,nextPageRects:s.nextPageRects?.map(r=>r.slice())}:{} ) };
+    return { libraryID:s.libraryID,attachmentKey:s.attachmentKey,annotationKey:s.annotationKey,pageIndex:s.pageIndex,pageLabel:String(s.pageLabel||s.pageIndex+1),rects:s.rects.map(r=>r.slice()),fingerprint:String(s.fingerprint||''),...(s.selection&&s.kind==='text'?{selection:true}:{}),...(s.fullPage?{fullPage:true,...(s.automaticPage?{automaticPage:true}:{})}:{}),...(s.kind==='text'?{kind:'text',text:s.text,nextPageRects:s.nextPageRects?.map(r=>r.slice())}:{} ) };
   }
   class ReferenceIndex {
     constructor(records) { this.records=records; }
@@ -42,7 +42,7 @@
   function sourceLink(s,groupID) {
     validateSource(s);
     if(groupID!==undefined&&(!Number.isSafeInteger(groupID)||groupID<1))throw new Error('群组标识无效');
-    return `zotero://open-pdf/${groupID?`groups/${groupID}`:'library'}/items/${s.attachmentKey}?page=${s.pageIndex+1}${s.fullPage?'':`&annotation=${s.annotationKey}`}`;
+    return `zotero://open-pdf/${groupID?`groups/${groupID}`:'library'}/items/${s.attachmentKey}?page=${s.pageIndex+1}${s.fullPage||s.selection?'':`&annotation=${s.annotationKey}`}`;
   }
   function parseSourceLink(value) {
     const m=/^zotero:\/\/open-pdf\/(library|groups\/([1-9]\d*))\/items\/([A-Z0-9]{8})\?page=([1-9]\d*)(?:&annotation=([A-Z0-9]{8}))?$/.exec(value||'');
@@ -91,9 +91,9 @@
     if(typeof summary!=='string'||summary.length>20000||!Number.isSafeInteger(compactedThrough)||compactedThrough<0||compactedThrough>c.history.length||compactedThrough%2||compactedThrough>0&&!summary.trim())throw new Error('对话摘要索引损坏');
     if(c.draftQuotes!==undefined&&(!Array.isArray(c.draftQuotes)||c.draftQuotes.length>20))throw new Error('批注草稿数据损坏');
     const draftQuotes=(c.draftQuotes||[]).map(q=>{
-      if(!q||!conversationID.test(q.id)||typeof q.text!=='string'||!q.text.trim()||q.text.length>12000||typeof q.comment!=='string'||q.comment.length>4000||!Number.isSafeInteger(q.messageIndex)||q.messageIndex<0||q.messageIndex>=c.history.length)throw new Error('批注草稿数据损坏');
+      if(!q||!conversationID.test(q.id)||typeof q.text!=='string'||!q.text.trim()||q.text.length>12000||typeof q.comment!=='string'||q.comment.length>4000||!q.source&&(!Number.isSafeInteger(q.messageIndex)||q.messageIndex<0||q.messageIndex>=c.history.length))throw new Error('批注草稿数据损坏');
       const offsets=Number.isSafeInteger(q.start)&&q.start>=0&&Number.isSafeInteger(q.end)&&q.end>=q.start?{start:q.start,end:q.end}:{};
-      return {id:q.id,text:q.text,comment:q.comment,messageIndex:q.messageIndex,...offsets};
+      return {id:q.id,text:q.text,comment:q.comment,...(q.source?{source:pickSource(q.source)}:{messageIndex:q.messageIndex,...offsets})};
     });
     if(new Set(draftQuotes.map(q=>q.id)).size!==draftQuotes.length)throw new Error('批注草稿标识重复');
     return {id:c.id,title:c.title,createdAt:c.createdAt,updatedAt:c.updatedAt,history:c.history.map(cleanMessage),draft:c.draft,...(draftQuotes.length?{draftQuotes}:{}),...(c.draftAttachments?.length?{draftAttachments:c.draftAttachments.map(pickAttachment)}:{}),summary,compactedThrough};

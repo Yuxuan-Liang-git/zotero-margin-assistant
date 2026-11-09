@@ -158,3 +158,12 @@ Host 外观状态采用 Zotero Prefs margincomments.fontSize，校验 12–24 �
 会话增加可选 draftQuotes 数组（最多20），每条仅有 id/text/comment/messageIndex/可选数字偏移；老 v1/v2 数据兼容，不升级结构版本、不覆盖旧历史。长度与关联索引由 cleanState 校验，沿用原 JSON 原子写入和本地保存路径。输入延迟保存，收起/关闭/切换即保存。批注原文最多12000字符、评论4000字符；剪贴板插入绕过原生 maxLength 的情况也在 input 时约束。
 
 send() 在原问题前后拼接全部有内容的引用批注，复用当前 PDF、附件、摘要和容量预检。可只发批注。生成失败/停止保留待发送批注，速度重试比较合并问题以避免重复问答；成功后清空待发送气泡，原始引用与评论保留在已发送问题中。生成期间冻结批注编辑，避免发出后丢失新增草稿；输入框新改文字继续沿用原有保留规则。
+
+
+## 0.12.7 PDF 选区批注气泡
+
+沿用 QuoteBubbles，draftQuotes 每条可为对话 messageIndex 锚点或 source PDF 来源，不改变 v2 状态版本。文字菜单冻结 selectionSnapshot，转为 selection:true/kind:text/page/rects/text/fingerprint，只存当前 PDF 的原文快照，不写 Zotero 永久高亮，允许只读文库提问。已有高亮/下划线与 image 区域沿用原生 annotationKey。capture/resolveSource 继续检查附件归属和文件指纹；失效选区依既有策略带说明省略新读取，问题中的原文标作选区快照，未知错误仍中止且保留草稿。临时文字选区链接仅跳页，不伪装成可保存答案的原生批注目标。
+
+在真实 PDF iframe 创建独立的透明、pointer-events:none 覆盖层，只有编号和气泡接收事件，不更改页面宽度或注入源文字。source.rects 通过当前 page.viewport 换算，结合页面实际 DOM 尺寸处理缩放/旋转，监听滚动、resize、PDF.js page/scale/rotation 事件重定位；页面不可见时隐藏编号，输入框入口仍可重开并跳页。Zotero 跨窗口转换采用数值逐点传递，避免 PDF 窗口读取特权脚本数组的权限错误。PDF 覆盖层安装自己的 MathML 样式和剪贴板行为；销毁时移除覆盖层、所有监听与资源。
+
+PDF 文字/区域可与对话批注混用：发送前重新 capture 每个有内容的 PDF 批注，按来源去重，原文和截图进入既有材料管线，页码和对应编号进入合并问题；history.materials 保留来源，草稿 JSON 不保存图像编码。总材料数仍为8，批注总数20；成功清空待发送批注，失败/取消保留。气泡位于 PDF 子文档，关闭助手或切换非聊天视图隐藏覆盖层，重开恢复编号。

@@ -93,7 +93,7 @@
     async resolveSource(reader,query){
       const scope=this.scope(reader);let source;
       if(typeof query==='object'&&C.scopeKey(query)!==C.scopeKey(scope))throw new Error('来源不属于当前 PDF');
-      if(query?.fullPage){source={...C.pickSource(query),fingerprint:await this.fingerprint(reader)};}
+      if(query?.fullPage||query?.selection&&query.kind==='text'){source={...C.pickSource(query),fingerprint:await this.fingerprint(reader)};}
       else{
         const key=typeof query==='string'?query:query.annotationKey;const item=this.nativeAnnotation(reader,key);
         if(!item||item.deleted||!['image','highlight','underline'].includes(item.annotationType))throw Object.assign(new Error('来源已失效：请重新选择文字或区域并关联'),{code:'SOURCE_MISSING'});
@@ -177,7 +177,7 @@
         this.decorateSession(session);const doc=reader._iframeWindow?.document;if(!doc)throw new Error('阅读器窗口不存在');
         this.installStyles(doc);const panel=await new root.ZMAPanel.Panel(this,reader,doc).init();
         if(!this.running||this.closedReaders.has(reader)){await panel.destroy();throw new Error('阅读助手或窗口已关闭');}
-        this.installStyles(doc);panel.disposeMath=this.addon.bridge.installMathResources(doc,()=>{});
+        this.installStyles(doc);panel.disposeMath=this.addon.bridge.installMathResources(doc,()=>{});await panel.quotes?.attachPDF(session.adapter);
         this.panels.set(reader,panel);this.bindReferences(reader,session.adapter.document());return panel;
       })();this.pending.set(reader,task);try{return await task;}finally{this.pending.delete(reader);}
     }
@@ -257,7 +257,7 @@
       const links=sources.map(s=>`<p><a href="${C.escapeHTML(this.sourceLink(s))}">${C.escapeHTML(`${s.type||'来源'} ${s.number||''} · 第 ${s.pageLabel} 页`)}</a></p>`).join('');
       note.setNote(`<div data-schema-version="9"><p>${C.escapeHTML(text).replace(/\n/g,'<br/>')}</p>${links}</div>`);await note.saveTx();
     }
-    jump(reader,source){const location={pageIndex:source.pageIndex,annotationID:source.fullPage?undefined:source.annotationKey};reader._internalReader?.navigate?.(location);}
+    jump(reader,source){const location={pageIndex:source.pageIndex,annotationID:source.fullPage||source.selection?undefined:source.annotationKey};reader._internalReader?.navigate?.(location);}
     copy(text){this.Z.Utilities.Internal.copyTextToClipboard(text);}
     importAttachment(reader,input){if(!this.attachmentManager)throw new Error('附件模块不可用，请重启 Zotero');return this.attachmentManager.import(reader,input);}
     loadAttachment(reader,record){return this.attachmentManager.load(reader,record);}
@@ -289,12 +289,14 @@
       if(this.isReadOnly(reader))throw new Error('此文献库为只读，不能建立文字引用');
       const item=await this.Z.Annotations.saveFromJSON(this.Z.Items.get(Number(reader.itemID)),{...snapshot,key:this.Z.DataObjectUtilities.generateKey()});return this.resolveSource(reader,item.key);
     }
+    async selectionQuoteSource(reader,snapshot){return {...this.scope(reader),annotationKey:'SELECT23',pageIndex:snapshot.position.pageIndex,pageLabel:snapshot.pageLabel,rects:snapshot.position.rects.map(r=>r.slice()),nextPageRects:snapshot.position.nextPageRects?.map(r=>r.slice()),kind:'text',text:snapshot.text,selection:true,fingerprint:await this.fingerprint(reader)};}
     referenceTargets(reader,exclude){
       return (this.Z.Items.get(Number(reader.itemID)).getAnnotations()||[]).filter(a=>a.key!==exclude&&!a.deleted&&a.isEditable?.()!==false).map(a=>({annotationKey:a.key,label:`第 ${a.annotationPageLabel||'?'} 页 · ${String(a.annotationComment||a.annotationText||'空批注').replace(/<[^>]*>/g,'').slice(0,65)}`}));
     }
     onViewMenu=({reader,params,append})=>{
       if(!this.isPDF(reader))return;const snapshot=this.selectionSnapshot(reader,params);if(!snapshot)return;
       const disabled=this.isReadOnly(reader);
+      append({label:'批注并提问（选中文字）',disabled:false,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);try{await panel.addPDFQuote(await this.selectionQuoteSource(reader,snapshot));}catch(e){panel.error?.(e);}})});
       append({label:'引用选中文字到页边批注',disabled,onCommand:()=>this.guard(async()=>{const source=await this.saveSelection(reader,snapshot),panel=await this.panel(reader);await panel.markSource(source,true);})});
       append({label:'标记选中文字为引用来源',disabled,onCommand:()=>this.guard(async()=>{const source=await this.saveSelection(reader,snapshot),panel=await this.panel(reader);await panel.markSource(source);})});
       append({label:'向 DeepSeek 提问（选中文字）',disabled,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);panel.showChat();try{await panel.addMaterial(()=>this.saveSelection(reader,snapshot));}catch(e){panel.error(e);}})});
@@ -323,6 +325,7 @@
     }
     onMenu=({reader,params,append})=>{
       if(!this.isPDF(reader))return;const keys=Array.isArray(params?.ids)?params.ids.map(String):[];const key=keys.length===1?keys[0]:null;const item=key&&this.nativeAnnotation(reader,key);const region=item?.annotationType==='image'||['highlight','underline'].includes(item?.annotationType)&&!!item.annotationText?.trim();
+      append({label:'批注并提问',disabled:!region,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);try{await panel.addPDFQuote(await this.resolveSource(reader,key));}catch(e){panel.error(e);}})});
       append({label:'向 DeepSeek 提问',disabled:!region,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);panel.showChat();try{await panel.addMaterial(()=>this.resolveSource(reader,key));}catch(e){panel.error(e);}})});
       append({label:'标记为引用来源',disabled:!region||item.isEditable?.()===false||this.isReadOnly(reader),onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);await panel.markSource(await this.resolveSource(reader,key));})});
       append({label:'插入前文引用',disabled:!item||item.isEditable?.()===false||this.isReadOnly(reader),onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);await panel.showDirectory({annotationKey:key});})});
