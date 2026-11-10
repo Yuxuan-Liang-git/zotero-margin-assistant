@@ -190,3 +190,53 @@ test('repeated identical segments share one embedding request while preserving d
   assert.equal(rows.length, 2); assert.notEqual(rows[0].id, rows[1].id);
   assert.equal((await s.stats(ns)).readySources, 1);
 });
+
+test('a future cancelled write cannot overlap a paused read or expose vectors that never commit', async t => {
+  const db = connection(), s = new API.Store(db), a = segment('isolation');
+  t.after(() => s.close());
+  await s.open(); await s.configure(space()); await s.sync(ns, source(), [a], 's1');
+  const before = await s.stats(ns);
+  let releaseRead, signalRead, releaseWrite;
+  const readGate = new Promise(resolve => { releaseRead = resolve; });
+  const readEntered = new Promise(resolve => { signalRead = resolve; });
+  const writeGate = new Promise(resolve => { releaseWrite = resolve; });
+  const query = db.queryAsync;
+  let heldRead = false, wroteVector = false;
+  db.queryAsync = async (sql, params) => {
+    const result = await query(sql, params);
+    if (!heldRead && /^SELECT libraryID,dimensions,model,revision,control FROM rag_spaces/.test(sql)) {
+      heldRead = true;
+      signalRead();
+      await readGate;
+    }
+    if (/^UPDATE rag_vectors SET encoded=/.test(sql)) {
+      wroteVector = true;
+      await writeGate;
+    }
+    return result;
+  };
+  const read = s.vectors(ns);
+  let rejectedWrite, rows, overlapped;
+  try {
+    await readEntered;
+    let checks = 0;
+    rejectedWrite = assert.rejects(s.commit(ns, [{ key: a.key, vector: [1, 0] }], () => ++checks < 2), /cancel|stale/i);
+    // Flush runnable work without awaiting the UPDATE gate: on the fixed queue
+    // that UPDATE must remain unreachable until this paused read completes.
+    await new Promise(resolve => setImmediate(resolve));
+    overlapped = wroteVector;
+    releaseRead();
+    rows = await read;
+  } finally {
+    releaseRead();
+    releaseWrite();
+    await Promise.allSettled([read, rejectedWrite]);
+  }
+  await rejectedWrite;
+  assert.deepEqual(rows, [], 'a read must not publish a vector from a transaction that will roll back');
+  assert.equal(overlapped, false, 'a future write must wait for the whole earlier read');
+  assert.deepEqual(await s.vectors(ns), []);
+  assert.deepEqual(await s.stats(ns), before, 'rollback must preserve the committed revision and counts');
+  await s.commit(ns, [{ key: a.key, vector: [0, 1] }]);
+  assert.equal((await s.vectors(ns)).length, 1, 'a rejected queued write must not poison later operations');
+});

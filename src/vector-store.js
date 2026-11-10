@@ -26,25 +26,28 @@
   }
 
   // The caller owns an independent vectors-v1.sqlite connection, never Zotero's
-  // user database. All writes queue through its native async transaction API.
+  // user database. Whole reads and native write transactions share one queue, so
+  // no later write can expose speculative values between a read's awaited queries.
   class Store {
     constructor(connection) {
       this.db = connection;
-      this.writes = Promise.resolve();
+      this.operations = Promise.resolve();
       this.closed = false;
     }
 
-    write(action) {
+    enqueue(action) {
       if (this.closed) return Promise.reject(new Error('Vector store closed'));
-      const work = this.writes.catch(() => {}).then(() => this.db.executeTransaction(action));
-      this.writes = work;
+      const work = this.operations.catch(() => {}).then(action);
+      this.operations = work;
       return work;
     }
 
-    async read(action) {
-      await this.writes.catch(() => {});
-      if (this.closed) throw new Error('Vector store closed');
-      return action();
+    write(action) {
+      return this.enqueue(() => this.db.executeTransaction(action));
+    }
+
+    read(action) {
+      return this.enqueue(action);
     }
 
     async open() {
@@ -222,7 +225,7 @@
     async close() {
       if (this.closed) return;
       this.closed = true;
-      await this.writes.catch(() => {});
+      await this.operations.catch(() => {});
       await this.db.closeDatabase();
     }
   }
