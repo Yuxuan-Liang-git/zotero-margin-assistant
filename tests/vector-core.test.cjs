@@ -66,14 +66,14 @@ test('hybrid selection deduplicates anchors and text, applies paper and fragment
   assert.deepEqual(V.hybridSelect([{ source: source(0, 'x'.repeat(1801)), denseRank: 1 }], ''), []);
 });
 
-test('anchor identifies origin rather than mutable content and excludes active dialogue only', () => {
+test('anchor identifies origin rather than mutable content and excludes active dialogue', () => {
   assert.equal(typeof V.anchorKey, 'function');
   const a = source(1), b = { ...a, text: 'changed', signature: M.signature('changed'), fingerprint: '2222222233333333' };
   assert.equal(V.anchorKey(a), V.anchorKey(b));
   assert.notEqual(a.signature, b.signature);
   for (const patch of [{ libraryID: 2 }, { attachmentKey: 'PDF00002' }, { sourceKey: 'SOURCE02' }, { kind: 'annotation' }, { conversationId: 'other' }, { messageIndex: 2 }, { part: 1 }]) assert.notEqual(V.anchorKey(a), V.anchorKey({ ...a, ...patch }));
   const dialogue = { ...a, version: 1, kind: 'dialogue', conversationId: 'active' };
-  const result = V.hybridSelect([{ source: dialogue, denseRank: 1 }, { source: a, denseRank: 2 }, { source: { ...source(2), libraryID: 2 }, denseRank: 3 }], '', { scope: { libraryID: 1, attachmentKey: 'PDF00001' }, conversationId: 'active' });
+  const result = V.hybridSelect([{ source: dialogue, denseRank: 1 }, { source: source(2), denseRank: 2 }, { source: { ...source(3), libraryID: 2 }, denseRank: 3 }], '', { scope: { libraryID: 1, attachmentKey: 'PDF00001' }, conversationId: 'active' });
   assert.deepEqual(result.map(s => s.kind), ['pdf']);
 });
 
@@ -84,4 +84,43 @@ test('compact vectors stay nonzero for diffuse high-dimensional inputs and prese
   const positive = V.pack([200, 1]), negative = V.pack([-200, -1]);
   assert.equal(Buffer.from(positive.compact, 'base64').readInt8(1), 1);
   assert.equal(Buffer.from(negative.compact, 'base64').readInt8(1), -1);
+});
+
+
+test('strict decoding preserves literal little-endian floats for every Base64 padding length', () => {
+  const fixtures = [
+    ['AACAPw==', 1, [1]],
+    ['AACAPwAAAAA=', 2, [1, 0]],
+    ['AACAPwAAAAAAAIC/', 3, [1, 0, -1]]
+  ];
+  for (const [encoded, dimensions, want] of fixtures) assert.deepEqual([...V.unpack(encoded, dimensions)], want);
+  for (const [encoded, dimensions] of [
+    ['AACAPx==', 1], // Same decoded bytes as AACAPw==, but nonzero unused four bits.
+    ['AACAPwAAAAB=', 2], // Same decoded bytes as AACAPwAAAAA=, but nonzero unused two bits.
+    ['AACAPw=AAAA=', 2], ['AACAPwAAAA==', 2], ['AACAPwAAAAA==', 2],
+    ['AACAPwAAAAA', 2], ['AACAPwAAAAA ', 2], ['AACAPwAAAAA\t', 2],
+    ['AACAPwAAAéA=', 2], ['AACAPwAAA_A=', 2], ['AACAPwAAA-A=', 2],
+    ['AACAfw==', 1], ['AADAfw==', 1], ['AAAAAA==', 1],
+    ['AACAPw==', -1], ['AACAPw==', 1.5], ['AACAPw==', 65537]
+  ]) assert.throws(() => V.unpack(encoded, dimensions), /vector/i, encoded);
+});
+
+test('hybrid filtering removes current PDF and parent metadata before paper budgets', () => {
+  const current = source(1, 'Current PDF body.'), metadata = { ...source(1, 'Current parent metadata.'), kind: 'metadata', attachmentKey: '' };
+  const external = source(2, 'External evidence.');
+  const result = V.hybridSelect([{ source: current, denseRank: 1 }, { source: metadata, denseRank: 2 }, { source: external, denseRank: 3 }], '',
+    { scope: { libraryID: 1, attachmentKey: 'PDF00001', paperKey: 'PAPER001' }, maxPapers: 1, perPaper: 1 });
+  assert.deepEqual(result.map(s => s.paperKey), ['PAPER002']);
+  // Without a supplied parent key, unrelated attachment-free metadata cannot be identified as current.
+  assert.equal(V.hybridSelect([{ source: metadata, denseRank: 1 }], '', { scope: { libraryID: 1, attachmentKey: 'PDF00001' } })[0].kind, 'metadata');
+});
+
+test('current verified summary and older completed dialogue remain eligible', () => {
+  const summary = { ...source(1, 'Verified current summary.'), version: 1, kind: 'summary' };
+  const active = { ...summary, kind: 'dialogue', conversationId: 'active', messageIndex: 1, text: 'Active discussion.' };
+  const older = { ...active, conversationId: 'older', text: 'Older completed discussion.' };
+  const result = V.hybridSelect([{ source: active, denseRank: 1 }, { source: summary, denseRank: 2 }, { source: older, denseRank: 3 }], '',
+    { scope: { libraryID: 1, attachmentKey: 'PDF00001', paperKey: 'PAPER001' }, conversationId: 'active' });
+  assert.deepEqual(result.map(s => s.kind), ['summary', 'dialogue']);
+  assert.equal(result[1].conversationId, 'older');
 });

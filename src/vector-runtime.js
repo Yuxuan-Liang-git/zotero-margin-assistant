@@ -77,7 +77,7 @@
       input.signal?.addEventListener('abort', abort, { once: true });
       const work = async () => {
         const start = await this.rpc('start', { namespace: input.namespace, revision: input.revision, dimensions: input.dimensions,
-          vector: query.encoded, scope: input.scope ? { attachmentKey: input.scope.attachmentKey } : null,
+          vector: query.encoded, scope: input.scope ? { attachmentKey: input.scope.attachmentKey, ...(input.scope.paperKey ? { paperKey: input.scope.paperKey } : {}) } : null,
           conversationId: input.conversationId || '', limit: input.limit ?? 96, perPaper: input.perPaper ?? 4,
           maxCacheBytes: this.maxCacheBytes, batchSize: this.batchSize }, session);
         check();

@@ -2,6 +2,9 @@
   'use strict';
 
   const MAX_DIMENSIONS = 65536;
+  const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const BASE64_VALUES = new Int16Array(128).fill(-1);
+  for (let i = 0; i < BASE64_ALPHABET.length; i++) BASE64_VALUES[BASE64_ALPHABET.charCodeAt(i)] = i;
   function dimension(value) {
     if (!Number.isSafeInteger(value) || value < 1 || value > MAX_DIMENSIONS) throw new Error('Invalid vector dimensions');
     return value;
@@ -46,12 +49,31 @@
 
   function unpack(encoded, dimensions) {
     dimension(dimensions);
-    if (typeof encoded !== 'string' || encoded.length !== 4 * Math.ceil(dimensions * 4 / 3)
-      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) throw new Error('Invalid vector encoding');
-    const binary = atob(encoded);
-    if (binary.length !== dimensions * 4) throw new Error('Invalid vector byte length');
-    const bytes = Uint8Array.from(binary, value => value.charCodeAt(0));
-    if (base64(bytes) !== encoded) throw new Error('Invalid vector noncanonical encoding');
+    const byteLength = dimensions * 4;
+    if (typeof encoded !== 'string' || encoded.length !== 4 * Math.ceil(byteLength / 3)) throw new Error('Invalid vector encoding');
+    const bytes = new Uint8Array(byteLength);
+    let at = 0;
+    // Decode and verify canonical Base64 in one pass. This avoids a string
+    // iterator per byte and a second binary-string/Base64 encoding round trip.
+    for (let i = 0; i < encoded.length; i += 4) {
+      const a = BASE64_VALUES[encoded.charCodeAt(i)], b = BASE64_VALUES[encoded.charCodeAt(i + 1)];
+      if (!(a >= 0 && b >= 0)) throw new Error('Invalid vector encoding');
+      bytes[at++] = (a << 2) | (b >> 4);
+      if (at === byteLength) {
+        if (i + 4 !== encoded.length || encoded[i + 2] !== '=' || encoded[i + 3] !== '=' || (b & 15) !== 0) throw new Error('Invalid vector noncanonical encoding');
+        break;
+      }
+      const c = BASE64_VALUES[encoded.charCodeAt(i + 2)];
+      if (!(c >= 0)) throw new Error('Invalid vector encoding');
+      bytes[at++] = (b << 4) | (c >> 2);
+      if (at === byteLength) {
+        if (i + 4 !== encoded.length || encoded[i + 3] !== '=' || (c & 3) !== 0) throw new Error('Invalid vector noncanonical encoding');
+        break;
+      }
+      const d = BASE64_VALUES[encoded.charCodeAt(i + 3)];
+      if (!(d >= 0)) throw new Error('Invalid vector encoding');
+      bytes[at++] = (c << 6) | d;
+    }
     const view = new DataView(bytes.buffer), vector = new Float32Array(dimensions);
     let nonzero = false;
     for (let i = 0; i < dimensions; i++) {
@@ -97,7 +119,8 @@
     for (const candidate of candidates) {
       const source = candidate?.source;
       if (!source || source.text?.length > maxFragment || options.scope && source.libraryID !== options.scope.libraryID
-        || options.scope?.attachmentKey === source.attachmentKey && source.kind === 'dialogue' && source.conversationId === options.conversationId) continue;
+        || options.scope?.attachmentKey === source.attachmentKey && (source.kind === 'pdf' || source.kind === 'dialogue' && source.conversationId === options.conversationId)
+        || options.scope?.paperKey && options.scope.paperKey === source.paperKey && source.kind === 'metadata') continue;
       const rank = value => Number.isSafeInteger(value) && value > 0 ? 1 / (60 + value) : 0;
       const dense = candidate.score === undefined || Number.isFinite(candidate.score) && candidate.score > 0
         ? rank(candidate.denseRank) || (Number.isFinite(candidate.score) && candidate.score > 0 ? candidate.score / 61 : 0) : 0;

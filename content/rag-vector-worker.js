@@ -11,7 +11,8 @@
 
   function consider(session, row) {
     session.scannedRows++;
-    if (session.scope?.attachmentKey === row.attachmentKey && row.kind === 'dialogue' && row.conversationId === session.conversationId) return;
+    if (session.scope?.attachmentKey === row.attachmentKey && (row.kind === 'pdf' || row.kind === 'dialogue' && row.conversationId === session.conversationId)
+      || session.scope?.paperKey && session.scope.paperKey === row.paperKey && row.kind === 'metadata') return;
     const candidate = { id: row.id, score: vectors.cosine(session.query, row.vector), paperKey: row.paperKey || row.attachmentKey };
     const same = session.hits.filter(hit => hit.paperKey === candidate.paperKey);
     if (same.length >= session.perPaper) {

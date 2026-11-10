@@ -154,3 +154,53 @@ test('bounded real worker records deterministic timing and heap evidence on 4096
     t.diagnostic(JSON.stringify({ datasetRows: 4096, dimensions: 2, elapsedMs: Math.round(performance.now() - start), mainHeapDeltaBytes: process.memoryUsage().heapUsed - heap, ...runtime.stats }));
   } finally { runtime.destroy(); }
 });
+
+
+test('current PDF and parent metadata cannot displace external evidence at limit one', async () => {
+  const runtime = new Runtime(() => adapter(), { batchSize: 2 });
+  const data = [row(1, [1, 0], { attachmentKey: 'CURRENT', paperKey: 'PARENT' }),
+    row(2, [1, 0], { kind: 'metadata', attachmentKey: '', paperKey: 'PARENT' }), row(3, [0.8, 0.6])];
+  try {
+    const scoped = { scope: { attachmentKey: 'CURRENT', paperKey: 'PARENT' }, limit: 1 };
+    assert.deepEqual((await runtime.search(request(pageRows(data), scoped))).map(r => r.id), [3]);
+    // The same filter applies when all three rows come from the existing cache.
+    assert.deepEqual((await runtime.search(request(pageRows(data), scoped))).map(r => r.id), [3]);
+    // Optional paperKey remains compatible with callers that can only identify the PDF.
+    assert.deepEqual((await runtime.search(request(pageRows(data), { scope: { attachmentKey: 'CURRENT' }, limit: 1 }))).map(r => r.id), [2]);
+  } finally { runtime.destroy(); }
+});
+
+test('current summary and older dialogue survive Worker scope exclusions', async () => {
+  const runtime = new Runtime(() => adapter());
+  const data = [row(1, [1, 0], { attachmentKey: 'CURRENT', kind: 'dialogue', conversationId: 'active' }),
+    row(2, [0.9, 0.1], { attachmentKey: 'CURRENT', kind: 'summary' }),
+    row(3, [0.8, 0.2], { attachmentKey: 'CURRENT', kind: 'dialogue', conversationId: 'older' })];
+  try {
+    const result = await runtime.search(request(pageRows(data), { scope: { attachmentKey: 'CURRENT' }, conversationId: 'active' }));
+    assert.deepEqual(result.map(r => r.id), [2, 3]);
+  } finally { runtime.destroy(); }
+});
+
+test('exact float32 near ties retain ordering rather than collapsing through compact rounding', async () => {
+  const runtime = new Runtime(() => adapter(), { maxCacheBytes: 0, batchSize: 1 });
+  try {
+    const result = await runtime.search(request(pageRows([row(1, [1, 0.001]), row(2, [1, 0.0009])]), { limit: 1 }));
+    assert.equal(result[0].id, 2);
+    assert.ok(result[0].score > 0.9999995);
+  } finally { runtime.destroy(); }
+});
+
+test('real Worker scans 16384 by 1024 vectors exactly inside the unchanged eight second budget', async t => {
+  const runtime = new Runtime(() => adapter(), { maxCacheBytes: 32768, batchSize: 128 });
+  const vector = Array(1024).fill(0); vector[0] = 1;
+  const distractor = Array(1024).fill(0); distractor[1] = 1;
+  const data = Array.from({ length: 16384 }, (_, i) => row(i + 1, i === 16383 ? vector : distractor));
+  const control = new AbortController(), deadline = setTimeout(() => control.abort(), 8000), start = performance.now();
+  try {
+    const result = await runtime.search(request(pageRows(data), { namespace: 'controlled:1024', dimensions: 1024, vector, signal: control.signal, limit: 1 }));
+    assert.deepEqual(result, [{ id: 16384, score: 1 }]);
+    assert.equal(runtime.stats.scannedRows, 16384);
+    assert.ok(runtime.stats.cacheBytes <= 32768);
+    t.diagnostic(JSON.stringify({ datasetRows: 16384, dimensions: 1024, elapsedMs: Math.round(performance.now() - start), ...runtime.stats }));
+  } finally { clearTimeout(deadline); runtime.destroy(); }
+});
