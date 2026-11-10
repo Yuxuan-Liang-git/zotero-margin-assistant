@@ -84,8 +84,8 @@
       await this._load();if(typeof enabled!=='boolean')throw failure();const old=this._profiles.get(this._endpoint);if(old.enabled===enabled)return this.state();
       const profiles=new Map(this._profiles);profiles.set(this._endpoint,{...old,enabled});return this._save(profiles,this._endpoint);
     });}
-    markTested(dimensions,actualModel,expectedRevision){return this._serial(async()=>{
-      await this._load();if(expectedRevision!==undefined&&expectedRevision!==this._revision)throw failure();dimension(dimensions);const p=this._profiles.get(this._endpoint);
+    markTested(dimensions,actualModel,expectedRevision,valid){return this._serial(async()=>{
+      if(valid&&!valid())throw failure();await this._load();if(valid&&!valid())throw failure();if(expectedRevision!==undefined&&expectedRevision!==this._revision)throw failure();dimension(dimensions);const p=this._profiles.get(this._endpoint);
       if(!p.cipher||p.requestedDimensions&&p.requestedDimensions!==dimensions||actualModel!==undefined&&actualModel!==p.model&&!(p.model===DEFAULT_MODEL&&actualModel==='bge-m3'))throw failure();
       const profiles=new Map(this._profiles);profiles.set(this._endpoint,{...p,tested:true,dimensions});return this._save(profiles,this._endpoint);
     });}

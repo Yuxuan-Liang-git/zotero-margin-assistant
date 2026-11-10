@@ -86,6 +86,8 @@
             this.authorized = false;
             this.refreshNeeded = false;
             this.queryControllers = new Set();
+            this.testController = null;
+            this.testWork = null;
             this.scanSerial = 0;
         }
         publish() {
@@ -106,11 +108,14 @@
                 this.stats = await this.store.stats(this.space.namespace);
             this.publish();
         }
-        async configure() {
+        async configure(valid) {
             const raw = await this.profiles.space();
+            if (valid && !valid()) throw abort();
             this.space = raw ? { ...raw, namespace: await this.hash(JSON.stringify(['library-space-v1', this.libraryID, raw.namespace])), libraryID: this.libraryID } : null;
+            if (valid && !valid()) throw abort();
             if (this.space) {
                 await this.store.configure(this.space);
+                if (valid && !valid()) throw abort();
                 this.control = await this.store.control(this.space.namespace);
                 this.authorized = this.control.mode !== 'idle';
                 await this.updateStats();
@@ -144,6 +149,7 @@
         invalidate() {
             this.epoch++;
             this.buildController?.abort();
+            this.testController?.abort();
             for (const controller of this.queryControllers)
                 controller.abort();
             this.runtime.invalidate();
@@ -168,26 +174,43 @@
         }
         async test() {
             await this.start();
+            if (this.stopped) throw abort();
             this.invalidate();
-            const revision = this.profiles.state().revision;
+            const control = this.controller(), epoch = this.epoch, revision = this.profiles.state().revision;
+            this.testController = control;
+            const valid = () => !this.stopped && !control.signal.aborted && epoch === this.epoch;
+            let cancel;
+            const cancelled = new Promise((_, reject) => {
+                cancel = () => reject(abort());
+                control.signal.addEventListener('abort', cancel, { once: true });
+            });
             this.status = 'testing';
             this.error = '';
             this.publish();
-            try {
-                const result = await this.client.embed(['This is a connection test.'], { expectedDimensions: null });
-                await this.profiles.markTested(result.dimensions, result.model, revision);
-                await this.configure();
+            const work = async () => {
+                const result = await this.client.embed(['This is a connection test.'], { expectedDimensions: null, signal: control.signal });
+                if (!valid()) throw abort();
+                // The guard also runs inside the serialized profile mutation;
+                // cancellation can occur while this call waits in that queue.
+                await this.profiles.markTested(result.dimensions, result.model, revision, valid);
+                if (!valid()) throw abort();
+                await this.configure(valid);
+                if (!valid()) throw abort();
                 this.status = 'tested';
                 return this.state();
-            }
-            catch (error) {
-                this.status = 'error';
-                this.error = '连接测试失败，请检查端点、模型、密钥或网络';
+            };
+            this.testWork = Promise.race([work(), cancelled]).catch(error => {
+                if (valid()) {
+                    this.status = 'error';
+                    this.error = '连接测试失败，请检查端点、模型、密钥或网络';
+                }
                 throw error;
-            }
-            finally {
-                this.publish();
-            }
+            }).finally(() => {
+                control.signal.removeEventListener('abort', cancel);
+                if (this.testController === control) this.testController = null;
+                if (valid()) this.publish();
+            });
+            return this.testWork;
         }
         usable() {
             const p = this.profiles.state();
@@ -281,45 +304,86 @@
         async run(control, space, scanID, valid) {
             this.status = 'building';
             this.publish();
+            const limit = Math.min(8, this.profiles.state().batchSize);
+            const jobs = [], inputs = new Map();
+            // A source cursor becomes durable only after every earlier source
+            // and every pending input belonging to this source has committed.
+            const advance = async () => {
+                let cursor;
+                while (jobs[0]?.enumerated && !jobs[0].remaining.size) cursor = jobs.shift().cursor;
+                if (cursor !== undefined) {
+                    if (!valid()) throw abort();
+                    this.control.cursor = String(cursor);
+                    await this.store.setControl(space.namespace, this.control);
+                }
+            };
+            const flush = async () => {
+                if (!inputs.size) { await advance(); return; }
+                const batch = [...inputs.values()], owners = new Set(batch.flatMap(input => [...input.owners]));
+                const authorities = async () => {
+                    for (const job of owners) {
+                        if (!valid() || !await this.validate(job.source, control.signal)) throw abort();
+                    }
+                    if (!valid()) throw abort();
+                };
+                // Check all owners, including owners sharing an input hash.
+                // One stale owner rolls back publication of this whole batch.
+                await authorities();
+                const response = await this.embedBackground(batch.map(input => input.input), control.signal, valid);
+                await authorities();
+                await this.store.commit(space.namespace, batch.map((input, i) => ({ key: input.key, vector: response.vectors[i] })), valid);
+                for (const input of batch) for (const job of input.owners) job.remaining.delete(input.key);
+                inputs.clear();
+                await advance();
+                await this.updateStats();
+            };
             for await (const entry of this.corpus({ cursor: this.control.cursor, limitPapers: this.control.mode === 'pilot' ? 20 : undefined, priority: this.priority, signal: control.signal })) {
                 check(control.signal);
-                if (!valid())
-                    throw abort();
+                if (!valid()) throw abort();
                 await this.backgroundGate(control.signal);
+                // A pilot cohort is pinned before its first network request,
+                // without advancing past any uncommitted source.
+                if (entry.checkpoint !== undefined && !this.control.cursor) {
+                    this.control.cursor = String(entry.checkpoint);
+                    await this.store.setControl(space.namespace, this.control);
+                }
                 const source = M.cleanSources([{ ...entry.source, label: '阅读1' }])[0];
                 const authoritative = await this.validate(source, control.signal);
                 if (!valid()) throw abort();
-                if (!authoritative) {
-                    this.control.cursor = String(entry.cursor);
-                    continue;
+                const job = { source, cursor: entry.cursor, remaining: new Set(), enumerated: false };
+                jobs.push(job);
+                if (authoritative) {
+                    const pieces = await segments(source, this.profiles.state().maxInputBytes, this.hash);
+                    if (!valid()) throw abort();
+                    await this.store.sync(space.namespace, source, pieces, scanID);
+                    const loaded = new Set();
+                    while (true) {
+                        // Source scoping prevents unrelated stale pending rows
+                        // from being uploaded or starving this source.
+                        const pending = await this.store.pending(space.namespace, 1024, source);
+                        for (const piece of pending) {
+                            if (loaded.has(piece.key)) continue;
+                            loaded.add(piece.key);
+                            job.remaining.add(piece.key);
+                            const shared = inputs.get(piece.key);
+                            if (shared) shared.owners.add(job);
+                            else inputs.set(piece.key, { ...piece, owners: new Set([job]) });
+                            if (inputs.size === limit) await flush();
+                        }
+                        if (pending.length < 1024) break;
+                    }
                 }
-                const pieces = await segments(source, this.profiles.state().maxInputBytes, this.hash);
-                if (!valid())
-                    throw abort();
-                await this.store.sync(space.namespace, source, pieces, scanID);
-                while (true) {
-                    const pending = await this.store.pending(space.namespace, Math.min(8, this.profiles.state().batchSize), source);
-                    if (!pending.length)
-                        break;
-                    const batch = pending.slice(0, Math.min(8, this.profiles.state().batchSize));
-                    const response = await this.embedBackground(batch.map(p => p.input), control.signal, valid);
-                    if (!valid() || !await this.validate(source, control.signal))
-                        throw abort();
-                    await this.store.commit(space.namespace, batch.map((p, i) => ({ key: p.key, vector: response.vectors[i] })), valid);
-                    await this.updateStats();
-                }
-                if (!valid())
-                    throw abort();
-                this.control.cursor = String(entry.cursor);
-                await this.store.setControl(space.namespace, this.control);
-                await this.updateStats();
+                job.enumerated = true;
+                await advance();
+                // Bound retained owner/source objects even for thousands of
+                // identical inputs, which otherwise never fill a unique batch.
+                if (jobs.length >= 128) await flush();
             }
-            if (!valid())
-                throw abort();
+            await flush();
+            if (!valid()) throw abort();
             this.control.completed = true;
             await this.store.setControl(space.namespace, this.control);
-            if (this.control.mode === 'full')
-                await this.store.prune(space.namespace, scanID, valid);
+            if (this.control.mode === 'full') await this.store.prune(space.namespace, scanID, valid);
             this.status = 'ready';
             await this.updateStats();
         }
@@ -481,6 +545,7 @@
             });
             await this.started?.catch(() => {
             });
+            await this.testWork?.catch(() => {});
             this.runtime.destroy();
             await this.store.close();
             this.listeners.clear();

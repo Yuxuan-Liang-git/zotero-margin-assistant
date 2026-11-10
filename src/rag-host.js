@@ -17,52 +17,94 @@
             this.history = options.history;
             this.readRecord = options.readRecord;
         }
+        async pilotCohort(limit, priority, signal) {
+            const keys = [], seen = new Set();
+            const add = key => {
+                if (/^[A-Z0-9]{8}$/.test(key) && !seen.has(key) && keys.length < limit) {
+                    keys.push(key); seen.add(key);
+                }
+            };
+            if (priority?.libraryID === this.libraryID) {
+                let key = priority.paperKey;
+                if (!key && priority.attachmentKey && this.papers) {
+                    await this.papers.ensure();
+                    key = await this.papers.index.paperForAttachment(priority.attachmentKey);
+                }
+                add(key);
+            }
+            // A reading record means eligible committed reading material,
+            // rather than a draft or an unanswered question.
+            if (this.history) {
+                const scopes = (await this.history.list(this.libraryID)).sort((a, b) => a.attachmentKey.localeCompare(b.attachmentKey));
+                for (const scope of scopes) {
+                    check(signal);
+                    if (keys.length >= limit) break;
+                    const record = await this.readRecord(scope, signal);
+                    if (!record) continue;
+                    const summary = record.state.readingSummary;
+                    const hasSummary = record.summaryValid && summary?.noteKey && summary.text?.trim();
+                    const hasDialogue = record.state.conversations?.some(conversation => conversation.history.some((answer, i) =>
+                        i > 0 && answer.role === 'assistant' && !answer.incomplete && answer.content?.trim() && conversation.history[i - 1].role === 'user'));
+                    if (hasSummary || hasDialogue) add(record.metadata?.paperKey || scope.attachmentKey);
+                }
+            }
+            if (this.papers && keys.length < limit) {
+                await this.papers.ensure();
+                const records = await this.papers.index.papers();
+                for (const paper of records.sort((a, b) => a.key.localeCompare(b.key))) {
+                    check(signal); add(paper.key);
+                    if (keys.length >= limit) break;
+                }
+            }
+            return keys;
+        }
         /** @param {any} options */
-        async *sources({ cursor = '', limitPapers, signal } = {}) {
-            let position = { phase: 'library', afterId: 0, attachment: '', at: 0 };
-            if (cursor)
-                position = JSON.parse(cursor);
-            const papers = new Set(position.papers || []), allowed = source => {
-                const paper = source.paperKey || source.attachmentKey;
-                if (!papers.has(paper) && limitPapers && papers.size >= limitPapers)
-                    return false;
-                papers.add(paper);
-                return true;
+        async *sources({ cursor = '', limitPapers, priority, signal } = {}) {
+            let position = { phase: 'library', afterId: 0, attachment: '', at: 0, paperAt: 0 };
+            if (cursor) position = { ...position, ...JSON.parse(cursor) };
+            let cohort = null;
+            if (limitPapers) {
+                // Persisted selection wins over a later reader/priority change.
+                // Older partial pilot cursors retain their already used subset.
+                cohort = position.cohort || position.papers || await this.pilotCohort(limitPapers, priority, signal);
+                position.cohort = cohort;
+            }
+            const allowed = source => !cohort || cohort.includes(source.paperKey || source.attachmentKey);
+            let first = true;
+            const entry = (source, next) => {
+                const result = { source, cursor: JSON.stringify({ ...next, ...(cohort ? { cohort } : {}) }) };
+                if (first && cohort) { result.checkpoint = JSON.stringify(position); first = false; }
+                return result;
             };
             if (position.phase === 'library' && this.papers) {
                 await this.papers.ensure();
-                let afterId = position.afterId || 0;
-                while (true) {
-                    check(signal);
-                    const page = await this.papers.index.sourcesPage({ afterId, limit: 128 });
-                    if (!page.sources.length)
-                        break;
-                    for (const entry of page.sources) {
+                const selected = cohort || [null];
+                for (let paperAt = cohort ? position.paperAt : 0; paperAt < selected.length; paperAt++) {
+                    let afterId = paperAt === (cohort ? position.paperAt : 0) ? position.afterId : 0;
+                    while (true) {
                         check(signal);
-                        afterId = entry.cursor;
-                        if (!allowed(entry.source))
-                            continue;
-                        yield { source: entry.source, cursor: JSON.stringify({ phase: 'library', afterId, ...(limitPapers ? { papers: [...papers] } : {}) }) };
+                        const page = await this.papers.index.sourcesPage({ afterId, limit: 128, ...(selected[paperAt] ? { paperKey: selected[paperAt] } : {}) });
+                        if (!page.sources.length) break;
+                        for (const value of page.sources) {
+                            check(signal); afterId = value.cursor;
+                            if (!allowed(value.source)) continue;
+                            yield entry(value.source, { phase: 'library', afterId, ...(cohort ? { paperAt } : {}) });
+                        }
                     }
                 }
             }
-            if (!this.history)
-                return;
+            if (!this.history) return;
             const scopes = (await this.history.list(this.libraryID)).sort((a, b) => a.attachmentKey.localeCompare(b.attachmentKey));
             for (const scope of scopes) {
                 check(signal);
-                if (position.phase === 'history' && scope.attachmentKey < position.attachment)
-                    continue;
+                if (position.phase === 'history' && scope.attachmentKey < position.attachment) continue;
                 const record = await this.readRecord(scope, signal);
-                if (!record)
-                    continue;
+                if (!record) continue;
                 const metadata = record.metadata || {}, base = { libraryID: this.libraryID, attachmentKey: scope.attachmentKey, title: String(metadata.title || scope.attachmentKey).slice(0, 500), year: String(metadata.year || '').slice(0, 20), doi: String(metadata.doi || '').slice(0, 250), ...(metadata.paperKey ? { paperKey: metadata.paperKey } : {}) };
-                if (!allowed(base))
-                    continue;
+                if (!allowed(base)) continue;
                 let at = 0;
-                const emit = function* (text, details) {
-                    for (const [part, value] of M.splitText(text).chunks.entries())
-                        yield { ...base, ...details, label: '阅读1', part, text: value };
+                const emit = function* (text, details) { for (const [part, value] of M.splitText(text).chunks.entries())
+                    yield { ...base, ...details, label: '阅读1', part, text: value };
                 };
                 const entries = function* () {
                     const summary = record.state.readingSummary;
@@ -71,21 +113,17 @@
                     for (const conversation of record.state.conversations || []) {
                         for (let i = 1; i < conversation.history.length; i++) {
                             const q = conversation.history[i - 1], a = conversation.history[i];
-                            if (a.role !== 'assistant' || a.incomplete || !a.content?.trim() || q.role !== 'user')
-                                continue;
+                            if (a.role !== 'assistant' || a.incomplete || !a.content?.trim() || q.role !== 'user') continue;
                             const question = M.splitText(q.content, 360).chunks[0] || '原问题包含较长公式，请打开原会话阅读。';
                             yield* emit('用户问题\n' + question + '\n\n历史助手解释\n' + a.content, { kind: 'dialogue', conversationId: conversation.id, messageIndex: i, signature: M.signature(q.content + '\n' + a.content), updatedAt: conversation.updatedAt || 0 });
                         }
                     }
                 };
                 for (const source of entries()) {
-                    check(signal);
-                    at++;
-                    if (position.phase === 'history' && scope.attachmentKey === position.attachment && at <= position.at)
-                        continue;
-                    yield { source, cursor: JSON.stringify({ phase: 'history', attachment: scope.attachmentKey, at, ...(limitPapers ? { papers: [...papers] } : {}) }) };
-                    if (at % 32 === 0)
-                        await new Promise(resolve => setTimeout(resolve, 0));
+                    check(signal); at++;
+                    if (position.phase === 'history' && scope.attachmentKey === position.attachment && at <= position.at) continue;
+                    yield entry(source, { phase: 'history', attachment: scope.attachmentKey, at });
+                    if (at % 32 === 0) await new Promise(resolve => setTimeout(resolve, 0));
                 }
             }
         }

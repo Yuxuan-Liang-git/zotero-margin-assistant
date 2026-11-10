@@ -146,7 +146,9 @@
         const scope = host.scope(reader);
         currentLibrary = Z.Libraries?.userLibraryID || scope.libraryID;
         papers?.prioritize(scope.attachmentKey);
-        manager.embedding?.prioritize(scope);
+        const attachment = Z.Items.getByLibraryAndKey(scope.libraryID, scope.attachmentKey);
+        const owner = attachment?.parentID ? Z.Items.get(attachment.parentID) : attachment;
+        manager.embedding?.prioritize({ ...scope, paperKey: owner?.key });
         void Promise.all([manager.ensure(scope.libraryID), papers?.start()]).then(() => { manager.schedule(scope); adapter.notify(); }).catch(report);
       },
       settingsAPI() {
