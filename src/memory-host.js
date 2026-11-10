@@ -5,6 +5,8 @@
   const Store = root.ZMAMemoryStore || (typeof require !== 'undefined' ? require('./memory-store.js') : null);
   const Library = root.ZMALibraryHost || (typeof require !== 'undefined' ? require('./library-host.js') : null);
 
+  const RAG = root.ZMARAGHost || (typeof require !== 'undefined' ? require('./rag-host.js') : null);
+
   function create(host) {
     const { Z, IO, P } = host;
     if (!Z.Search || !IO?.exists || !IO.stat || !IO.readUTF8 || !IO.writeUTF8 || !IO.makeDirectory) return null;
@@ -62,7 +64,8 @@
         summaryValid = !!note?.isNote?.() && !note.deleted && note.libraryID === scope.libraryID
           && Number(note.parentID || 0) === Number(attachment.parentID || 0) && note.getNote() === summary.noteHTML;
       }
-      const metadata = host.readingSummaryContext({ itemID: attachment.id });
+      const owner = parent || attachment;
+      const metadata = { ...host.readingSummaryContext({ itemID: attachment.id }), ...(/^[A-Z0-9]{8}$/.test(owner.key) ? { paperKey: owner.key } : {}) };
       const fingerprint = M.signature([file, after.size, after.lastModified || 0, JSON.stringify(metadata), summaryValid].join('|'));
       return { state, metadata, fingerprint, summaryValid };
     }
@@ -97,7 +100,7 @@
     const manager = new Store.Manager(adapter);
     const report = error => Z.logError?.(error);
     const papers = Library?.create(host, {
-      enabled: () => enabled, userPaused: () => userPaused, notify: adapter.notify,
+      enabled: () => enabled, userPaused: () => userPaused, notify: () => { adapter.notify(); manager.embedding?.refresh(); },
       canonicalSummary: async note => {
         const match = /zma-summary:\/\/([1-9]\d*)\/([A-Z0-9]{8})/.exec(note.getNote());
         if (!match || Number(match[1]) !== note.libraryID) return false;
@@ -108,10 +111,13 @@
     const history = {};
     for (const name of ['pause', 'resume', 'retrieve', 'rebuild', 'stop', 'export']) history[name] = manager[name].bind(manager);
     manager.papers = papers;
-    manager.pause = () => { history.pause(); papers?.pause(); };
-    manager.resume = async () => { if (!userPaused) await Promise.all([history.resume(), papers?.resume()]); };
+    manager.embedding = RAG?.create(host, { history: adapter, readRecord, papers, enabled: () => enabled, notify: adapter.notify });
+    const originalSchedule = manager.schedule.bind(manager);
+    manager.schedule = scope => { originalSchedule(scope); manager.embedding?.refresh(); };
+    manager.pause = () => { history.pause(); papers?.pause(); manager.embedding?.suspend(true); };
+    manager.resume = async () => { manager.embedding?.suspend(false); if (!userPaused) await Promise.all([history.resume(), papers?.resume()]); };
     manager.rebuild = async libraryID => { await Promise.all([history.rebuild(libraryID), papers?.rebuild()]); };
-    manager.stop = async () => { await Promise.all([history.stop(), papers?.stop()]); };
+    manager.stop = async () => { await Promise.all([history.stop(), papers?.stop(), manager.embedding?.stop()]); };
     manager.retrieve = async (scope, query, options = {}) => {
       // A title or old question in the expanded context must not turn a local
       // overview/symbol question into an automatic search of unrelated papers.
@@ -125,19 +131,22 @@
       const attachment = Z.Items.getByLibraryAndKey(scope.libraryID, scope.attachmentKey);
       const owner = attachment?.parentID ? Z.Items.get(attachment.parentID) : attachment;
       const current = await papers?.retrieve(scope, query, { ...options, paperKey: owner?.key }) || [];
-      return M.mergeSources([...previous, ...current], options.question || query);
+      const lexicalSources = [...previous, ...current];
+      if (manager.embedding?.state().enabled) return manager.embedding.retrieve({ ...scope, paperKey: owner?.key }, query, { ...options, lexicalSources });
+      return M.mergeSources(lexicalSources, options.question || query);
     };
 
     return Object.assign(manager, {
       async start() {
         if (userPaused) manager.pause();
-        await Promise.all([manager.ensure(currentLibrary), papers?.start()]);
+        await Promise.all([manager.ensure(currentLibrary), papers?.start(), manager.embedding?.start()]);
       },
-      onItemsChanged() { papers?.refresh(); },
+      onItemsChanged() { papers?.refresh(); manager.embedding?.refresh(); },
       forReader(reader) {
         const scope = host.scope(reader);
         currentLibrary = Z.Libraries?.userLibraryID || scope.libraryID;
         papers?.prioritize(scope.attachmentKey);
+        manager.embedding?.prioritize(scope);
         void Promise.all([manager.ensure(scope.libraryID), papers?.start()]).then(() => { manager.schedule(scope); adapter.notify(); }).catch(report);
       },
       settingsAPI() {

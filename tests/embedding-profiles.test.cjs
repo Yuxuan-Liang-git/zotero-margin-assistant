@@ -70,3 +70,5 @@ test('connection tests cannot mark a different queued configuration as tested',a
  await changed;await assert.rejects(tested);assert.equal(profiles.state().endpoint,B);assert.equal(profiles.state().tested,false);
  await profiles.markTested(2,undefined,profiles.state().revision);assert.equal(profiles.state().tested,true);
 });
+
+test('advanced similarity threshold persists per endpoint and rejects invalid values',async()=>{const{profiles,adapter}=fixture();await profiles.apply({threshold:0.62});assert.equal(profiles.state().threshold,0.62);await profiles.apply({endpoint:B});assert.equal(profiles.state().threshold,undefined);await profiles.apply({endpoint:A});const restored=new Profiles(adapter);await restored.load();assert.equal(restored.state().threshold,0.62);await assert.rejects(profiles.apply({threshold:1.1}));});

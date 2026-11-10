@@ -12,6 +12,7 @@
     if(container.querySelector('#zma-font-size'))bindAppearance(container,api.appearance);
     if(container.querySelector('#zma-web-mode'))bindWeb(container,api.web);
     if(container.querySelector('#zma-custom-prompt'))bindPrompt(container,api.prompt);
+    root.ZMAEmbeddingUI?.bind(container,api.embedding);
     if(container.querySelector('#zma-memory-enabled'))bindMemory(container,api.memory);
     const auto=container.querySelector('#zma-reading-auto'),summaryStatus=container.querySelector('#zma-reading-status');if(auto){auto.checked=api.readingSummary?.state().enabled??false;auto.disabled=!api.readingSummary;auto.addEventListener('change',async()=>{auto.disabled=true;try{await api.readingSummary.set(auto.checked);summaryStatus.textContent=auto.checked?'自动摘要已开启，空闲后检查新增问答。':'自动摘要已关闭，可在阅读摘要中手动更新。';}catch(e){summaryStatus.textContent=e.message;}finally{auto.checked=api.readingSummary.state().enabled;auto.disabled=false;}});}
   }

@@ -105,3 +105,5 @@ test('a rare question keyword survives more than 96 repeated current-context dis
 });
 
 module.exports = { connection, paper, unit, put };
+
+test('committed source enumeration is paged and hides staging rows',async()=>{const index=await fixture();try{await index.replacePaper(paper('PAPER001'));const u=unit('PAPER001');const generation=await index.beginUnit(u);await index.append(u,generation,[{text:'First committed source',part:0,pageIndex:0},{text:'Second committed source',part:1,pageIndex:1}]);assert.equal(typeof index.sourcesPage,'function','committed source page API must exist');assert.deepEqual((await index.sourcesPage({limit:1})).sources,[]);await index.commitUnit(u,generation);const first=await index.sourcesPage({limit:1});assert.equal(first.sources[0].source.text,'First committed source');assert.equal(first.sources[0].phase,'library');const second=await index.sourcesPage({afterId:first.cursor,limit:1});assert.equal(second.sources[0].source.pageIndex,1);assert.equal((await index.sourcesPage({afterId:second.cursor,limit:1})).sources.length,0);}finally{await index.close();}});

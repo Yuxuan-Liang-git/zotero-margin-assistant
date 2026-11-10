@@ -1,6 +1,6 @@
 (function(root){
   'use strict';
-  /** @typedef {{endpoint:string,model:string,cipher:string,enabled:boolean,tested:boolean,dimensions:number|null,maxInputBytes:number,batchSize:number,rpm:number,requestedDimensions?:number}} Profile */
+  /** @typedef {{endpoint:string,model:string,cipher:string,enabled:boolean,tested:boolean,dimensions:number|null,maxInputBytes:number,batchSize:number,rpm:number,requestedDimensions?:number,threshold?:number}} Profile */
   const PREF='margincomments.embeddingProfiles';
   const DEFAULT_ENDPOINT='https://api.siliconflow.cn/v1/embeddings';
   const DEFAULT_MODEL='BAAI/bge-m3';
@@ -15,6 +15,7 @@
   }
   function modelID(value){if(typeof value!=='string'||!/^[a-z0-9][a-z0-9._/-]{0,255}$/i.test(value))throw failure();return value;}
   function dimension(value){if(!Number.isInteger(value)||value<1||value>4096)throw failure();return value;}
+  function threshold(value){if(typeof value!=='number'||!Number.isFinite(value)||value<0||value>1)throw failure();return value;}
   function integer(value,max){if(!Number.isInteger(value)||value<1||value>max)throw failure();return value;}
   /** @returns {Profile} */
   function fresh(endpoint){return {endpoint,model:DEFAULT_MODEL,cipher:'',enabled:false,tested:false,dimensions:null,maxInputBytes:8000,batchSize:8,rpm:20};}
@@ -23,6 +24,7 @@
     /** @type {Profile} */
     const result={endpoint,model:modelID(value.model),cipher:value.cipher,enabled:value.enabled,tested:value.tested,dimensions:value.dimensions,maxInputBytes:integer(value.maxInputBytes,1024*1024),batchSize:integer(value.batchSize,128),rpm:integer(value.rpm,600)};
     if(typeof result.cipher!=='string'||result.cipher&&!result.cipher.startsWith('oskv1:')||typeof result.enabled!=='boolean'||typeof result.tested!=='boolean')throw failure();
+    if(value.threshold!==undefined)result.threshold=threshold(value.threshold);
     if(value.requestedDimensions!==undefined&&value.requestedDimensions!==null)result.requestedDimensions=dimension(value.requestedDimensions);
     if(result.tested){dimension(result.dimensions);if(!result.cipher||result.requestedDimensions&&result.dimensions!==result.requestedDimensions)throw failure();}
     else if(result.dimensions!==null)throw failure();
@@ -48,7 +50,7 @@
     load(){return this._serial(async()=>{await this._load();return this.state();});}
     state(endpoint=this._endpoint){
       endpoint=canonicalEndpoint(endpoint);const p=this._profiles.get(endpoint)||fresh(endpoint);
-      return {endpoint:p.endpoint,model:p.model,hasKey:!!p.cipher,enabled:p.enabled,tested:p.tested,dimensions:p.dimensions,maxInputBytes:p.maxInputBytes,batchSize:p.batchSize,rpm:p.rpm,revision:this._revision};
+      return {endpoint:p.endpoint,model:p.model,hasKey:!!p.cipher,enabled:p.enabled,tested:p.tested,dimensions:p.dimensions,maxInputBytes:p.maxInputBytes,batchSize:p.batchSize,rpm:p.rpm,revision:this._revision,...(p.threshold!==undefined?{threshold:p.threshold}:{})};
     }
     async _save(profiles,endpoint){
       if(this._revision>=Number.MAX_SAFE_INTEGER)throw failure();const revision=this._revision+1;
@@ -58,6 +60,7 @@
     apply(values){return this._serial(async()=>{
       await this._load();if(!values||typeof values!=='object')throw failure();
       const endpoint=values.endpoint===undefined?this._endpoint:canonicalEndpoint(values.endpoint),old=this._profiles.get(endpoint)||fresh(endpoint),p={...old};
+      if(values.threshold!==undefined)p.threshold=threshold(values.threshold);
       if(values.model!==undefined)p.model=modelID(values.model);
       if(values.maxInputBytes!==undefined)p.maxInputBytes=integer(values.maxInputBytes,1024*1024);
       if(values.batchSize!==undefined)p.batchSize=integer(values.batchSize,128);

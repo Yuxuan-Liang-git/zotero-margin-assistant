@@ -178,6 +178,16 @@
       return M.mergeSources(sources, options.question || query);
     }
 
+    // Only active committed generations are visible; the opaque ID advances
+    // across every page, even when a consumer filters individual sources.
+    async sourcesPage({ afterId = 0, limit = 128 } = {}) {
+      if (!Number.isSafeInteger(afterId) || afterId < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 1024) throw new Error('Invalid committed source cursor');
+      await this.writes.catch(() => {});
+      const rows = await this.db.queryAsync('SELECT c.id,c.data FROM chunks c JOIN units u ON u.unitKey=c.unitKey AND u.generation=c.generation JOIN papers p ON p.paperKey=u.paperKey WHERE c.id>? ORDER BY c.id LIMIT ?', [afterId, limit]);
+      return { phase: 'library', cursor: rows.length ? rows[rows.length - 1].id : afterId,
+        sources: rows.map(row => ({ source: JSON.parse(row.data), cursor: row.id, phase: 'library' })) };
+    }
+
     async contains(source) {
       const unitKey = source.kind + '-' + source.sourceKey;
       const rows = await this.db.queryAsync('SELECT c.data FROM chunks c JOIN units u ON u.unitKey=c.unitKey AND u.generation=c.generation WHERE c.unitKey=? ORDER BY c.id LIMIT 1 OFFSET ?', [unitKey, source.part]);

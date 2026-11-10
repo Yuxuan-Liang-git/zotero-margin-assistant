@@ -122,11 +122,12 @@
       });
     }
 
-    async pending(namespace, limit = 8) {
+    async pending(namespace, limit = 8, source) {
       limit = pageLimit(limit, 8);
+      const anchor = source ? V.anchorKey(M.cleanSources([{ ...source, label: '阅读1' }])[0]) : null;
       return this.read(async () => {
         await this.space(namespace);
-        const rows = await this.db.queryAsync('SELECT v.inputKey,v.input FROM rag_vectors v JOIN rag_links l ON l.namespace=v.namespace AND l.inputKey=v.inputKey WHERE v.namespace=? AND v.encoded IS NULL GROUP BY v.inputKey,v.input ORDER BY MIN(l.id) LIMIT ?', [namespace, limit]);
+        const rows = await this.db.queryAsync('SELECT v.inputKey,v.input FROM rag_vectors v JOIN rag_links l ON l.namespace=v.namespace AND l.inputKey=v.inputKey WHERE v.namespace=? AND v.encoded IS NULL' + (anchor === null ? '' : ' AND l.anchor=?') + ' GROUP BY v.inputKey,v.input ORDER BY MIN(l.id) LIMIT ?', anchor === null ? [namespace, limit] : [namespace, anchor, limit]);
         return rows.map(row => ({ key: row.inputKey, input: row.input }));
       });
     }

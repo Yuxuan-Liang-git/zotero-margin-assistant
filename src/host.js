@@ -24,6 +24,7 @@
     constructor(addon,{Zotero:Z,IOUtils:IO,PathUtils:P,window:win,unwrap=value=>value,cloneInto=(value,_target)=>value,chooseImage=null,chatgptListen=null,chooseChatFiles=null,readClipboardAssets=null,chooseConversationFile=null,notionBrowser=null}){
       this.addon=addon;this.Z=Z;this.IO=IO;this.P=P;this.win=win;this.key='';this.model='deepseek-flash';this.panels=new Map();this.pending=new Map();this.closedReaders=new WeakSet();this.states=new Map();this.referenceSignatures=new Map();this.activeRequests=new Set();this.cache=new Map();this.cleanups=new Map();this.settingsWindows=new Set();this.running=false;
       this.imageViewers=new Map();this.pageImageLayers=new Map();this.imageExports=new Map();
+      this.createRAGWorker=()=>new (this.runtimeWindow().Worker)('chrome://margincomments/content/rag-vector-worker.js');
       this.createImageExportWorker=()=>new (this.runtimeWindow().Worker)('chrome://margincomments/content/pdf-image-worker.js');
       this.customPrompt=Instructions?Instructions.restore(Z.Prefs?.get('margincomments.customPrompt')):'';
       this.dockLayout=Docks?Docks.normalize(Z.Prefs?.get('margincomments.dockLayout')):{};
@@ -437,7 +438,7 @@
       if(!this.credentials)throw new Error('当前 Zotero 不支持安全保存密钥');
       await this.credentials.save(key,model);
       if(key.trim())this.key=key.trim();this.model=model.trim();this.credentialError='';this.providersChanged();
-    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),appearance:this.appearanceAPI(),web:this.webAPI(),readingSummary:this.readingSummaryAPI(),memory:this.memory?.settingsAPI(),prompt:this.promptAPI(),chatgpt:this.chatGPTAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
+    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),appearance:this.appearanceAPI(),web:this.webAPI(),readingSummary:this.readingSummaryAPI(),memory:this.memory?.settingsAPI(),embedding:this.memory?.embedding?.settingsAPI(),prompt:this.promptAPI(),chatgpt:this.chatGPTAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
     async restoreCredentials(){
       if(!this.credentials){this.credentialError='当前 Zotero 不支持安全保存密钥';return;}
       try{const saved=await this.credentials.load();this.key=saved.key;this.model=saved.model;this.credentialError='';}
