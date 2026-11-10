@@ -3,7 +3,7 @@
   "importedOn": "2026-11-09",
   "historySource": "Preserved release source ZIP snapshots; import dates are not original development dates.",
   "archivedVersions": 44,
-  "latest": "0.19.2",
+  "latest": "0.20.0",
   "unavailableSnapshots": [
     "0.13.9"
   ],
@@ -1177,6 +1177,36 @@
       "sourceCommit": "2819385df26b658b69de1d9aa4d432fb8f4ea211",
       "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.19.2",
       "commitSubject": "fix(memory): 拦截通用提问造成的跨论文误召回 (v0.19.2)"
+    },
+    {
+      "version": "0.20.0",
+      "tag": "v0.20.0",
+      "summary": "本版为个人文献库增加可选的云端语义检索。阅读当前 PDF 时，插件可以从其他文献的已提交文字中寻找含义相关的片段，并保留标题、来源类型、原文页号或会话入口。默认使用 SiliconFlow 的 `BAAI/bge-m3`，完整端点为 `https://api.siliconflow.cn/v1/embeddings`；也可配置兼容 HTTPS 端点与模型。对话仍由用户选择的 DeepSeek 或 ChatGPT 服务完成。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.20.0.xpi",
+          "bytes": 1453386,
+          "sha256": "18d254aeb7099cd20833c5bbac3412d249e63ed34efe63cdfef3e894b6a78bf1"
+        },
+        {
+          "name": "margin-comments-deepseek-0.20.0-source.zip",
+          "bytes": 3411314,
+          "sha256": "3c89b5fa592972d40c8f6373e01d4b27dc8bfc1081a81024aa02e126944116fc"
+        },
+        {
+          "name": "verification-report-0.20.0.json",
+          "bytes": 4895,
+          "sha256": "f1cbe8e58fb833b7bbe9c9475de69606ce5326e273873f4dd6978635e2d79734"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 312,
+          "sha256": "89b0a649309fcfcb973ed59172e746ed7a629317fe7fa95f89b102f5b1d1bc7b"
+        }
+      ],
+      "sourceCommit": "3f832a280f3bd0bbb935e2029f16edb0809f9a03",
+      "commitSubject": "chore: exclude local implementation review artifacts",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.20.0"
     }
   ]
 }
