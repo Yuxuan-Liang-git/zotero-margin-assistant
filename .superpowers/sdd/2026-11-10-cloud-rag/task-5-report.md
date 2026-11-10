@@ -83,3 +83,7 @@ Self-review checked the diff scope, fresh-profile guards, report/hash binding, r
 ## Remaining limits
 
 No real Embedding/provider/inference request was made, and no user Key/library was accessed. Real cross-language scientific relevance, default threshold calibration, provider model behavior, billing/quota, network latency and other platforms remain unverified until the user supplies their own Key in Zotero. Native high parent resident and narrow cold-scan latency margin are disclosed; fallback remains the safety boundary. SourceZIP/catalog/checksums/release upload/download verification are intentionally root-owned follow-up deliverables.
+
+## Prepublication description corrections
+
+The release notes and user guide now accurately describe at most four fragments per paper, preserving the existing limits of three papers, 6000 total characters and 1800 characters per fragment. The profile test title now names only its exercised encryption-failure case; test behavior is unchanged. The full 503-test run passed with the existing Node SQLite ExperimentalWarning messages in its log; this was not a warning-free run. These description-only corrections do not change production behavior or the verified XPI hash, and the full suite was not rerun for them.

@@ -43,7 +43,7 @@ test('serialized asynchronous saves cannot lose another endpoint or publish befo
   const one=profiles.apply({key:'public-example-A'});await ready;assert.equal(profiles.state().hasKey,false);const two=profiles.apply({endpoint:B,key:'public-example-B'});release();await Promise.all([one,two]);
   assert.equal(profiles.state().endpoint,B);await profiles.apply({endpoint:A});assert.equal((await profiles.credentials()).key,'public-example-A');
 });
-test('failed encryption and persistence leave active state intact and queue remains usable',async()=>{
+test('failed encryption leaves active state intact and queue remains usable',async()=>{
   const {adapter,profiles}=fixture();await profiles.apply({key:'public-example-A'});const before=profiles.state();const encrypt=adapter.encrypt;adapter.encrypt=async()=>{throw Error('public-example-B');};
   await assert.rejects(profiles.apply({endpoint:B,key:'public-example-B'}),e=>!e.message.includes('public-example-B'));assert.deepEqual(profiles.state(),before);adapter.encrypt=encrypt;await profiles.apply({endpoint:B,key:'public-example-B'});assert.equal(profiles.state().endpoint,B);
 });
