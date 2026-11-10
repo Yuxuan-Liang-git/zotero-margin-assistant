@@ -150,6 +150,21 @@ async function run() {
       assert(await absentBHistory(),'Source navigation created B history');
       return {question,sharedLiteralTerms:false,BSourceInActualRequest:true,currentPDFPreserved:true,sourcePageIndex:source.pageIndex,nativeReaderPageIndex:1,BHistoryAbsent:true,queryWhilePaused:api.state().paused,requestFile:'request-'+seed.launch+'.json'};
     });
+    await check('query-vector-cache-and-master-off',async()=>{
+      const question='阻尼注入缓存核对',query=question+'\nCurrent numerical observer\npassive damping theme';
+      const before=calls.length,first=await manager.retrieve(scope,query,{question}),second=await manager.retrieve(scope,query,{question});
+      assert(first.some(s=>s.attachmentKey===itemB.key)&&second.some(s=>s.attachmentKey===itemB.key),'Cached vector lost B provenance');
+      assert(calls.length===before+1,'Identical query did not reuse vector');
+      assert(manager.queryVectors.size<=32,'Query cache exceeds entry bound');
+      await host.memory.settingsAPI().set(false);
+      const disabledCalls=calls.length,disabled=await host.memory.retrieve(scope,query,{question});
+      assert(!disabled.length&&calls.length===disabledCalls,'Master off queried/returned memory');
+      assert(api.state().enabled&&api.state().hasKey,'Master off erased Embedding profile');
+      assert(!(await manager.retrieve(scope,query,{question})).length&&calls.length===disabledCalls,'Native Manager ignored master');
+      await host.memory.settingsAPI().set(true);
+      await manager.retrieve(scope,query,{question});assert(calls.length===disabledCalls+1,'Master toggle did not invalidate query vector');
+      return {identicalRequests:1,entryLimit:32,ttlMs:60000,masterOffNoRequestsOrSources:true,embeddingProfileRetained:true,masterReenableFreshVector:true};
+    });
     await check('offline-timeout-cancellation-local-fallback',async()=>{
       mode='offline';panel.question.value='LexicalFallbackNeedle';await panel.send();
       let text=JSON.stringify(requests.at(-1));

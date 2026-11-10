@@ -172,7 +172,17 @@
                     return db.executeTransaction(work);
                 }, closeDatabase: () => db.closeDatabase(true) };
             const corpus = new Corpus({ history, readRecord, papers, libraryID }), client = new Client.Client({ fetch: (...args) => host.runtimeWindow().fetch(...args), credentials: () => profiles.credentials(), controller: () => host.newAbortController() }), runtime = new Runtime.Runtime(() => host.createRAGWorker());
-            const manager = new R.Manager({ profiles, client, store: new Store.Store(connection), runtime, corpus: options => corpus.sources(options), validate: (source, signal) => corpus.validate(source, signal), hash, libraryID, controller: () => host.newAbortController(), foreground: () => !host.running || host.activeRequests.size > 0 || host.transferTasks.size > 0, notify });
+            const fingerprint = async (scope, signal) => {
+                check(signal);
+                const item = Z.Items.getByLibraryAndKey(scope.libraryID, scope.attachmentKey);
+                if (!item?.isPDFAttachment?.() || item.deleted) return null;
+                try {
+                    const file = await item.getFilePathAsync(), stat = file ? await IO.stat(file) : null;
+                    check(signal);
+                    return stat ? hash(JSON.stringify([scope.libraryID, scope.attachmentKey, item.parentID || 0, file, stat.size, stat.lastModified || 0])) : null;
+                } catch { check(signal); return null; }
+            };
+            const manager = new R.Manager({ enabled, fingerprint, profiles, client, store: new Store.Store(connection), runtime, corpus: options => corpus.sources(options), validate: (source, signal) => corpus.validate(source, signal), hash, libraryID, controller: () => host.newAbortController(), foreground: () => !host.running || host.activeRequests.size > 0 || host.transferTasks.size > 0, notify });
             return manager;
         }
         catch {

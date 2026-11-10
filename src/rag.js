@@ -66,6 +66,9 @@
             this.libraryID = options.libraryID;
             this.controller = options.controller;
             this.foreground = options.foreground;
+            this.enabled = options.enabled || (() => true);
+            this.fingerprint = options.fingerprint || (async () => null);
+            this.queryVectors = new Map();
             this.notify = options.notify;
             this.now = options.now || Date.now;
             this.sleep = options.sleep || delay;
@@ -148,6 +151,7 @@
         }
         invalidate() {
             this.epoch++;
+            this.queryVectors.clear();
             this.buildController?.abort();
             this.testController?.abort();
             for (const controller of this.queryControllers)
@@ -214,7 +218,7 @@
         }
         usable() {
             const p = this.profiles.state();
-            return !this.stopped && p.enabled && p.tested && p.hasKey && !!this.space;
+            return !this.stopped && this.enabled() && p.enabled && p.tested && p.hasKey && !!this.space;
         }
         async schedule(mode) {
             await this.start();
@@ -234,7 +238,7 @@
             return this.state();
         }
         launch() {
-            if (this.stopped || this.suspended || !this.usable() || this.control.paused || this.control.completed)
+            if (this.stopped || !this.authorized || this.suspended || !this.usable() || this.control.paused || this.control.completed)
                 return;
             const control = this.controller();
             this.buildController = control;
@@ -398,6 +402,7 @@
                 });
                 this.status = 'paused';
             }
+            if (!this.control.paused && this.authorized && this.control.mode === 'full' && this.refreshNeeded) return this.schedule('full');
             if (this.space)
                 await this.store.setControl(this.space.namespace, this.control);
             if (!this.control.paused && !this.control.completed)
@@ -455,16 +460,17 @@
             await this.updateStats();
         }
         async lexical(scope, query, options) {
+            if (this.stopped || !this.enabled()) return [];
             const candidates = [];
             for (const [i, source] of (options.lexicalSources || []).entries()) {
                 if (await this.validate(source, options.signal))
                     candidates.push({ source, sparseRank: i + 1 });
             }
-            return V.hybridSelect(candidates, query, { scope, conversationId: options.conversationId });
+            return this.enabled() && !this.stopped ? V.hybridSelect(candidates, query, { scope, conversationId: options.conversationId }) : [];
         }
         async retrieve(scope, query, options = {}) {
             await this.start();
-            if (!M.queryTokens(options.question ?? query).length || options.signal?.aborted)
+            if (!this.enabled() || this.stopped || !M.queryTokens(options.question ?? query).length || options.signal?.aborted)
                 return [];
             const fallback = () => this.lexical(scope, query, options);
             if (!this.usable() || !this.stats.readySegments)
@@ -475,7 +481,7 @@
             options.signal?.addEventListener('abort', onAbort, { once: true });
             this.queryControllers.add(controller);
             this.querying++;
-            let timer;
+            let timer, cacheKey = '', newVector;
             const expired = new Promise((_, reject) => {
                 timer = setTimeout(() => {
                     controller.abort();
@@ -484,12 +490,30 @@
                 controller.signal.addEventListener('abort', () => reject(abort()), { once: true });
             });
             const work = async () => {
-                const max = Math.min(this.profiles.state().maxInputBytes, 8000), input = boundedText(options.question ?? query, max);
-                const response = await this.client.embed([input], { signal: controller.signal, timeoutMs: 8000 });
+                const max = Math.min(this.profiles.state().maxInputBytes, 8000);
+                const question = String(options.question ?? query).trim(), expanded = String(query).trim();
+                const context = expanded.startsWith(question + '\n') ? expanded.slice(question.length + 1) : expanded === question ? '' : expanded;
+                const input = boundedText(question + (context ? '\n' + context : ''), max);
+                const fingerprint = options.fingerprint ?? await this.fingerprint(scope, controller.signal);
                 check(controller.signal);
-                if (epoch !== this.epoch)
-                    throw abort();
-                const stats = await this.store.stats(space.namespace), hits = await this.runtime.search({ namespace: space.namespace, revision: stats.revision, dimensions: space.dimensions, vector: response.vectors[0], scope, conversationId: options.conversationId, signal: controller.signal, rows: (afterId, limit) => this.store.vectors(space.namespace, { afterId, limit }) });
+                if (!this.enabled() || epoch !== this.epoch) throw abort();
+                if (typeof fingerprint === 'string' && fingerprint) {
+                    cacheKey = await this.hash(JSON.stringify(['query-vector-v1', space.namespace, this.libraryID, scope.attachmentKey,
+                        this.profiles.state().revision, fingerprint, input]));
+                }
+                check(controller.signal);
+                let cached = cacheKey && this.queryVectors.get(cacheKey), vector;
+                if (cached && cached.expiresAt <= this.now()) { this.queryVectors.delete(cacheKey); cached = null; }
+                if (cached) {
+                    vector = cached.vector;
+                    this.queryVectors.delete(cacheKey); this.queryVectors.set(cacheKey, cached);
+                } else {
+                    const response = await this.client.embed([input], { signal: controller.signal, timeoutMs: 8000 });
+                    vector = response.vectors[0]; newVector = vector;
+                }
+                check(controller.signal);
+                if (!this.enabled() || epoch !== this.epoch) throw abort();
+                const stats = await this.store.stats(space.namespace), hits = await this.runtime.search({ namespace: space.namespace, revision: stats.revision, dimensions: space.dimensions, vector, scope, conversationId: options.conversationId, signal: controller.signal, rows: (afterId, limit) => this.store.vectors(space.namespace, { afterId, limit }) });
                 const eligible = hits.filter(h => h.score >= this.threshold), rows = await this.store.sources(space.namespace, eligible.map(h => h.id));
                 const byId = new Map(rows.map(row => [row.id, row.source])), candidates = [];
                 for (const [i, hit] of eligible.entries()) {
@@ -509,15 +533,22 @@
                     if (await this.validate(source, controller.signal))
                         final.push({ ...source, label: '阅读' + (final.length + 1) });
                 check(controller.signal);
+                if (!this.enabled() || epoch !== this.epoch) throw abort();
+                if (cacheKey && newVector) {
+                    for (const [key, value] of this.queryVectors) if (value.expiresAt <= this.now()) this.queryVectors.delete(key);
+                    this.queryVectors.set(cacheKey, { vector: Array.from(newVector), expiresAt: this.now() + 60000 });
+                    while (this.queryVectors.size > 32) this.queryVectors.delete(this.queryVectors.keys().next().value);
+                }
                 return final;
             };
             try {
                 return await Promise.race([work(), expired]);
             }
             catch {
+                if (cacheKey) this.queryVectors.delete(cacheKey);
                 this.error = '本次语义检索未完成，已使用有效的本地检索结果';
                 this.publish();
-                return options.signal?.aborted ? [] : await fallback();
+                return options.signal?.aborted || !this.enabled() || this.stopped ? [] : await fallback();
             }
             finally {
                 clearTimeout(timer);

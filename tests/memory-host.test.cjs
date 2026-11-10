@@ -121,3 +121,33 @@ test('a generic current-PDF question skips cross-paper lookup even when the expa
 });
 
 test('memory host carries dense-only committed PDF into final request without lexical reranking',async()=>{const{connection,worker}=require('./rag-fixture.cjs');const{webcrypto}=require('node:crypto');const f=fixture();f.state.conversations[0].history=[];f.files.set('/data/margin-comments-assistant/1-BBBB1111.json',JSON.stringify(f.state));f.item.parentID=0;f.item.getField=name=>({title:'Observer body',date:'2025'})[name]||'';f.files.set('/pdf/B/paper.pdf','PDF body placeholder');const sent=[];f.host.Z.DBConnection=class{constructor(){Object.assign(this,connection());}};f.host.Z.OSKeyStore={encrypt:async()=> 'oskv1:fixturecipher',decrypt:async()=> 'fixture-key'};f.host.runtimeWindow=()=>({crypto:webcrypto,Worker:function(){},TextEncoder,TextDecoder,URL,fetch:async(_url,init)=>{const body=JSON.parse(init.body);sent.push(body.input);return new Response(JSON.stringify({data:body.input.map((_,index)=>({index,embedding:[1,0]}))}));}});f.host.createRAGWorker=worker;const memory=MH.create(f.host);try{await memory.start();assert.ok(memory.embedding,'optional RAG manager should be wired on capable platform');await memory.papers.ensure();let record;for await(const entry of memory.papers.adapter.discover(new AbortController().signal)){record=entry;break;}const unit=record.units.find(u=>u.kind==='pdf');await memory.papers.index.replacePaper(record.paper);const gen=await memory.papers.index.beginUnit(unit);await memory.papers.index.append(unit,gen,[{text:'Persistent excitation guarantees information.',part:0,pageIndex:12}]);await memory.papers.index.commitUnit(unit,gen);const api=memory.embedding.settingsAPI();await api.apply({key:'fixture-key'});await api.test();await api.setEnabled(true);assert.equal(sent.length,1);await api.build();await memory.embedding.work;memory.pause();const sources=await memory.retrieve({libraryID:1,attachmentKey:'AAAA1111'},'持续激励保证辨识吗？',{question:'持续激励保证辨识吗？',conversationId:'default'});assert.equal(sources.length,1);assert.equal(sources[0].kind,'pdf');assert.equal(sources[0].pageIndex,12);assert.equal(sources[0].attachmentKey,'BBBB1111');assert.match(MC.appendContext([{role:'user',content:'Question'}],sources).messages[0].content,/Persistent excitation/);}finally{await memory.stop();}});
+
+async function cloudMemoryFixture(t){
+ const{connection,worker}=require('./rag-fixture.cjs'),{webcrypto}=require('node:crypto'),os=require('node:os');
+ const f=fixture(),dir=fs.mkdtempSync(path.join(os.tmpdir(),'zma-master-')),managers=[],calls=[];let mode='normal',entered,release,signal;
+ f.state.conversations[0].history=[];f.files.set('/data/margin-comments-assistant/1-BBBB1111.json',JSON.stringify(f.state));f.item.parentID=0;f.item.getField=name=>({title:'Observer body',date:'2025'})[name]||'';f.files.set('/pdf/B/paper.pdf','PDF body placeholder');
+ f.host.Z.DBConnection=class{constructor(file){Object.assign(this,connection(path.join(dir,path.basename(file))));}};f.host.Z.OSKeyStore={encrypt:async()=> 'oskv1:fixturecipher',decrypt:async()=> 'fixture-key'};
+ f.host.runtimeWindow=()=>({crypto:webcrypto,Worker:function(){},TextEncoder,TextDecoder,URL,fetch:async(_url,init)=>{const body=JSON.parse(init.body);calls.push(body.input);const response=()=>new Response(JSON.stringify({data:body.input.map((_,index)=>({index,embedding:[1,0]}))}));if(mode==='hold'){signal=init.signal;entered();return new Promise(r=>release=()=>r(response()));}return response();}});f.host.createRAGWorker=worker;
+ const make=()=>{const memory=MH.create(f.host);managers.push(memory);return memory;};const memory=make();
+ t.after(async()=>{for(const item of managers)await item.stop();fs.rmSync(dir,{recursive:true,force:true});});await memory.start();await memory.papers.ensure();let record;for await(const entry of memory.papers.adapter.discover(new AbortController().signal)){record=entry;break;}
+ const unit=record.units.find(u=>u.kind==='pdf');await memory.papers.index.replacePaper(record.paper);const gen=await memory.papers.index.beginUnit(unit);await memory.papers.index.append(unit,gen,[{text:'Persistent excitation guarantees information.',part:0,pageIndex:12}]);await memory.papers.index.commitUnit(unit,gen);
+ const api=memory.embedding.settingsAPI();await api.apply({key:'fixture-key'});await api.test();await api.setEnabled(true);await api.build();await memory.embedding.work;
+ return{...f,memory,make,calls,hold:()=>{mode='hold';return new Promise(r=>entered=r);},release:()=>release?.(),signal:()=>signal};
+}
+
+test('master off blocks restored enabled cloud profile without erasing its credentials',async t=>{
+ const f=await cloudMemoryFixture(t);await f.memory.settingsAPI().set(false);await f.memory.stop();const restored=f.make();await restored.start();const before=f.calls.length;
+ assert.deepEqual(await restored.retrieve({libraryID:1,attachmentKey:'AAAA1111'},'持续激励',{question:'持续激励'}),[]);assert.equal(f.calls.length,before);assert.equal(restored.embedding.state().hasKey,true);assert.equal(restored.embedding.state().enabled,true);
+});
+test('master disable aborts active cloud query and cannot return lexical fallback after disable',async t=>{
+ const f=await cloudMemoryFixture(t),entered=f.hold();const local=await f.memory.papers.retrieve({libraryID:1,attachmentKey:'AAAA1111'},'Persistent excitation',{question:'Persistent excitation'});assert.ok(local.length);const pending=f.memory.retrieve({libraryID:1,attachmentKey:'AAAA1111'},'Persistent excitation',{question:'Persistent excitation'});await entered;await f.memory.settingsAPI().set(false);const aborted=f.signal().aborted;f.release();const result=await pending;
+ assert.equal(aborted,true);assert.deepEqual(result,[]);assert.equal(f.memory.embedding.state().enabled,true);
+});
+
+
+test('native host fingerprint callback invalidates a cached query after current PDF file changes',async t=>{
+ const f=await cloudMemoryFixture(t),scope={libraryID:1,attachmentKey:'BBBB1111'};const before=f.calls.length;
+ await f.memory.embedding.retrieve(scope,'持续激励',{question:'持续激励'});await f.memory.embedding.retrieve(scope,'持续激励',{question:'持续激励'});
+ assert.equal(f.calls.length,before+1);f.files.set('/pdf/B/paper.pdf','Changed current PDF file with a different byte count');
+ await f.memory.embedding.retrieve(scope,'持续激励',{question:'持续激励'});assert.equal(f.calls.length,before+2);
+});

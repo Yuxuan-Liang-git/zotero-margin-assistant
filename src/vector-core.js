@@ -124,13 +124,16 @@
       const rank = value => Number.isSafeInteger(value) && value > 0 ? 1 / (60 + value) : 0;
       const dense = candidate.score === undefined || Number.isFinite(candidate.score) && candidate.score > 0
         ? rank(candidate.denseRank) || (Number.isFinite(candidate.score) && candidate.score > 0 ? candidate.score / 61 : 0) : 0;
-      const score = dense + rank(candidate.sparseRank);
+      const sparse = rank(candidate.sparseRank), score = dense + sparse;
       if (!(score > 0)) continue;
       let clean;
       try { clean = memory.cleanSources([{ ...source, label: '阅读1' }])[0]; } catch { continue; }
       const key = anchorKey(clean), existing = byAnchor.get(key);
-      if (existing) existing.score = Math.max(existing.score, score);
-      else byAnchor.set(key, { source: clean, score });
+      if (existing) {
+        existing.dense = Math.max(existing.dense, dense);
+        existing.sparse = Math.max(existing.sparse, sparse);
+        existing.score = existing.dense + existing.sparse;
+      } else byAnchor.set(key, { source: clean, dense, sparse, score });
     }
     const sorted = [...byAnchor.values()].sort((a, b) => b.score - a.score);
     const papers = new Map(), seen = new Set(), result = [];

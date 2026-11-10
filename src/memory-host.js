@@ -13,6 +13,7 @@
     const directory = P.join(host.directory, 'research-memory');
     const listeners = new Set();
     let enabled = Z.Prefs?.get('margincomments.researchMemory') !== false;
+    let enabledRevision = 0;
     let currentLibrary = Z.Libraries?.userLibraryID || 1;
     let userPaused = Z.Prefs?.get('margincomments.researchMemoryPaused') === true;
 
@@ -121,7 +122,8 @@
     manager.retrieve = async (scope, query, options = {}) => {
       // A title or old question in the expanded context must not turn a local
       // overview/symbol question into an automatic search of unrelated papers.
-      if (!M.queryTokens(options.question || query).length) return [];
+      const revision = enabledRevision;
+      if (!enabled || !M.queryTokens(options.question ?? query).length) return [];
       const previous = await history.retrieve(scope, query, options);
       for (const source of previous) {
         const item = Z.Items.getByLibraryAndKey(source.libraryID, source.attachmentKey);
@@ -132,8 +134,11 @@
       const owner = attachment?.parentID ? Z.Items.get(attachment.parentID) : attachment;
       const current = await papers?.retrieve(scope, query, { ...options, paperKey: owner?.key }) || [];
       const lexicalSources = [...previous, ...current];
-      if (manager.embedding?.state().enabled) return manager.embedding.retrieve({ ...scope, paperKey: owner?.key }, query, { ...options, lexicalSources });
-      return M.mergeSources(lexicalSources, options.question || query);
+      if (!enabled || revision !== enabledRevision) return [];
+      const result = manager.embedding?.state().enabled
+        ? await manager.embedding.retrieve({ ...scope, paperKey: owner?.key }, query, { ...options, lexicalSources })
+        : M.mergeSources(lexicalSources, options.question ?? query);
+      return enabled && revision === enabledRevision ? result : [];
     };
 
     return Object.assign(manager, {
@@ -156,7 +161,9 @@
           state: () => ({ enabled, paused: userPaused, libraryID: currentLibrary, ...manager.status(currentLibrary), ...(papers ? { coverage: papers.status() } : {}) }),
           watch: listener => { listeners.add(listener); return () => listeners.delete(listener); },
           set: async value => {
+            if (enabled !== !!value) enabledRevision++;
             enabled = !!value;
+            manager.embedding?.invalidate();
             Z.Prefs?.set('margincomments.researchMemory', enabled);
             if (enabled) { await manager.start(); void manager.resume().catch(report); }
             else manager.pause();
