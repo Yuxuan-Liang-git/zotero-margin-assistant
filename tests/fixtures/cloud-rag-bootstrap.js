@@ -224,4 +224,3 @@ async function run() {
     await write();Services.startup.quit(Services.startup.eForceQuit);
   }
 }
-

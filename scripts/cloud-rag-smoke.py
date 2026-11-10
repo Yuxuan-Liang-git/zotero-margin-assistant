@@ -100,4 +100,3 @@ summary={'passed':True,'package':str(package),'sha256':package_hash,'launches':r
  'boundary':'Headless isolated Zotero, real OSKeyStore/SQLite/Worker/SDT/navigation; controlled external fetch/generation only. No real cloud quality claim.'}
 (work/'verification.json').write_text(json.dumps(summary,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(summary),flush=True)
-
