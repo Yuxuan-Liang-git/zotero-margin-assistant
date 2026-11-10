@@ -59,3 +59,16 @@ test('timed-out late responses cancel their bodies without consuming document ou
 test('malformed UTF-8 responses report response failure rather than retryable network failure',async()=>{
  const {client}=fixture(()=>new Response(new Uint8Array([0xc3,0x28])));await assert.rejects(client.embed(['public fixed test']),e=>e.name==='EmbeddingResponseError'&&!e.retryable);
 });
+
+test('native cross-realm Uint8Array response chunks decode without weakening byte validation',async()=>{
+ const vm=require('node:vm');
+ const byteValues=Array.from(new TextEncoder().encode(JSON.stringify(payload())));
+ const chunk=vm.runInNewContext('Uint8Array.from('+JSON.stringify(byteValues)+')');
+ const {client}=fixture(()=>new Response(new ReadableStream({start(controller){controller.enqueue(chunk);controller.close();}})));
+ const result=await client.embed(['public fixed test']);
+ assert.deepEqual(result.vectors,[[1,2]]);
+ for(const bad of [new Int8Array(byteValues),new Uint8ClampedArray(byteValues),new DataView(new ArrayBuffer(2)),{byteLength:byteValues.length,[Symbol.toStringTag]:'Uint8Array'}]){
+   const broken=fixture(()=>({ok:true,status:200,headers:new Headers(),body:new ReadableStream({start(controller){controller.enqueue(bad);controller.close();}})}));
+   await assert.rejects(broken.client.embed(['public fixed test']),{name:'EmbeddingResponseError'});
+ }
+});

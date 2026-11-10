@@ -4,7 +4,7 @@
   const cancelled = message => new Error(message || 'Vector search cancelled');
 
   class Runtime {
-    constructor(createWorker, { maxCacheBytes = 128 * 1024 * 1024, batchSize = 128 } = {}) {
+    constructor(createWorker, { maxCacheBytes = 128 * 1024 * 1024, batchSize = 512 } = {}) {
       if (typeof createWorker !== 'function' || !Number.isSafeInteger(maxCacheBytes) || maxCacheBytes < 0
         || !Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 1024) throw new Error('Invalid vector runtime options');
       this.createWorker = createWorker;

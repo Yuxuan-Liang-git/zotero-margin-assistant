@@ -204,3 +204,19 @@ test('real Worker scans 16384 by 1024 vectors exactly inside the unchanged eight
     t.diagnostic(JSON.stringify({ datasetRows: 16384, dimensions: 1024, elapsedMs: Math.round(performance.now() - start), ...runtime.stats }));
   } finally { clearTimeout(deadline); runtime.destroy(); }
 });
+
+test('default native paging scans the tail within four bounded SQLite reads for 1100 rows',async()=>{
+ const runtime=new Runtime(()=>adapter(),{maxCacheBytes:32768});
+ const data=Array.from({length:1100},(_,i)=>row(i+1,i===1099?[1,0]:[0,1]));
+ let reads=0,largestPage=0;
+ try{
+   const hits=await runtime.search(request(async(after,limit)=>{
+     reads++;const page=data.filter(r=>r.id>after).slice(0,limit);largestPage=Math.max(largestPage,page.length);return page;
+   },{limit:96}));
+   assert.equal(hits[0].id,1100);
+   assert.equal(runtime.stats.scannedRows,1100);
+   assert.ok(largestPage<=512,'Native transient page must remain bounded');
+   assert.ok(reads<=4,'Avoid the reproduced native roundtrip overhead at this corpus size');
+   assert.ok(runtime.stats.cacheBytes<=32768&&runtime.stats.cachedRows<1100);
+ }finally{runtime.destroy();}
+});

@@ -2,6 +2,7 @@
   'use strict';
   const P=root.ZMAEmbeddingProfiles||(typeof require!=='undefined'?require('./embedding-profiles.js'):null);
   const RESPONSE_LIMIT=8*1024*1024;
+  const typedArrayTag=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Uint8Array.prototype),Symbol.toStringTag).get;
   class SafeError extends Error{
     constructor(name,message,status=0,retryable=false,retryAfter=null){super(message);this.name=name;this.status=status;this.retryable=retryable;this.retryAfter=retryAfter;}
   }
@@ -57,7 +58,7 @@
         if(!response.body?.getReader)throw malformed();reader=response.body.getReader();const decoder=new TextDecoder('utf-8',{fatal:true});let text='',total=0;
         while(true){
           const chunk=await reader.read();if(control.signal.aborted)throw aborted();if(chunk.done){try{text+=decoder.decode();}catch{throw malformed();}break;}
-          if(!(chunk.value instanceof Uint8Array))throw malformed();total+=chunk.value.byteLength;if(total>RESPONSE_LIMIT)throw malformed();try{text+=decoder.decode(chunk.value,{stream:true});}catch{throw malformed();}
+          if(!ArrayBuffer.isView(chunk.value)||typedArrayTag.call(chunk.value)!=='Uint8Array')throw malformed();total+=chunk.value.byteLength;if(total>RESPONSE_LIMIT)throw malformed();try{text+=decoder.decode(chunk.value,{stream:true});}catch{throw malformed();}
         }
         let data;try{data=JSON.parse(text);}catch{throw malformed();}
         if(!data||!Array.isArray(data.data)||data.data.length!==input.length||data.error)throw malformed();
