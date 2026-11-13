@@ -3,7 +3,7 @@
   "importedOn": "2026-11-09",
   "historySource": "Preserved release source ZIP snapshots; import dates are not original development dates.",
   "archivedVersions": 44,
-  "latest": "0.20.0",
+  "latest": "0.20.1",
   "unavailableSnapshots": [
     "0.13.9"
   ],
@@ -1207,6 +1207,36 @@
       "sourceCommit": "3f832a280f3bd0bbb935e2029f16edb0809f9a03",
       "commitSubject": "chore: exclude local implementation review artifacts",
       "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.20.0"
+    },
+    {
+      "version": "0.20.1",
+      "tag": "v0.20.1",
+      "summary": "修复 ChatGPT 普通论文正文被固定预算截成节选，区分全文文字、原 PDF 和页面图像覆盖。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.20.1.xpi",
+          "bytes": 1453670,
+          "sha256": "9c4eda87c2b03be0665c053f9789c7c50ba867a293674d5347e7abf110ef3b1c"
+        },
+        {
+          "name": "margin-comments-deepseek-0.20.1-source.zip",
+          "bytes": 3416077,
+          "sha256": "4a4279129707725ec0f97ec0e0bb7758e67c5f7fe2ee6e343ccb5a1a11dad4ec"
+        },
+        {
+          "name": "verification-report-0.20.1.json",
+          "bytes": 1519,
+          "sha256": "ab4d058b9155c0dff45f2bf4796a71a4f83eb8b697a52885624f206bf8d1574d"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 312,
+          "sha256": "da4bc48d101e8fce98c6bc9e96d42ab6e20e2604cbb3e8f7a51afae3b23f16f6"
+        }
+      ],
+      "sourceCommit": "fe085915c9677f632905641e4017091cc3b8d554",
+      "commitSubject": "fix: retain complete ordinary-paper text in ChatGPT requests",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.20.1"
     }
   ]
 }
