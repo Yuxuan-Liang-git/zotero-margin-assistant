@@ -215,16 +215,16 @@
       const index=await this.documents.get(key);if(signal?.aborted)throw new Error('文档读取已停止');
       const context=Doc.choose(index,question,adapter.currentPageIndex(),budget),attachment=this.Z.Items.get(Number(reader.itemID));
       context.title=String(attachment.getField?.('title')||'当前 PDF');
-      context.materials=[];context.imageWarning='';let bytes=0;const warnings=new Set(),limit=Math.max(0,Math.min(3,Math.floor(imageLimit)));
+      context.materials=[];context.imageWarning='';context.fileWarning='';let bytes=0;const warnings=new Set(),limit=Math.max(0,Math.min(3,Math.floor(imageLimit)));
       if(preferPDFFile){
-        if(index.totalPages>20)warnings.add('超过自动整份 PDF 的 20 页范围，改用文字及页面图片');
-        else if(limit<1)warnings.add('材料数量已达上限，完整 PDF 未加入');
+        if(index.totalPages>20)context.fileWarning='完整 PDF 超过自动附件的 20 页范围，本轮提供文字及选定页面图片。';
+        else if(limit<1)context.fileWarning='材料数量已达上限，完整 PDF 未附；本轮文字覆盖以页码说明为准。';
         else try{
           let file=this.pdfFiles.get(key);if(!file){file=await this.attachmentManager.currentPDF(reader,{maxDataBytes:imageBudget});if(signal?.aborted)throw new Error('文档读取已停止');if(await this.fingerprint(reader)!==fingerprint)throw new Error('PDF 文件在读取时改变，请重试');if(this.pdfFiles.size>=3)this.pdfFiles.delete(this.pdfFiles.keys().next().value);this.pdfFiles.set(key,file);}
           if(signal?.aborted)throw new Error('文档读取已停止');
           if(String(file.dataURL).length+1000<=imageBudget)return {...context,mode:'full-pdf',file,text:'',pages:Array.from({length:index.totalPages},(_,i)=>i+1)};
-          warnings.add('本轮空间不足，完整 PDF 未加入，改用文字及页面图片');
-        }catch(e){if(signal?.aborted)throw new Error('文档读取已停止');warnings.add('完整 PDF 读取受限，改用文字及页面图片');}
+          context.fileWarning='本轮空间不足，完整 PDF 未附；本轮提供文字及选定页面图片。';
+        }catch(e){if(signal?.aborted)throw new Error('文档读取已停止');context.fileWarning='完整 PDF 文件超出附件空间或读取受限，本轮提供文字及选定页面图片。';}
       }
       for(const page of context.imagePages){
         if(signal?.aborted)throw new Error('文档读取已停止');

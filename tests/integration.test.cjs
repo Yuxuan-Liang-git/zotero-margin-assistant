@@ -28,7 +28,7 @@ test('stopping page vision prevents further captures and unreadable images canno
 test('eligible ChatGPT PDFs are attached whole on every turn including reopened panels; large documents fall back explicitly',async()=>{
  const {host}=fixture();let pages=8,encoded=0,captures=0;host.addon.controller.ensureSession=async()=>({adapter:{currentPageIndex:()=>6,pdfWindow:{PDFViewerApplication:{pdfDocument:{get numPages(){return pages;},getPage:async()=>({view:[0,0,600,800],getTextContent:async()=>({items:[{str:'Scanned equation is not in this prose'}]})})}}},pdfViewer:{}}});host.attachmentManager.currentPDF=async()=>{encoded++;return {name:'paper.pdf',mime:'application/pdf',size:100,dataURL:'data:application/pdf;base64,JVBERi0='};};host.capture=async(_r,source)=>{captures++;return {source,dataURL:'data:image/png;base64,YQ==',text:''};};
  const first=await host.documentContext({itemID:1},'Explain (26)',{preferPDFFile:true}),second=await host.documentContext({itemID:1},'Continue after reopening',{preferPDFFile:true});assert.equal(first.mode,'full-pdf');assert.equal(second.file.dataURL,first.file.dataURL);assert.equal(encoded,1);assert.equal(captures,0);assert.equal(first.totalPages,8);assert.equal(first.text,'');
- host.documents.clear();pages=200;const large=await host.documentContext({itemID:1},'Explain (26)',{preferPDFFile:true});assert.notEqual(large.mode,'full-pdf');assert.ok(!large.file);assert.match(large.imageWarning,/20 页/);assert.ok(captures>0);
+ host.documents.clear();pages=200;const large=await host.documentContext({itemID:1},'Explain (26)',{preferPDFFile:true});assert.notEqual(large.mode,'full-pdf');assert.ok(!large.file);assert.match(large.fileWarning,/20 页/);assert.ok(captures>0);
 });
 test('provider selection persists and a request snapshots the ChatGPT account; switches cannot race generation',async()=>{
   const prefs=new Map(),{host}=fixture({Prefs:{get:k=>prefs.get(k),set:(k,v)=>prefs.set(k,v)}});
@@ -113,4 +113,16 @@ test('selected PDF text adds a right-click reference action with a stable select
 
 test('PDF bubble action snapshots selected text without writing an annotation and verifies its file fingerprint',async()=>{
  const {host,Z,events,attachment}=fixture();await host.start();const selection={text:'选区原文',pageLabel:'1',position:{pageIndex:0,rects:[[10,20,90,50]]}};attachment.isEditable=()=>false;let writes=0,received;Z.Annotations={saveFromJSON:async()=>{writes++;}};host.panel=async()=>({addPDFQuote:async source=>{received=source;}});const reader={itemID:1,type:'pdf',_internalReader:{_lastView:{_selectionPopup:{annotation:selection}}}},menu=[];events.get('createViewContextMenu')({reader,params:{},append:m=>menu.push(m)});const action=menu.find(m=>m.label==='批注并提问（选中文字）');assert.ok(action&&!action.disabled);selection.text='后来的选区';action.onCommand();await new Promise(r=>setTimeout(r,20));assert.equal(writes,0);assert.equal(received.text,'选区原文');assert.equal(received.selection,true);const captured=await host.capture(reader,received);assert.equal(captured.text,'选区原文');host.IO.stat=async()=>({size:124,lastModified:10});await assert.rejects(()=>host.capture(reader,received),/重新定位/);
+});
+
+test('whole-document text fallback separates an unavailable PDF file from missing page images',async()=>{
+ const {host}=fixture();host.addon.controller.ensureSession=async()=>({adapter:{currentPageIndex:()=>0,pdfWindow:{PDFViewerApplication:{pdfDocument:{numPages:12,getPage:async n=>({view:[0,0,600,800],getTextContent:async()=>({items:[{str:('page-'+n+' ').repeat(750)}]})})}}},pdfViewer:{}}});
+ host.attachmentManager.currentPDF=async()=>{throw new Error('当前 PDF 大小超出本轮材料空间');};
+ host.capture=async(_reader,source)=>({source,dataURL:'data:image/png;base64,YQ==',text:''});
+ const context=await host.documentContext({itemID:1},'这篇讲了什么',{budget:96000,preferPDFFile:true});
+ assert.equal(context.mode,'full-text');assert.deepEqual(context.pages,[1,2,3,4,5,6,7,8,9,10,11,12]);
+ assert.ok(context.fileWarning?.includes('完整 PDF'));
+ assert.equal(context.imageWarning,'');
+ assert.equal(context.materials.length,1);
+ assert.ok(!context.file);
 });

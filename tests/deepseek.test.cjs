@@ -80,3 +80,21 @@ test('generation length limit is incomplete even if the SSE protocol ends normal
   const client=new D.DeepSeekClient({getKey:()=> 'key',fetch:async()=>new Response('data: {"choices":[{"delta":{"content":"truncated"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n')});
   await assert.rejects(client.generate([]),e=>e.partial==='truncated'&&e.incomplete&&/长度/.test(e.message));
 });
+
+test('ChatGPT full-text requests retain an ordinary complete paper without removing provider or payload guards',()=>{
+ const context={mode:'full-text',title:'Twelve-page paper',totalPages:12,pages:Array.from({length:12},(_,i)=>i+1),text:'Complete paper prose. '.repeat(3200)};
+ assert.throws(()=>D.buildMessages([],'Summarize',[],context),/上下文过长/);
+ let messages;assert.doesNotThrow(()=>{messages=D.buildMessages([],'Summarize',[],context,'',[],[],{provider:'chatgpt'});});
+ assert.ok(messages.at(-1).content.at(-1).text.endsWith(context.text));
+ assert.throws(()=>D.buildMessages([],'Summarize',[],{...context,text:'x'.repeat(121000)},'',[],[],{provider:'chatgpt'}),/上下文过长/);
+ const largeImage={dataURL:'data:image/png;base64,'+'A'.repeat(13*1024*1024),source:{pageLabel:'1'}};
+ assert.throws(()=>D.buildMessages([],'Summarize',[largeImage],undefined,'',[],[],{provider:'chatgpt'}),/图片与历史过大/);
+});
+
+test('full text coverage is explicit even when the original PDF file cannot be attached',()=>{
+ const context={mode:'full-text',title:'Paper',totalPages:12,pages:Array.from({length:12},(_,i)=>i+1),text:'METHODS AND EXPERIMENTS ARE PRESENT',fileWarning:'原 PDF 文件超过本轮附件空间'};
+ const text=D.buildMessages([],'Summarize',[],context).at(-1).content.at(-1).text;
+ assert.match(text,/METHODS AND EXPERIMENTS ARE PRESENT/);
+ assert.match(text,/原 PDF 文件超过本轮附件空间/);
+ assert.match(text,/全部页面的正文文字/);
+});

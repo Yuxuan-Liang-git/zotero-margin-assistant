@@ -583,3 +583,23 @@ test('Notion browser failure leaves chat usable and is retried after reopening',
     assert.equal(await page.locator('.zma-notion-status').isVisible(), false);
   } finally { await browser.close(); }
 });
+
+test('a full ordinary ChatGPT paper reaches the request across every page instead of the 24000-character excerpt cap',async()=>{
+ const {browser,page}=await setup();try{
+  await page.addScriptTag({path:path.resolve(__dirname,'../src/document.js')});
+  const result=await page.evaluate(async()=>{
+   const {host,reader,source}=fixture;
+   host.provider='chatgpt';
+   const pages=Array.from({length:12},(_,i)=>({pageIndex:i,text:'PAGE_START_'+(i+1)+' '+('Ordinary paper prose. '.repeat(260))+' PAGE_END_'+(i+1)}));
+   globalThis.paperContext=null;globalThis.paperMessages=null;
+   host.documentContext=async(_reader,question,options)=>{const context=ZMADocument.choose({totalPages:12,pages},question,0,options.budget);globalThis.paperContext=context;return {...context,title:'Twelve-page paper',fileWarning:'原 PDF 文件超出附件空间',materials:[{source:{...source,fullPage:true,automaticPage:true,pageIndex:0,pageLabel:'1'},dataURL:'data:image/png;base64,YQ==',text:''}]};};
+   host.selectedClient=()=>({generate:async messages=>{globalThis.paperMessages=messages;return 'Whole-paper answer';}});
+   const panel=await host.panel(reader);panel.showChat();panel.question.value='这篇讲了什么';await panel.send();
+   return {mode:paperContext?.mode,pages:paperContext?.pages,text:paperMessages?ZMADeepSeek.textSize(paperMessages):'',serialized:JSON.stringify(paperMessages),summary:panel.contextSummary.textContent,details:panel.contextInfo.textContent,incomplete:panel.conversation().history.at(-1)?.incomplete,status:panel.status.textContent};
+  });
+  assert.equal(result.incomplete,false,result.status);assert.equal(result.mode,'full-text');
+  assert.deepEqual(result.pages,[1,2,3,4,5,6,7,8,9,10,11,12]);
+  for(let i=1;i<=12;i++){assert.ok(result.serialized.includes('PAGE_START_'+i));assert.ok(result.serialized.includes('PAGE_END_'+i));}
+  assert.match(result.summary,/12 页/);assert.match(result.summary,/原 PDF 未附/);assert.doesNotMatch(result.summary,/部分材料未加入/);assert.match(result.details,/原 PDF 文件超出附件空间/);
+ }finally{await browser.close();}
+});

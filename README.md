@@ -55,7 +55,7 @@
 
 ## 安装
 
-目前支持 Zotero 桌面版 10.0.x，主要在 Windows 环境验证。当前版本为 0.20.0；其他 Zotero 大版本尚未列入兼容范围。
+目前支持 Zotero 桌面版 10.0.x，主要在 Windows 环境验证。当前版本为 0.20.1；其他 Zotero 大版本尚未列入兼容范围。
 
 从 [Releases](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/latest) 的 Assets 下载 `.xpi` 安装包。在 Zotero 中打开“工具 → 插件”，通过右上角齿轮菜单的“从文件安装插件”选择该文件。已有版本可直接覆盖安装，随后完全退出并重新打开 Zotero。
 
@@ -148,6 +148,8 @@ npm test
 ```
 
 构建结果位于 `dist/`。`baseline/` 保留定制基线，`src/` 存放扩展模块，`scripts/build.py` 在生成目录中完成集成。`build/` 会在构建时重建，手写文件应放在源码目录中。测试浏览器目前默认使用 Windows Chrome 路径。
+
+0.20.1 修复普通论文在 ChatGPT 文字回退中被固定预算截成节选的问题。完整回归 517/517、类型检查通过；同包隔离 Zotero 首启与冷重启均验证完整 12 页正文进入请求及关闭重开保留历史。原 PDF 文件与图像的覆盖分别说明，具体限制见 [0.20.1 说明](docs/2026-11-13-pdf-context-release.md)。
 
 0.20.0 完整回归 513/513、类型检查通过；同包隔离原生复测首启 11/11、冷重启 9/9 通过。此前同包冷扫描曾超过八秒并正确取消，八秒不是响应保证。最终安装包哈希及加密、检索、来源跳页与完整性能证据见 [该版说明](docs/2026-11-10-cloud-rag-release.md)。真实 Embedding 服务的召回质量仍需用户配置自己的 Key 后核对。
 
