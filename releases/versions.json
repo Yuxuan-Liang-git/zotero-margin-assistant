@@ -3,7 +3,7 @@
   "importedOn": "2026-11-09",
   "historySource": "Preserved release source ZIP snapshots; import dates are not original development dates.",
   "archivedVersions": 44,
-  "latest": "0.20.1",
+  "latest": "0.20.2",
   "unavailableSnapshots": [
     "0.13.9"
   ],
@@ -1237,6 +1237,36 @@
       "sourceCommit": "fe085915c9677f632905641e4017091cc3b8d554",
       "commitSubject": "fix: retain complete ordinary-paper text in ChatGPT requests",
       "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.20.1"
+    },
+    {
+      "version": "0.20.2",
+      "tag": "v0.20.2",
+      "summary": "支持账户目录中的 GPT-6.2 Sol 和 Astra，正确处理思考强度与速度档位。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.20.2.xpi",
+          "bytes": 1453816,
+          "sha256": "3e81aa32719dc2f26e779a15239d76a5868c7a28ef518ec74b7f15fa1fce39b4"
+        },
+        {
+          "name": "margin-comments-deepseek-0.20.2-source.zip",
+          "bytes": 3417081,
+          "sha256": "a7d033d03ae20bf7d55fbdc4e69ca00888cf8bb477231d35751125c8c63a19e5"
+        },
+        {
+          "name": "verification-report-0.20.2.json",
+          "bytes": 683,
+          "sha256": "358d924cdbf2eff40a0533a294a43b073c1d516eca0b95e7a11d2897457c4896"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 312,
+          "sha256": "8659a72a8f44b05dcf3b28afe1589da30b4e0ed3ffd124814addb4a9235c7ea0"
+        }
+      ],
+      "sourceCommit": "77f0a23b615ea36e987d799e5dea08e153c91965",
+      "commitSubject": "feat: support GPT-6.2 Sol and Astra in the Zotero assistant",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.20.2"
     }
   ]
 }
