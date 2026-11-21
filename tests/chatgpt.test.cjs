@@ -116,3 +116,33 @@ test('updated account and web settings are used by the next request rather than 
 test('quoted credential fields are scrubbed while diagnostic error codes stay readable',async()=>{
  const f=fixture([]);f.client.fetch=async()=>Response.json({detail:'Admission failed; error code: admission_rejected; "refresh_token":"json-refresh-secret"; oauth_code=oauth-secret'},{status:400});await assert.rejects(f.client.generate([{role:'user',content:'q'}]),e=>{const d=JSON.parse(e.diagnosticText);assert.match(d.serverDetail,/admission_rejected/);assert.doesNotMatch(d.serverDetail,/json-refresh-secret|oauth-secret/);return true;});
 });
+
+test('GPT-6.2 model refresh and selection use supported reasoning and account speed options', async () => {
+ const f = fixture([event({type:'response.completed'})]);
+ f.client.fetch = async () => Response.json({models:[
+  {slug:'gpt-6.2-sol',display_name:'GPT-6.2 Sol',visibility:'list'},
+  {slug:'gpt-6.2-astra',display_name:'GPT-6.2 Astra',visibility:'list',
+   supported_reasoning_levels:[{effort:'none'},{effort:'high'},{effort:'max'}],
+   service_tiers:[{id:'priority'},{id:'ultrafast'}]},
+  {slug:'gpt-6.1-sol',display_name:'GPT-6.1 Sol',visibility:'list'}
+ ]});
+ const models = await f.client.models();
+ assert.deepEqual(models.map(model=>model.slug),['gpt-6.2-sol','gpt-6.2-astra','gpt-6.1-sol']);
+ assert.equal(models[0].displayName,'GPT-6.2 Sol');
+ assert.deepEqual(models[0].reasoningEfforts,['low','medium','high','xhigh','max']);
+ assert.deepEqual(models[0].speedTiers,['default','fast']);
+ assert.deepEqual(models[1].reasoningEfforts,['high','max']);
+ assert.deepEqual(models[1].speedTiers,['default','fast','ultrafast']);
+ assert.deepEqual(f.A.speedTiers({slug:'gpt-6.2-sol',service_tiers:[]}),['default']);
+ f.client.fetch = async (_url, options) => {
+  f.calls.push(JSON.parse(options.body));
+  return new Response(event({type:'response.completed'}));
+ };
+ for (const [model, effort, speed] of [[models[0],'xhigh','default'],[models[1],'max','ultrafast']]) {
+  f.auth.active = () => ({id:'account',model:model.slug,reasoningEffort:effort,speed,models});
+  await f.client.generate([{role:'user',content:'Explain the selected material.'}]);
+ }
+ assert.deepEqual(f.calls.map(body=>[body.model,body.reasoning.effort,body.service_tier]),[
+  ['gpt-6.2-sol','xhigh','default'],['gpt-6.2-astra','max','ultrafast']
+ ]);
+});

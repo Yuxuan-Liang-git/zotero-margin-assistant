@@ -55,7 +55,7 @@
 
 ## 安装
 
-目前支持 Zotero 桌面版 10.0.x，主要在 Windows 环境验证。当前版本为 0.20.1；其他 Zotero 大版本尚未列入兼容范围。
+目前支持 Zotero 桌面版 10.0.x，主要在 Windows 环境验证。当前版本为 0.20.2；其他 Zotero 大版本尚未列入兼容范围。
 
 从 [Releases](https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/latest) 的 Assets 下载 `.xpi` 安装包。在 Zotero 中打开“工具 → 插件”，通过右上角齿轮菜单的“从文件安装插件”选择该文件。已有版本可直接覆盖安装，随后完全退出并重新打开 Zotero。
 

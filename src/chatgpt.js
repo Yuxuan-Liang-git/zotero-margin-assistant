@@ -3,10 +3,17 @@
   const D=root.ZMADeepSeek||(typeof require!=='undefined'?require('./deepseek.js'):null),ENDPOINT='https://api.openai.com/v1';
   const W=root.ZMAWeb||(typeof require!=='undefined'?require('./web.js'):null);
   const EFFORTS=['none','minimal','low','medium','high','xhigh','max'];
+  const GPT62_MODELS=new Set(['gpt-6.2-sol','gpt-6.2-astra']);
+  const GPT62_EFFORTS=['low','medium','high','xhigh','max'];
   const CURRENT=/^gpt-(?:6(?:\.1)?-(?:sol|astra|luna)|5\.6-(?:sol|terra|luna))$/;
   function reasoningEfforts(model){
     const raw=model.supported_reasoning_levels||model.supported_reasoning_efforts||model.reasoning_efforts;
     let levels=raw||model.reasoningEfforts;
+    if(GPT62_MODELS.has(model.slug)){
+      if(!Array.isArray(levels))return [...GPT62_EFFORTS];
+      const advertised=levels.map(level=>typeof level==='string'?level:level?.effort);
+      return GPT62_EFFORTS.filter(level=>advertised.includes(level));
+    }
     // 0.11.1 cached the three-level fallback without marking its origin.
     if(!raw&&model.capabilitiesVersion!==2&&CURRENT.test(model.slug)&&(!levels||JSON.stringify(levels)==='["low","medium","high"]'))levels=['low','medium','high','xhigh','max'];
     if(Array.isArray(levels))return [...new Set(levels.map(v=>typeof v==='string'?v:v?.effort).filter(v=>EFFORTS.includes(v)))];
@@ -15,6 +22,8 @@
   function speedTiers(model){
     const supplied=model.speedTiers||model.service_tiers||model.additional_speed_tiers;
     if(Array.isArray(supplied)){const values=[...(model.speedTiers||[]),...(model.service_tiers||[]),...(model.additional_speed_tiers||[])].map(v=>typeof v==='string'?v:v?.id).map(v=>v==='priority'?'fast':v);return ['default',...['fast','ultrafast'].filter(v=>values.includes(v))];}
+    // On the subscription route, expose Ultrafast for GPT-6.2 only when the account advertises it.
+    if(GPT62_MODELS.has(model.slug))return ['default','fast'];
     return CURRENT.test(model.slug)?['default','fast',...(['gpt-6-astra','gpt-6.1-sol'].includes(model.slug)?['ultrafast']:[])]:['default'];
   }
   function safeParam(value){
