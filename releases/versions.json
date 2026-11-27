@@ -3,7 +3,7 @@
   "importedOn": "2026-11-09",
   "historySource": "Preserved release source ZIP snapshots; import dates are not original development dates.",
   "archivedVersions": 44,
-  "latest": "0.20.2",
+  "latest": "0.20.3",
   "unavailableSnapshots": [
     "0.13.9"
   ],
@@ -1267,6 +1267,36 @@
       "sourceCommit": "77f0a23b615ea36e987d799e5dea08e153c91965",
       "commitSubject": "feat: support GPT-6.2 Sol and Astra in the Zotero assistant",
       "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.20.2"
+    },
+    {
+      "version": "0.20.3",
+      "tag": "v0.20.3",
+      "summary": "接入 Gemini API 文档问答，并在 ChatGPT 刷新模型时提示当前账户的 GPT-6.2 Sol 可选状态。",
+      "assets": [
+        {
+          "name": "margin-comments-deepseek-0.20.3.xpi",
+          "bytes": 1459214,
+          "sha256": "ee0f3bb3770f6d7f236fbbd43aad8f36dc2461297be2d6735c9c98665e27bfd4"
+        },
+        {
+          "name": "margin-comments-deepseek-0.20.3-source.zip",
+          "bytes": 3425065,
+          "sha256": "9525258b532ea93e397d64816a87c2be8d078046d199505c14cd16c1b3954a87"
+        },
+        {
+          "name": "verification-report-0.20.3.json",
+          "bytes": 520,
+          "sha256": "0082c4e32b58a58579292ebb4254b110de33a033be34e514fbec58c3937bd14c"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "bytes": 309,
+          "sha256": "8cb31df4ddfcf178c10e81799b0eb72326e0b9211e812d804c2d24f38cf57744"
+        }
+      ],
+      "sourceCommit": "122ac86ed9c593e279f06fb5c40c9ce7917e2d11",
+      "commitSubject": "feat(assistant): add Gemini and report GPT-6.2 Sol availability",
+      "releaseUrl": "https://github.com/Yuxuan-Liang-git/zotero-margin-assistant/releases/tag/v0.20.3"
     }
   ]
 }
