@@ -9,6 +9,7 @@
     container.querySelector('#zma-api-clear').addEventListener('click',async event=>{const b=event.currentTarget;b.disabled=true;try{await api.clear();key.value='';key.placeholder='输入 DeepSeek API Key';status.textContent='密钥已清除。';}catch(e){status.textContent=e.message;}finally{b.disabled=false;}});
     container.querySelector('#zma-api-test').addEventListener('click',async event=>{const b=event.currentTarget;b.disabled=true;try{await apply();status.textContent='正在获取可用模型列表…';const models=await api.test();status.textContent=models.includes(model.value.trim())?'连接成功，当前模型可用。':'连接成功；当前模型不在列表中。可用模型：'+models.join(', ');}catch(e){status.textContent=e.message;}finally{b.disabled=false;}});
     if(api.chatgpt&&container.querySelector('#zma-provider'))bindChatGPT(container,api.chatgpt);
+    if(api.gemini&&container.querySelector('#zma-gemini-key'))bindGemini(container,api.gemini);
     if(container.querySelector('#zma-font-size'))bindAppearance(container,api.appearance);
     if(container.querySelector('#zma-web-mode'))bindWeb(container,api.web);
     if(container.querySelector('#zma-custom-prompt'))bindPrompt(container,api.prompt);
@@ -53,6 +54,21 @@
     const render=()=>{const size=api?.state().fontSize||14;select.value=String(size);preview.style.fontSize=size+'px';};select.disabled=!api;render();
     select.addEventListener('change',async()=>{select.disabled=true;try{await api.setFontSize(select.value);status.textContent='字号已保存并即时应用，重启后保留。';}catch(e){status.textContent=e.message;}finally{select.disabled=false;render();}});
     const dispose=api?.watch(render);if(dispose)doc.defaultView?.addEventListener('unload',dispose,{once:true});
+  }
+  function bindGemini(container,api){
+    const doc=container.ownerDocument,find=id=>container.querySelector('#zma-gemini-'+id),key=find('key'),model=find('model'),save=find('save'),refresh=find('refresh'),clear=find('clear'),status=find('status');let working=false;
+    function render(){const state=api.state();key.placeholder=state.hasKey?'已保存；留空保留当前密钥':'输入 Google AI Studio API Key';key.disabled=save.disabled=clear.disabled=working;refresh.disabled=working||!state.hasKey;
+      const add=(value,caption)=>{const node=doc.createElementNS('http://www.w3.org/1999/xhtml','option');node.value=value;node.textContent=caption;model.append(node);};
+      model.replaceChildren();add('',state.models.length?'请选择 Gemini 模型':'请先刷新 Gemini 模型');model.firstElementChild.disabled=true;
+      for(const m of state.models)add(m.slug,m.displayName);if(state.model&&!state.models.some(m=>m.slug===state.model))add(state.model,state.model);
+      model.value=state.model;model.disabled=working||!state.models.length;
+    }
+    async function run(action){if(working)return;working=true;render();try{status.textContent=await action();}catch(e){status.textContent=e.message;}finally{working=false;render();}}
+    save.addEventListener('click',()=>void run(async()=>{await api.save(key.value);key.value='';return '密钥已加密保存。点击“刷新 Gemini 模型”获取可用模型。';}));
+    refresh.addEventListener('click',()=>void run(async()=>{status.textContent='正在读取 Gemini 模型列表…';const count=await api.refresh();return '已读取 '+count+' 个 Gemini 模型。'+(api.state().model?'':'请选择一个模型。');}));
+    model.addEventListener('change',()=>{const value=model.value;void run(async()=>{await api.model(value);return 'Gemini 模型已保存。';});});
+    clear.addEventListener('click',()=>void run(async()=>{await api.clear();key.value='';return 'Gemini 密钥已清除。';}));
+    status.textContent=api.state().error;render();
   }
   function bindChatGPT(container,api){
     const doc=container.ownerDocument,find=id=>container.querySelector('#zma-'+id),provider=find('provider'),account=find('chatgpt-account'),model=find('chatgpt-model'),reasoning=find('chatgpt-reasoning'),speed=find('chatgpt-speed'),status=find('chatgpt-status');let working=false;

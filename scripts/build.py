@@ -25,8 +25,8 @@ def build():
     manifest = json.loads((out / 'manifest.json').read_text(encoding='utf-8'))
     version = json.loads((PROJECT / 'package.json').read_text(encoding='utf-8'))['version']
     manifest['version'] = version
-    manifest['name'] = 'Margin Comments + DeepSeek + ChatGPT'
-    manifest['description'] = '页边批注、LaTeX、DeepSeek API / ChatGPT 订阅文档提问、前文引用与笔记图片'
+    manifest['name'] = 'Margin Comments + DeepSeek + ChatGPT + Gemini'
+    manifest['description'] = '页边批注、LaTeX、DeepSeek API / ChatGPT 订阅 / Gemini API 文档提问、前文引用与笔记图片'
     # Zotero 10.0.6 requires this field even for manually distributed add-ons.
     # Reserved .invalid avoids accidentally installing an unrelated upstream build.
     manifest['applications']['zotero']['update_url'] = 'https://updates.invalid/margin-comments-deepseek/update.json'
@@ -81,7 +81,7 @@ def build():
     bootstrap = (out / 'bootstrap.js').read_text(encoding='utf-8')
     bootstrap = replace_once(bootstrap, '  context._globalThis = context;', '''  context._globalThis = context;
   Services.scriptloader.loadSubScript(rootURI + "content/vendor/marked/marked.umd.js", context);
-  for (const name of ["web", "instructions", "notion", "notion-browser", "docks", "reading-summary", "memory-core", "page-image-core", "core", "memory-store", "library-index", "library-store", "library-host", "embedding-profiles", "embedding-client", "vector-core", "vector-store", "vector-runtime", "rag", "rag-host", "memory-host", "transfer", "capture", "document", "references", "attachments", "deepseek", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "embedding-ui", "settings", "math", "markdown", "streaming", "clipboard", "transfer-ui", "panel", "image-viewer", "margin-references", "margin-images", "page-images", "page-image-export", "reference-preview", "text-math", "images", "host"]) {
+  for (const name of ["web", "instructions", "notion", "notion-browser", "docks", "reading-summary", "memory-core", "page-image-core", "core", "memory-store", "library-index", "library-store", "library-host", "embedding-profiles", "embedding-client", "vector-core", "vector-store", "vector-runtime", "rag", "rag-host", "memory-host", "transfer", "capture", "document", "references", "attachments", "deepseek", "gemini", "credentials", "chatgpt-auth", "chatgpt", "chatgpt-native", "embedding-ui", "settings", "math", "markdown", "streaming", "clipboard", "transfer-ui", "panel", "image-viewer", "margin-references", "margin-images", "page-images", "page-image-export", "reference-preview", "text-math", "images", "host"]) {
     Services.scriptloader.loadSubScript(rootURI + "content/scripts/" + name + ".js", context);
   }''')
     bootstrap = replace_once(bootstrap, '  await Zotero.MarginComments.hooks.onStartup();', '''  await Zotero.MarginComments.hooks.onStartup();

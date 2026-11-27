@@ -7,6 +7,7 @@
   const Credentials=root.ZMACredentials||(typeof require!=='undefined'?require('./credentials.js'):null);
   const Auth=root.ZMAChatGPTAuth||(typeof require!=='undefined'?require('./chatgpt-auth.js'):null);
   const GPT=root.ZMAChatGPT||(typeof require!=='undefined'?require('./chatgpt.js'):null);
+  const Gemini=root.ZMAGemini||(typeof require!=='undefined'?require('./gemini.js'):null);
   const Images=root.ZMAImages||(typeof require!=='undefined'?require('./images.js'):null);
   const MarginImages=root.ZMAMarginImages||(typeof require!=='undefined'?require('./margin-images.js'):null);
   const ImageViewer=root.ZMAImageViewer||(typeof require!=='undefined'?require('./image-viewer.js'):null);
@@ -44,7 +45,10 @@
         if(p.endsWith('.json')){const old=P.join(this.directory,p);if(await IO.exists(old)){const raw=await IO.readUTF8(old);await IO.writeUTF8(sidecar,raw,{tmpPath:sidecar+'.tmp'});return true;}}return false;},
         read:async p=>IO.readUTF8(await this.pdfStatePath(p)),writeAtomic:async(p,value)=>{const path=await this.pdfStatePath(p);await IO.writeUTF8(path,value,{tmpPath:path+'.tmp'});}});
       this.client=new D.DeepSeekClient({fetch:(...args)=>this.runtimeWindow().fetch(...args),getKey:()=>this.key,getModel:()=>this.model,TextDecoder:win?.TextDecoder});
-      this.provider=Z.Prefs?.get('margincomments.provider')==='chatgpt'?'chatgpt':'deepseek';this.providerListeners=new Set();this.authError='';
+      const provider=Z.Prefs?.get('margincomments.provider');this.provider=['chatgpt','gemini'].includes(provider)?provider:'deepseek';this.providerListeners=new Set();this.authError='';
+      this.geminiKey='';this.geminiModel='';this.geminiModels=[];this.geminiError='';
+      this.geminiCredentials=this.credentials&&new Credentials.CredentialStore(this.credentials.adapter,{keyPref:'margincomments.geminiKey',modelPref:'margincomments.geminiModel',defaultModel:'',label:'Gemini'});
+      this.gemini=Gemini&&new Gemini.GeminiClient({fetch:(...args)=>this.runtimeWindow().fetch(...args),getKey:()=>this.geminiKey,getModel:()=>this.geminiModel,TextDecoder:win?.TextDecoder});
       const fontSize=Z.Prefs?.get('margincomments.fontSize');this.fontSize=Number.isSafeInteger(fontSize)&&fontSize>=12&&fontSize<=24?fontSize:14;this.appearanceListeners=new Set();
       this.webPreferences={mode:Z.Prefs?.get('margincomments.webMode')==='off'?'off':'auto',images:Z.Prefs?.get('margincomments.webImages')!==false};
       if(this.credentials&&Auth&&GPT){
@@ -53,7 +57,7 @@
         this.chatgpt=new GPT.ChatGPTClient({auth:this.auth,fetch:(...args)=>this.runtimeWindow().fetch(...args),TextDecoder:win?.TextDecoder,getWebOptions:()=>this.webState()});
       }
       this.readingAuto=Z.Prefs?.get('margincomments.readingSummaryAuto')!==false;
-      this.readingSummary=Reading?new Reading.Manager({key:r=>C.scopeKey(this.scope(r)),load:r=>this.load(r),save:(r,s)=>this.save(r,s),publish:(r,text,record,force)=>this.publishReadingSummary(r,text,record,force),context:r=>this.readingSummaryContext(r),prepareMessages:messages=>this.prepareMessages(messages),client:()=>this.selectedClient(),controller:()=>this.newAbortController(),foreground:()=>this.activeRequests.size>0||this.transferTasks.size>0,enabled:()=>this.running&&this.readingAuto&&(this.provider==='chatgpt'?!!this.auth?.active()?.accessToken:!!this.key),notify:(r)=>{const key=C.scopeKey(this.scope(r));for(const p of this.panels.values())if(C.scopeKey(this.scope(p.reader))===key)p.refreshReadingSummary?.();}}):null;
+      this.readingSummary=Reading?new Reading.Manager({key:r=>C.scopeKey(this.scope(r)),load:r=>this.load(r),save:(r,s)=>this.save(r,s),publish:(r,text,record,force)=>this.publishReadingSummary(r,text,record,force),context:r=>this.readingSummaryContext(r),prepareMessages:messages=>this.prepareMessages(messages),client:()=>this.selectedClient(),controller:()=>this.newAbortController(),foreground:()=>this.activeRequests.size>0||this.transferTasks.size>0,enabled:()=>this.running&&this.readingAuto&&(this.provider==='chatgpt'?!!this.auth?.active()?.accessToken:this.provider==='gemini'?!!(this.geminiKey&&this.geminiModel):!!this.key),notify:(r)=>{const key=C.scopeKey(this.scope(r));for(const p of this.panels.values())if(C.scopeKey(this.scope(p.reader))===key)p.refreshReadingSummary?.();}}):null;
       this.memory=MemoryHost?.create(this);
     }
     dockLayoutAPI(){
@@ -97,7 +101,7 @@
       return {noteKey:note.key,noteHTML:note.getNote()};
     }
     openReadingSummary(reader){return this.load(reader).then(state=>{const key=state.readingSummary?.noteKey,note=key&&this.Z.Items.getByLibraryAndKey(this.scope(reader).libraryID,key);if(!note?.isNote?.()||note.deleted)throw new Error('尚无可打开的阅读摘要笔记');return this.runtimeWindow().ZoteroPane.openNote(note.id,{openInWindow:true});});}
-    providerLabel(){return this.provider==='chatgpt'?'ChatGPT':'DeepSeek';}
+    providerLabel(){return this.provider==='chatgpt'?'ChatGPT':this.provider==='gemini'?'Gemini':'DeepSeek';}
     webState(){return {...this.webPreferences};}
     webAPI(){return {state:()=>this.webState(),setMode:value=>this.setWebMode(value),setImages:value=>this.setWebImages(value),watch:listener=>{this.providerListeners.add(listener);return ()=>this.providerListeners.delete(listener);}};}
     async setWebMode(value){this.providerIdle();if(!['auto','off'].includes(value))throw new Error('联网搜索选项无效');this.Z.Prefs?.set('margincomments.webMode',value);this.webPreferences.mode=value;this.providersChanged();}
@@ -105,16 +109,19 @@
     appearanceState(){return {fontSize:this.fontSize};}
     appearanceAPI(){return {state:()=>this.appearanceState(),setFontSize:value=>this.setFontSize(value),watch:listener=>{this.appearanceListeners.add(listener);return ()=>this.appearanceListeners.delete(listener);}};}
     async setFontSize(value){const size=Number(value);if(!Number.isSafeInteger(size)||size<12||size>24)throw new Error('字体大小须为 12 至 24 px 的整数');this.Z.Prefs?.set('margincomments.fontSize',size);this.fontSize=size;for(const panel of this.panels.values())panel.applyAppearance?.();for(const listener of this.appearanceListeners)listener();}
-    providerState(){const account=this.auth?.active(),selected=account?.models?.find(m=>m.slug===account.model);return {provider:this.provider,label:this.providerLabel(),signedIn:!!account?.accessToken,accountLabel:this.auth?.accounts().find(a=>a.id===account?.id)?.label||'',model:this.provider==='chatgpt'?account?.model||'':this.model,models:this.provider==='chatgpt'?account?.models||[]:[],reasoningEffort:account?.reasoningEffort||'default',reasoningEfforts:selected&&GPT?GPT.reasoningEfforts(selected):[],speed:account?.speed||'default',speedTiers:selected&&GPT?GPT.speedTiers(selected):['default'],error:this.authError};}
+    providerState(){const account=this.auth?.active(),selected=account?.models?.find(m=>m.slug===account.model);return {provider:this.provider,label:this.providerLabel(),signedIn:!!account?.accessToken,accountLabel:this.auth?.accounts().find(a=>a.id===account?.id)?.label||'',model:this.provider==='chatgpt'?account?.model||'':this.provider==='gemini'?this.geminiModel:this.model,models:this.provider==='chatgpt'?account?.models||[]:this.provider==='gemini'?this.geminiModels:[],configured:this.provider==='gemini'?!!(this.geminiKey&&this.geminiModel):true,reasoningEffort:account?.reasoningEffort||'default',reasoningEfforts:selected&&GPT?GPT.reasoningEfforts(selected):[],speed:account?.speed||'default',speedTiers:selected&&GPT?GPT.speedTiers(selected):['default'],error:this.authError};}
     providersChanged(){for(const panel of this.panels.values())panel.refreshProvider?.();for(const listener of this.providerListeners)listener();}
     providerIdle(){if(this.activeRequests.size)throw new Error('请先停止或等待正在生成的回答，再更改服务或账户。');}
-    async setProvider(value){this.providerIdle();if(!['deepseek','chatgpt'].includes(value))throw new Error('服务名称无效');this.Z.Prefs?.set('margincomments.provider',value);this.provider=value;this.providersChanged();}
-    selectedClient(){if(this.provider!=='chatgpt')return this.client;if(!this.auth?.active()?.accessToken)throw new Error('请先在设置中登录 ChatGPT，再发送问题。');return this.chatgpt.forAccount(this.auth.state.activeID);}
+    async setProvider(value){this.providerIdle();if(!['deepseek','chatgpt','gemini'].includes(value))throw new Error('服务名称无效');this.Z.Prefs?.set('margincomments.provider',value);this.provider=value;this.providersChanged();}
+    selectedClient(){if(this.provider==='gemini'){if(!this.geminiKey||!this.geminiModel)throw new Error('请先在设置中保存 Gemini API Key 并选择模型。');return this.gemini;}if(this.provider!=='chatgpt')return this.client;if(!this.auth?.active()?.accessToken)throw new Error('请先在设置中登录 ChatGPT，再发送问题。');return this.chatgpt.forAccount(this.auth.state.activeID);}
     async setChatGPTModel(model){this.providerIdle();await this.auth?.setModel(model);}
     async prepareChatGPTControls(){this.providerIdle();const account=this.auth?.active();if(account?.models?.some(m=>m.capabilitiesVersion!==2))await this.auth.setModels(account.id,account.models.map(m=>({...m,reasoningEfforts:GPT.reasoningEfforts(m),speedTiers:GPT.speedTiers(m),capabilitiesVersion:2})));}
     async setChatGPTReasoning(value){await this.prepareChatGPTControls();await this.auth?.setReasoning(value);}
     async setChatGPTSpeed(value){await this.prepareChatGPTControls();await this.auth?.setSpeed(value);} 
-    chatGPTAPI(){return {state:()=>({...this.providerState(),accounts:this.auth?.accounts()||[],activeID:this.auth?.state.activeID,pending:!!this.auth?.pending}),watch:listener=>{this.providerListeners.add(listener);return ()=>this.providerListeners.delete(listener);},provider:value=>this.setProvider(value),select:async id=>{this.providerIdle();await this.auth?.select(id);},model:value=>this.setChatGPTModel(value),reasoning:value=>this.setChatGPTReasoning(value),speed:value=>this.setChatGPTSpeed(value),refresh:async()=>{this.providerIdle();if(!this.chatgpt)throw new Error('ChatGPT 授权模块不可用');return this.chatgpt.models();},login:async id=>{
+    chatGPTAPI(){return {state:()=>({...this.providerState(),accounts:this.auth?.accounts()||[],activeID:this.auth?.state.activeID,pending:!!this.auth?.pending}),watch:listener=>{this.providerListeners.add(listener);return ()=>this.providerListeners.delete(listener);},provider:value=>this.setProvider(value),select:async id=>{this.providerIdle();await this.auth?.select(id);},model:value=>this.setChatGPTModel(value),reasoning:value=>this.setChatGPTReasoning(value),speed:value=>this.setChatGPTSpeed(value),refresh:async()=>{this.providerIdle();if(!this.chatgpt)throw new Error('ChatGPT 授权模块不可用');/** @type {{report?:{count:number,sol:string}}} */ const result={};try{await this.chatgpt.models(value=>{result.report=value;});}catch(e){if(!result.report)throw e;}const catalog=result.report;if(!catalog)throw new Error('ChatGPT 模型刷新结果不可用。');
+      const sol=catalog.sol==='available'?'GPT-6.2 Sol 可选。':catalog.sol==='not-listed'?'服务返回了 GPT-6.2 Sol，但没有将它列为可选模型。':'当前账户 / 工作区的授权目录未返回 GPT-6.2 Sol。';
+      return '已刷新 ChatGPT 模型：'+catalog.count+' 个可选。'+sol;
+    },login:async id=>{
       this.providerIdle();if(!this.auth)throw new Error('ChatGPT 安全登录不可用，请重启 Zotero。');this.authError='';await this.auth.signIn(id||undefined);await this.setProvider('chatgpt');
       if(!this.auth.state.welcomed){this.notify('正在使用你的 Codex / ChatGPT Work 共享订阅额度。发送问题会使用当前 PDF 内容与本地对话；可在“管理用量”中调整应用额度。');await this.auth.update(s=>({...s,welcomed:true}));}
       await this.chatgpt.models();
@@ -434,11 +441,33 @@
     readClipboard(){return this.Z.Utilities.Internal.getClipboard('text/plain');}
     notify(message){const win=this.Z.getMainWindow?.()||this.win;if(win&&!win.closed)win.alert?.(message);else this.Z.logError?.(new Error(message));}
     guard(action){Promise.resolve().then(action).catch(e=>this.notify(e.message));}
+    geminiAPI(){return {
+      state:()=>({hasKey:!!this.geminiKey,model:this.geminiModel,models:this.geminiModels,error:this.geminiError}),
+      save:async key=>{
+        this.providerIdle();if(!this.geminiCredentials)throw new Error('当前 Zotero 不支持安全保存密钥。');
+        const value=String(key||'').trim();if(!value&&!this.geminiKey)throw new Error('请输入 Gemini API Key。');
+        if(!value||value===this.geminiKey)return;
+        if(!/^[A-Za-z0-9_-]{20,200}$/.test(value))throw new Error('Gemini API Key 格式无效。');
+        await this.geminiCredentials.save(value,'');this.geminiKey=value;this.geminiModel='';this.geminiModels=[];this.geminiError='';this.providersChanged();
+      },
+      refresh:async()=>{
+        this.providerIdle();if(!this.gemini)throw new Error('Gemini 模块未加载，请重启 Zotero。');const key=this.geminiKey,signal=this.newAbortController(),timer=setTimeout(()=>signal.abort(),30000);
+        let models;try{models=await this.gemini.models(signal.signal);}finally{clearTimeout(timer);}
+        this.providerIdle();if(key!==this.geminiKey)throw new Error('Gemini 密钥已变更，请再次刷新。');
+        if(this.geminiModel&&!models.some(m=>m.slug===this.geminiModel)){await this.geminiCredentials.save('','');this.geminiModel='';}
+        this.geminiModels=models;this.geminiError='';this.providersChanged();return models.length;
+      },
+      model:async value=>{
+        this.providerIdle();if(!this.geminiKey||!Gemini.VALID.test(value)||!this.geminiModels.some(m=>m.slug===value))throw new Error('请先刷新 Gemini 模型列表，再选择模型。');
+        await this.geminiCredentials.save('',value);this.geminiModel=value;this.providersChanged();
+      },
+      clear:async()=>{this.providerIdle();await this.geminiCredentials?.clear();this.geminiKey='';this.geminiModel='';this.geminiModels=[];this.geminiError='';this.providersChanged();}
+    };}
     settingsAPI(){return {model:this.model,hasKey:!!this.key,error:this.credentialError,apply:async(key,model)=>{
       if(!this.credentials)throw new Error('当前 Zotero 不支持安全保存密钥');
       await this.credentials.save(key,model);
       if(key.trim())this.key=key.trim();this.model=model.trim();this.credentialError='';this.providersChanged();
-    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),appearance:this.appearanceAPI(),web:this.webAPI(),readingSummary:this.readingSummaryAPI(),memory:this.memory?.settingsAPI(),embedding:this.memory?.embedding?.settingsAPI(),prompt:this.promptAPI(),chatgpt:this.chatGPTAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
+    },clear:async()=>{await this.credentials?.clear();this.key='';this.credentialError='';},test:()=>this.client.testConnection(),appearance:this.appearanceAPI(),web:this.webAPI(),readingSummary:this.readingSummaryAPI(),memory:this.memory?.settingsAPI(),embedding:this.memory?.embedding?.settingsAPI(),prompt:this.promptAPI(),chatgpt:this.chatGPTAPI(),gemini:this.geminiAPI(),bind:container=>root.ZMASettings.bind(container,this.settingsAPI())};}
     async restoreCredentials(){
       if(!this.credentials){this.credentialError='当前 Zotero 不支持安全保存密钥';return;}
       try{const saved=await this.credentials.load();this.key=saved.key;this.model=saved.model;this.credentialError='';}
@@ -467,7 +496,7 @@
       append({label:'批注并提问（选中文字）',disabled:false,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);try{await panel.addPDFQuote(await this.selectionQuoteSource(reader,snapshot));}catch(e){panel.error?.(e);}})});
       append({label:'引用选中文字到页边批注',disabled,onCommand:()=>this.guard(async()=>{const source=await this.saveSelection(reader,snapshot),panel=await this.panel(reader);await panel.markSource(source,true);})});
       append({label:'标记选中文字为引用来源',disabled,onCommand:()=>this.guard(async()=>{const source=await this.saveSelection(reader,snapshot),panel=await this.panel(reader);await panel.markSource(source);})});
-      append({label:'向 DeepSeek 提问（选中文字）',disabled,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);panel.showChat();try{await panel.addMaterial(()=>this.saveSelection(reader,snapshot));}catch(e){panel.error(e);}})});
+      append({label:'向 '+this.providerLabel()+' 提问（选中文字）',disabled,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);panel.showChat();try{await panel.addMaterial(()=>this.saveSelection(reader,snapshot));}catch(e){panel.error(e);}})});
     };
     onToolbar=event=>{
       if(!this.isPDF(event.reader))return;
@@ -478,7 +507,7 @@
     };
     toolbarButton(reader,doc,kind){
       const assistant=kind==='assistant';
-      const button=root.ZMAPanel.iconButton(doc,assistant?'DeepSeek / ChatGPT':'打开 Notion 笔记栏',assistant?'comment':'notion',async()=>{
+      const button=root.ZMAPanel.iconButton(doc,assistant?'打开文档助手':'打开 Notion 笔记栏',assistant?'comment':'notion',async()=>{
         const panel=await this.panel(reader);
         if(assistant)panel.showChat();
         else if(panel.notion?.visible)panel.notion.hide();
@@ -544,7 +573,7 @@
     onMenu=({reader,params,append})=>{
       if(!this.isPDF(reader))return;const keys=Array.isArray(params?.ids)?params.ids.map(String):[];const key=keys.length===1?keys[0]:null;const item=key&&this.nativeAnnotation(reader,key);const region=item?.annotationType==='image'||['highlight','underline'].includes(item?.annotationType)&&!!item.annotationText?.trim();
       append({label:'批注并提问',disabled:!region,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);try{await panel.addPDFQuote(await this.resolveSource(reader,key));}catch(e){panel.error(e);}})});
-      append({label:'向 DeepSeek 提问',disabled:!region,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);panel.showChat();try{await panel.addMaterial(()=>this.resolveSource(reader,key));}catch(e){panel.error(e);}})});
+      append({label:'向 '+this.providerLabel()+' 提问',disabled:!region,onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);panel.showChat();try{await panel.addMaterial(()=>this.resolveSource(reader,key));}catch(e){panel.error(e);}})});
       append({label:'标记为引用来源',disabled:!region||item.isEditable?.()===false||this.isReadOnly(reader),onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);await panel.markSource(await this.resolveSource(reader,key));})});
       append({label:'插入前文引用',disabled:!item||item.isEditable?.()===false||this.isReadOnly(reader),onCommand:()=>this.guard(async()=>{const panel=await this.panel(reader);await panel.showDirectory({annotationKey:key});})});
     };
@@ -552,6 +581,7 @@
     async start(){
       if(this.running)return;
       await this.restoreCredentials();
+      try{const saved=await this.geminiCredentials?.load();if(saved?.key){this.geminiKey=saved.key;this.geminiModel=Gemini.VALID.test(saved.model)?saved.model:'';}}catch{this.geminiError='无法读取保存的 Gemini 密钥，请清除后重新设置。';}
       try{await this.auth?.load();}catch{this.authError='ChatGPT 登录信息无法读取，请在设置中重新登录。';}
       this.running=true;for(const win of this.Z.getMainWindows?.()||[this.win])this.bindHistoryPane(win);
       void this.memory?.start().catch(error=>this.Z.logError?.(error));
@@ -564,7 +594,7 @@
     async closeReader(reader){const exportJob=this.imageExports?.get(reader);exportJob?.controller.abort();this.pageImageLayers?.get(reader)?.destroy();this.pageImageLayers?.delete(reader);this.imageViewers?.get(reader)?.destroy();this.imageViewers?.delete(reader);this.readingSummary?.forget(reader);this.closedReaders.add(reader);for(const [doc,entry]of this.toolbarObservers)if(entry.reader===reader){entry.observer?.disconnect();entry.parentObserver?.disconnect();entry.discoveryObserver?.disconnect();this.toolbarObservers.delete(doc);}const panel=this.panels.get(reader);this.panels.delete(reader);for(const [doc,entry]of this.cleanups)if(entry.reader===reader){entry.dispose();this.cleanups.delete(doc);}if(panel)await panel.destroy();if(exportJob)await exportJob.promise.catch(()=>{});}
     prune(){const live=new Set(this.Z.Reader._readers||[]);const readers=new Set([...this.panels.keys(),...[...this.cleanups.values()].map(x=>x.reader),...[...this.toolbarObservers.values()].map(x=>x.reader)]);for(const reader of readers)if(!live.has(reader))void this.closeReader(reader);}
     async stop(){
-      this.running=false;for(const job of this.imageExports?.values()||[])job.controller.abort();for(const layer of this.pageImageLayers?.values()||[])layer.destroy();this.pageImageLayers?.clear();for(const viewer of this.imageViewers?.values()||[])viewer.destroy();this.imageViewers?.clear();await this.imageManager?.flush?.();await Promise.allSettled([...(this.imageExports?.values()||[])].map(job=>job.promise));await this.memory?.stop();await this.readingSummary?.stop();this.key='';for(const panel of this.panels.values())panel.controller?.abort();await this.auth?.stop();this.providerListeners.clear();this.appearanceListeners.clear();this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
+      this.running=false;for(const job of this.imageExports?.values()||[])job.controller.abort();for(const layer of this.pageImageLayers?.values()||[])layer.destroy();this.pageImageLayers?.clear();for(const viewer of this.imageViewers?.values()||[])viewer.destroy();this.imageViewers?.clear();await this.imageManager?.flush?.();await Promise.allSettled([...(this.imageExports?.values()||[])].map(job=>job.promise));await this.memory?.stop();await this.readingSummary?.stop();this.key='';this.geminiKey='';for(const panel of this.panels.values())panel.controller?.abort();await this.auth?.stop();this.providerListeners.clear();this.appearanceListeners.clear();this.Z.Reader._unregisterEventListenerByPluginID?.(ID);if(this.observer)this.Z.Notifier.unregisterObserver(this.observer);
       for(const win of [...this.historyPanes.keys()])this.unbindHistoryPane(win);
       for(const {observer,parentObserver,discoveryObserver}of this.toolbarObservers.values()){observer?.disconnect();parentObserver?.disconnect();discoveryObserver?.disconnect();}this.toolbarObservers.clear();
       await Promise.allSettled(this.pending.values());await Promise.allSettled([...this.panels.values()].map(p=>p.destroy()));this.panels.clear();

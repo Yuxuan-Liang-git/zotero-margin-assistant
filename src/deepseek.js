@@ -22,7 +22,7 @@
     return parts;
   }
   function textSize(messages){return messages.flatMap(m=>Array.isArray(m.content)?m.content.filter(c=>c.type==='text').map(c=>c.text):[m.content]).join('').length;}
-  function requestLimits(provider){return provider==='chatgpt'?{text:120000,document:96000}:{text:60000,document:24000};}
+  function requestLimits(provider){return ['chatgpt','gemini'].includes(provider)?{text:120000,document:96000}:{text:60000,document:24000};}
   function contextMaterials(materials,context,attachments=[]){
     const submitted=materials.slice();for(const m of context?.materials||(context?.material?[context.material]:[])){
       if(submitted.length+attachments.length>=8)break;
@@ -67,7 +67,7 @@
     }
     /** @param {Message[]} messages @param {{signal?:AbortSignal,onDelta?:(delta:string)=>void,maxTokens?:number,thinking?:{type:string}}} options */
     async generate(messages,{signal,onDelta=()=>{},maxTokens=65536,thinking}={}){
-      if(messages.some(m=>Array.isArray(m.content)&&m.content.some(p=>p.type==='file')))throw new Error('PDF 附件当前请使用 ChatGPT；DeepSeek 可接收图片附件。');
+      if(messages.some(m=>Array.isArray(m.content)&&m.content.some(p=>p.type==='file')))throw new Error('PDF 附件请使用 ChatGPT 或 Gemini；DeepSeek 可接收图片附件。');
       let partial='',done=false,reader,finishReason;
       try{
         if(signal?.aborted)throw new Error('aborted');

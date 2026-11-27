@@ -96,11 +96,16 @@
         if(!response.ok){let detail,responseShape;try{detail=await response.json();}catch{responseShape='non-json';}const text=typeof detail?.detail==='string'?detail.detail:typeof detail?.error==='string'?detail.error:undefined;throw failure(response.status,detail,{requestID:response.headers?.get('x-request-id'),responseShape,...serverDetail(text,options.body,token)});}return response;
       }
     }
-    async models(){
+    async models(onCatalog=(_catalog)=>{}){
       const id=this.accountID||this.auth.state.activeID;let data;
       try{data=await (await this.request('/models',{},id)).json();}catch(e){throw e.safe?e:failure(0,'');}
-      const models=(data.models||[]).filter(m=>m.visibility==='list'&&typeof m.slug==='string'&&/^[a-z0-9._-]{1,128}$/i.test(m.slug)).map(m=>{const levels=reasoningEfforts(m);return {slug:m.slug,displayName:typeof m.display_name==='string'?m.display_name:m.slug,...(levels.length?{reasoningEfforts:levels}:{}),speedTiers:speedTiers(m),capabilitiesVersion:2};});
-      if(!models.length)throw Object.assign(new Error('当前 ChatGPT 账户没有可用模型，请检查订阅授权。'),{safe:true});await this.auth.setModels(id,models);return models;
+      if(!Array.isArray(data?.models))throw Object.assign(new Error('ChatGPT 返回的模型目录格式无法读取。'),{safe:true});
+      const entries=data.models.filter(Boolean);
+      const models=entries.filter(m=>m.visibility==='list'&&typeof m.slug==='string'&&/^[a-z0-9._-]{1,128}$/i.test(m.slug)).map(m=>{const levels=reasoningEfforts(m);return {slug:m.slug,displayName:typeof m.display_name==='string'?m.display_name:m.slug,...(levels.length?{reasoningEfforts:levels}:{}),speedTiers:speedTiers(m),capabilitiesVersion:2};});
+      const isSol=m=>/^gpt-6\.2-sol(?:-|$)/i.test(m.slug||'')||/\bGPT[ -]*6\.2\s+Sol\b/i.test(m.displayName||m.display_name||'');
+      await this.auth.setModels(id,models);
+      onCatalog({count:models.length,sol:models.some(isSol)?'available':entries.some(isSol)?'not-listed':'absent'});
+      if(!models.length)throw Object.assign(new Error('当前 ChatGPT 账户没有可用模型，请检查订阅授权。'),{safe:true});return models;
     }
     /** @param {any[]} messages @param {{signal?:AbortSignal,onDelta?:(delta:string)=>void,onServiceTier?:(info:any)=>void,onWebUpdate?:(info:any)=>void,maxTokens?:number,thinking?:any}} options */
     async generate(messages,{signal,onDelta=(_delta)=>{},onServiceTier=(_info)=>{},onWebUpdate=(_info)=>{},maxTokens=undefined,thinking=undefined}={}){

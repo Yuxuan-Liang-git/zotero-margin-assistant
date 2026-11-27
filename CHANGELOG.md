@@ -1,10 +1,14 @@
 # 更新日志
 
-这里记录各版本带来的功能、修复和行为变化。本次版本为 0.20.2，安装和操作见 [使用指南](docs/user-guide.md)。
+这里记录各版本带来的功能、修复和行为变化。本次版本为 0.20.3，安装和操作见 [使用指南](docs/user-guide.md)。
 
 现有44个历史版本于2026年11月9日从保留的源码 ZIP 和 XPI 整理入库，覆盖0.10.0至0.19.0。Git 提交和归档发布日期表示整理时间，原始逐次开发提交未保存在这些 ZIP 中。版本说明依据归档 README、开发记录及源码差异整理；现有资料缺少0.13.9的完整归档，因此没有创建对应标签。
 
 各版 Releases 保留原始 XPI、源码 ZIP 和 SHA-256 校验文件。机器可读目录见 [versions.json](releases/versions.json)，后续提交与发布规范见 [版本管理](docs/version-management.md)。
+
+### v0.20.3 · Gemini 文档问答与 ChatGPT 模型刷新提示
+
+文档助手可使用 Gemini API，支持流式输出、PDF 和截图、对话历史及阅读摘要。Gemini 密钥按服务单独加密保存，模型列表从 Google API 获取。ChatGPT 刷新结果显示可选模型数，以及 GPT-6.2 Sol 在当前授权目录中的状态。
 
 ### v0.20.2 · 支持 GPT-6.2 Sol 和 Astra
 
